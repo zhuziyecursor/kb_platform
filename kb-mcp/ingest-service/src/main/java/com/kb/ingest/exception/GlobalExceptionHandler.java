@@ -54,6 +54,61 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        String traceId = "tr-" + UUID.randomUUID().toString();
+        String message = ex.getMessage();
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        if (message != null && message.startsWith("DUPLICATE_FILE:")) {
+            String existingDocId = message.substring("DUPLICATE_FILE:".length());
+            log.warn("Duplicate file: existingDocId={}, traceId={}", existingDocId, traceId);
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of(
+                            "code", "DUPLICATE_FILE",
+                            "message", "相同文件的文档已存在",
+                            "traceId", traceId,
+                            "existingDocId", existingDocId
+                    ));
+        }
+
+        log.warn("Illegal state: {}, traceId: {}", message, traceId);
+        return ResponseEntity.status(status)
+                .body(Map.of(
+                        "code", "ILLEGAL_STATE",
+                        "message", message,
+                        "traceId", traceId
+                ));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        String traceId = "tr-" + UUID.randomUUID().toString();
+        log.warn("Illegal argument: {}, traceId: {}", ex.getMessage(), traceId);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of(
+                        "code", "ILLEGAL_ARGUMENT",
+                        "message", ex.getMessage(),
+                        "traceId", traceId
+                ));
+    }
+
+    @ExceptionHandler(UnsupportedOperationException.class)
+    public ResponseEntity<Map<String, Object>> handleUnsupportedOperation(UnsupportedOperationException ex) {
+        String traceId = "tr-" + UUID.randomUUID().toString();
+        String message = ex.getMessage();
+        if (message != null && message.startsWith("PHASE2_PLACEHOLDER:")) {
+            log.info("PHASE2 feature requested: {}, traceId: {}", message, traceId);
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                    .body(Map.of(
+                            "code", "PHASE2_FEATURE",
+                            "message", message,
+                            "traceId", traceId
+                    ));
+        }
+        throw ex;
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
         String traceId = "tr-" + UUID.randomUUID().toString();

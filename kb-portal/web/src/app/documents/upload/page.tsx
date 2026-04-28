@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Steps,
   Card,
@@ -24,6 +24,7 @@ import {
   Switch,
   Radio,
   Layout,
+  Spin,
 } from 'antd';
 import {
   InboxOutlined,
@@ -54,6 +55,15 @@ import type {
   ChunkMode,
 } from '@/types';
 import { listSpaces } from '@/api/knowledge-space';
+import {
+  initUpload,
+  verifyUpload,
+  commitDoc,
+  ingestDoc,
+  getDocStatus,
+  InitUploadRequest,
+  CommitRequest,
+} from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import type { LUIAction } from '@/types';
 
@@ -153,6 +163,23 @@ export default function UploadPage() {
     chunkMode: 'HEAD_FIRST',
   });
 
+  // 实际上传流程状态
+  const [docId, setDocId] = useState<string>('');
+  const [version, setVersion] = useState<number>(1);
+  const [presignedUrl, setPresignedUrl] = useState<string>('');
+  const [sha256, setSha256] = useState<string>('');
+  const [tenantId] = useState<string>('dev-tenant-001');
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 清理轮询
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
   // 加载知识空间列表
   useEffect(() => {
     listSpaces()
@@ -209,9 +236,9 @@ export default function UploadPage() {
     name: 'file',
     multiple: false,
     beforeUpload: (file: RcFile) => {
-      const isLimit = file.size / 1024 / 1024 <= 5;
+      const isLimit = file.size / 1024 / 1024 <= 50;
       if (!isLimit) {
-        message.error('文件大小不能超过 5MB');
+        message.error('文件大小不能超过 50MB');
         return false;
       }
       const allowedTypes = [
@@ -230,7 +257,17 @@ export default function UploadPage() {
         message.error('暂不支持该文件类型，仅支持 PDF/Word/PPT/Excel/TXT/MD');
         return false;
       }
-      setFileList([{ uid: '-1', name: file.name, status: 'done', size: file.size } as UploadFile]);
+      // 重要：保留 originFileObj 引用，这是 antd 内部访问实际 File 对象的途径
+      // 当 beforeUpload 返回 false 时，需要将文件对象（含 originFileObj）放入 fileList
+      const uploadFile: UploadFile = {
+        ...file,
+        uid: '-1',
+        name: file.name,
+        status: 'done',
+        size: file.size,
+        originFileObj: file as any,
+      };
+      setFileList([uploadFile]);
       return false; // prevent auto upload
     },
     onRemove: () => {
@@ -239,94 +276,195 @@ export default function UploadPage() {
     fileList,
   };
 
-  // ============== 提交元数据 ==============
-  const handleCommit = async () => {
+  // ============== 计算文件 SHA256（使用 FileReader） ==============
+  const computeFileHash = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const buffer = reader.result as ArrayBuffer;
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        resolve(hashHex);
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  // ============== Step 0: 确认元数据 → 进入文件选择 ==============
+  const handleMetadataConfirm = async () => {
     try {
       const values = await form.validateFields();
-      if (fileList.length === 0) {
-        message.warning('请先选择要上传的文件');
-        return;
-      }
+      setFormValues(values);
+      setOverwriteExisting(values.overwriteExisting || false);
       setCurrentStep(1);
-      message.success('元数据已提交，正在触发入库流水线...');
     } catch {
       message.error('请完善必填信息');
     }
   };
 
-  // ============== 模拟流水线进度（带子步骤） ==============
-  const simulatePipeline = async () => {
-    setIsSimulating(true);
+  // ============== Step 1: 选择文件后 → 调用 init-upload → presigned URL 直传 → verify → commit → ingest ==============
+  const handleUploadTrigger = async () => {
+    if (fileList.length === 0 || !fileList[0].originFileObj) {
+      message.warning('请先选择文件');
+      return;
+    }
+
+    setIsProcessing(true);
+    setCurrentStep(2);
     setUploadProgress([...MOCK_PIPELINE_STEPS]);
 
-    // 主步骤索引：0=上传(已完成), 1=解析, 2=清洗, 3=切片, 4=向量化
-    const stepOrder = [1, 2, 3, 4];
-    // 每个主步骤的子步骤索引范围
-    const subStepRanges: Record<number, number[]> = {
-      1: [0, 1, 2], // 解析: 3个子步骤
-      2: [0, 1, 2, 3], // 清洗: 4个子步骤
-      3: [0, 1, 2], // 切片: 3个子步骤
-      4: [0, 1, 2], // 向量化: 3个子步骤
-    };
+    try {
+      const file = fileList[0].originFileObj as File;
+      const fileHash = await computeFileHash(file);
+      setSha256(fileHash);
 
-    for (let i = 0; i < stepOrder.length; i++) {
-      const mainStepIdx = stepOrder[i];
-      const subIndices = subStepRanges[mainStepIdx];
+      // 1. 调用 init-upload 获取 presigned URL
+      setUploadProgress(prev => {
+        const updated = [...prev];
+        updated[0] = { ...updated[0], status: 'process', timestamp: new Date().toLocaleString('zh-CN') };
+        if (updated[0].subSteps) updated[0].subSteps[0] = { label: '调用 init-upload', status: 'process', detail: '获取 presigned URL...' };
+        return updated;
+      });
 
-      // 逐个完成子步骤
-      for (let j = 0; j < subIndices.length; j++) {
-        await new Promise((r) => setTimeout(r, 600));
+      const initReq: InitUploadRequest = {
+        tenantId: tenantId,
+        filename: file.name,
+        fileSize: file.size,
+        fileHash: fileHash,
+        docType: formValues.docType || 'REGULATION',
+        bizDomain: formValues.bizDomain || 'COMPLIANCE',
+        regionCode: formValues.regionCode || 'CN-NATIONAL',
+        secLevel: formValues.secLevel || 1,
+        effectiveFrom: formValues.effectiveFrom?.isValid() ? formValues.effectiveFrom.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+        ownerUid: formValues.ownerUid || 'current-user',
+        deptId: formValues.deptId || 'D01',
+        knowledgeSpaceId: selectedSpace,
+        chunkConfig: {
+          useSpaceConfig: !useCustomChunk,
+          chunkSize: chunkConfig.chunkSize,
+          overlapRatio: chunkConfig.overlapRatio,
+          chunkMode: chunkConfig.chunkMode,
+        },
+        overwriteExisting: overwriteExisting,
+      };
 
-        setUploadProgress((prev) => {
-          const updated = JSON.parse(JSON.stringify(prev)) as PipelineStep[];
+      const initResp = await initUpload(initReq);
+      setDocId(initResp.docId);
+      setPresignedUrl(initResp.presignedUrl);
+      setVersion(1);
 
-          // 标记当前子步骤完成
-          if (updated[mainStepIdx].subSteps) {
-            updated[mainStepIdx].subSteps[j].status = 'finish';
+      // 更新步骤：获取 presigned URL 完成
+      setUploadProgress(prev => {
+        const updated = [...prev];
+        if (updated[0].subSteps) {
+          updated[0].subSteps[0] = { label: '获取 presigned URL', status: 'finish', detail: initResp.docId };
+        }
+        updated[0].subSteps![1] = { label: '文件直传至 MinIO', status: 'process', detail: 'PUT 上传...' };
+        return updated;
+      });
+
+      // 2. 使用 presigned URL 直传文件到 MinIO
+      const putResp = await fetch(presignedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+
+      if (!putResp.ok) {
+        throw new Error(`MinIO 上传失败: ${putResp.status}`);
+      }
+
+      // 更新步骤：文件上传完成
+      setUploadProgress(prev => {
+        const updated = [...prev];
+        if (updated[0].subSteps) {
+          updated[0].subSteps[1] = { label: '文件直传至 MinIO', status: 'finish', detail: `${(file.size / 1024).toFixed(1)} KB` };
+          updated[0].subSteps[2] = { label: '生成 docId', status: 'finish', detail: initResp.docId };
+        }
+        updated[0] = { ...updated[0], status: 'finish', description: 'MinIO presigned URL 直传完成', timestamp: new Date().toLocaleString('zh-CN') };
+        return updated;
+      });
+
+      // 3. 调用 verify-upload
+      const verifyResp = await verifyUpload(initResp.docId, version);
+
+      // 4. 调用 commit
+      const commitReq: CommitRequest = {
+        tenantId: tenantId,
+        sha256: fileHash,
+        acl: [{
+          accessorType: 'USER',
+          accessorId: formValues.ownerUid || 'current-user',
+          permission: 'WRITE',
+        }],
+      };
+      const commitResp = await commitDoc(initResp.docId, version, commitReq);
+
+      // 5. 调用 ingest 触发异步处理
+      await ingestDoc(initResp.docId, version);
+
+      // 进入状态轮询
+      startStatusPolling(initResp.docId, version, file.size);
+
+    } catch (err: any) {
+      message.error(`上传失败: ${err.message}`);
+      setIsProcessing(false);
+
+      // 标记失败
+      setUploadProgress(prev => prev.map(step => ({
+        ...step,
+        status: step.status === 'process' ? 'error' : step.status,
+      })));
+    }
+  };
+
+  // ============== 轮询文档状态 ==============
+  const startStatusPolling = (docId: string, ver: number, fileSize: number) => {
+    const poll = async () => {
+      try {
+        const status = await getDocStatus(docId, ver);
+
+        setUploadProgress(prev => {
+          const updated = [...prev];
+
+          // 根据状态更新流水线显示
+          if (status.status === 'PROCESSING' || status.status === 'PENDING') {
+            // 更新解析步骤为进行中
+            if (updated[1].status !== 'finish') {
+              updated[1] = { ...updated[1], status: 'process', timestamp: new Date().toLocaleString('zh-CN') };
+              if (updated[1].subSteps) {
+                updated[1].subSteps[0] = { label: 'TikaParser 文本提取', status: 'process', detail: '正在处理...' };
+              }
+            }
           }
 
-          // 下一个子步骤开始（如果不是最后一个子步骤）
-          if (j + 1 < subIndices.length) {
-            updated[mainStepIdx].subSteps![j + 1].status = 'process';
+          if (status.status === 'READY') {
+            // 所有步骤完成
+            updated.forEach(u => { u.status = 'finish'; });
+            message.success('🎉 文档入库完成，已进入可检索状态！');
+            setIsProcessing(false);
+            if (pollingRef.current) clearInterval(pollingRef.current);
+          }
+
+          if (status.status === 'FAILED') {
+            updated.forEach(u => { u.status = 'error'; });
+            message.error(`处理失败: ${status.lastError || '未知错误'}`);
+            setIsProcessing(false);
+            if (pollingRef.current) clearInterval(pollingRef.current);
           }
 
           return updated;
         });
+
+      } catch (err) {
+        console.error('轮询状态失败:', err);
       }
+    };
 
-      // 主步骤全部完成，进入下一个主步骤
-      await new Promise((r) => setTimeout(r, 400));
-
-      setUploadProgress((prev) => {
-        const updated = [...prev];
-        // 当前主步骤标记完成
-        updated[mainStepIdx] = {
-          ...updated[mainStepIdx],
-          status: 'finish',
-          description: updated[mainStepIdx].description.replace('正在', '').replace('...', '完成'),
-          timestamp: new Date().toLocaleString('zh-CN'),
-        };
-
-        // 下一个主步骤开始处理
-        if (i + 1 < stepOrder.length) {
-          const nextStepIdx = stepOrder[i + 1];
-          updated[nextStepIdx] = {
-            ...updated[nextStepIdx],
-            status: 'process',
-            timestamp: new Date().toLocaleString('zh-CN'),
-          };
-          // 下一个主步骤的第一个子步骤开始
-          if (updated[nextStepIdx].subSteps) {
-            updated[nextStepIdx].subSteps[0].status = 'process';
-          }
-        }
-
-        return updated;
-      });
-    }
-
-    setIsSimulating(false);
-    message.success('🎉 文档入库完成，已进入可检索状态！');
+    pollingRef.current = setInterval(poll, 3000);
+    poll();
   };
 
   // ============== 渲染流水线步骤图标 ==============
@@ -338,9 +476,58 @@ export default function UploadPage() {
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      {/* 智能指令条 */}
-      <CommandBar onAction={handleLUIAction} />
+    <Layout style={{ minHeight: '100vh' }}>
+      {/* 左侧导航 */}
+      <Sider
+        width={200}
+        style={{
+          background: '#fff',
+          borderRight: '1px solid #f0f0f0',
+          position: 'fixed',
+          height: '100vh',
+          left: 0,
+          top: 0,
+        }}
+      >
+        <div style={{ padding: '20px 16px', borderBottom: '1px solid #f0f0f0' }}>
+          <Title level={5} style={{ margin: 0, color: '#1677ff' }}>
+            KB Platform
+          </Title>
+          <Text type="secondary" style={{ fontSize: 12 }}>企业AI知识库</Text>
+        </div>
+
+        <div style={{ padding: '12px 8px' }}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = item.key === 'upload';
+            return (
+              <Link key={item.key} href={item.path}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    color: isActive ? '#1677ff' : '#595959',
+                    background: isActive ? '#e6f4ff' : 'transparent',
+                    marginBottom: 4,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{item.icon}</span>
+                  <Text style={{ fontSize: 14 }}>{item.label}</Text>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </Sider>
+
+      {/* 主内容区 */}
+      <Content style={{ marginLeft: 200, padding: '32px 48px' }}>
+        {/* 智能指令条 */}
+        <CommandBar onAction={handleLUIAction} />
 
       <Card
         title={
@@ -539,7 +726,11 @@ export default function UploadPage() {
               )}
 
               <Form.Item label="覆盖重名文档">
-                <Switch checkedChildren="开" unCheckedChildren="关" />
+                <Switch
+                  checkedChildren="开"
+                  unCheckedChildren="关"
+                  onChange={(checked) => setOverwriteExisting(checked)}
+                />
                 <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                   开启后，如存在同名文档将自动覆盖
                 </Text>
@@ -561,7 +752,7 @@ export default function UploadPage() {
               </Form.Item>
 
               <Form.Item>
-                <Button type="primary" size="large" block onClick={handleCommit}>
+                <Button type="primary" size="large" block onClick={handleMetadataConfirm}>
                   确认元数据，进入文件选择
                 </Button>
               </Form.Item>
@@ -596,8 +787,8 @@ export default function UploadPage() {
                   <Descriptions.Item label="文件大小">
                     {(fileList[0].size! / 1024).toFixed(1)} KB
                   </Descriptions.Item>
-                  <Descriptions.Item label="文档ID">{MOCK_DOC_ID}</Descriptions.Item>
-                  <Descriptions.Item label="租户ID">{MOCK_TENANT_ID}</Descriptions.Item>
+                  <Descriptions.Item label="文档类型">{formValues.docType || 'REGULATION'}</Descriptions.Item>
+                  <Descriptions.Item label="知识空间">{selectedSpace}</Descriptions.Item>
                 </Descriptions>
 
                 <Button
@@ -605,13 +796,11 @@ export default function UploadPage() {
                   size="large"
                   block
                   style={{ marginTop: 24 }}
-                  onClick={() => {
-                    setCurrentStep(2);
-                    simulatePipeline();
-                  }}
+                  onClick={handleUploadTrigger}
                   icon={<InboxOutlined />}
+                  loading={isProcessing}
                 >
-                  触发入库流水线
+                  {isProcessing ? '上传中...' : '触发入库流水线'}
                 </Button>
               </div>
             )}
@@ -628,11 +817,11 @@ export default function UploadPage() {
             <Alert
               message="流水线处理中"
               description={
-                isSimulating
+                isProcessing
                   ? '系统正在执行：解析 → 清洗 → 切片 → 向量化入库，预计耗时 2-5 分钟...'
                   : '入库流程已完成，文档已进入可检索状态'
               }
-              type={isSimulating ? 'info' : 'success'}
+              type={isProcessing ? 'info' : 'success'}
               showIcon
               style={{ marginBottom: 24 }}
             />
@@ -788,6 +977,7 @@ export default function UploadPage() {
           </div>
         )}
       </Card>
-    </div>
+      </Content>
+    </Layout>
   );
 }

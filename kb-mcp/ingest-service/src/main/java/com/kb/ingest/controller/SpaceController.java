@@ -8,8 +8,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,47 +21,38 @@ public class SpaceController {
 
     private final SpaceService spaceService;
 
+    // TODO: PHASE2 权限开发时，从 JWT token 解析 tenant_id
+    private static final String DEV_TENANT_ID = "dev-tenant-001";
+
     @GetMapping
-    public ResponseEntity<Map<String, List<SpaceResponse>>> listSpaces(@AuthenticationPrincipal Jwt jwt) {
-        String tenantId = jwt.getClaimAsString("tenant_id");
-        List<SpaceResponse> spaces = spaceService.listSpaces(tenantId);
+    public ResponseEntity<Map<String, List<SpaceResponse>>> listSpaces() {
+        List<SpaceResponse> spaces = spaceService.listSpaces(DEV_TENANT_ID);
         return ResponseEntity.ok(Map.of("spaces", spaces));
     }
 
     @GetMapping("/{spaceId}")
-    public ResponseEntity<SpaceResponse> getSpace(
-            @PathVariable String spaceId,
-            @AuthenticationPrincipal Jwt jwt) {
-        String tenantId = jwt.getClaimAsString("tenant_id");
-        SpaceResponse space = spaceService.getSpace(tenantId, spaceId);
+    public ResponseEntity<SpaceResponse> getSpace(@PathVariable String spaceId) {
+        SpaceResponse space = spaceService.getSpace(DEV_TENANT_ID, spaceId);
         return ResponseEntity.ok(space);
     }
 
     @PostMapping
-    public ResponseEntity<SpaceResponse> createSpace(
-            @Valid @RequestBody CreateSpaceRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
-        String tenantId = jwt.getClaimAsString("tenant_id");
-        SpaceResponse space = spaceService.createSpace(tenantId, request);
+    public ResponseEntity<SpaceResponse> createSpace(@Valid @RequestBody CreateSpaceRequest request) {
+        SpaceResponse space = spaceService.createSpace(DEV_TENANT_ID, request);
         return ResponseEntity.ok(space);
     }
 
     @PutMapping("/{spaceId}")
     public ResponseEntity<SpaceResponse> updateSpace(
             @PathVariable String spaceId,
-            @Valid @RequestBody UpdateSpaceRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
-        String tenantId = jwt.getClaimAsString("tenant_id");
-        SpaceResponse space = spaceService.updateSpace(tenantId, spaceId, request);
+            @Valid @RequestBody UpdateSpaceRequest request) {
+        SpaceResponse space = spaceService.updateSpace(DEV_TENANT_ID, spaceId, request);
         return ResponseEntity.ok(space);
     }
 
     @DeleteMapping("/{spaceId}")
-    public ResponseEntity<Void> deleteSpace(
-            @PathVariable String spaceId,
-            @AuthenticationPrincipal Jwt jwt) {
-        String tenantId = jwt.getClaimAsString("tenant_id");
-        spaceService.deleteSpace(tenantId, spaceId);
+    public ResponseEntity<Void> deleteSpace(@PathVariable String spaceId) {
+        spaceService.deleteSpace(DEV_TENANT_ID, spaceId);
         return ResponseEntity.ok().build();
     }
 }

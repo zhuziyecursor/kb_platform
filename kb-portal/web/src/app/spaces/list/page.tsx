@@ -148,7 +148,7 @@ export default function SpaceListPage() {
       key: 'docCount',
       width: 80,
       render: (count?: number) => (
-        <Badge count={count} showZero zeroColor="#999" />
+        <Badge count={count} showZero />
       ),
     },
     {

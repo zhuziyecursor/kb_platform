@@ -6,7 +6,7 @@ spring:
     name: ingest-service
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:kb_knowledge}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:25432}/${DB_NAME:knowledge}
     username: ${DB_USERNAME:kb_ingest}
     password: ${DB_PASSWORD:kb_ingest}
     driver-class-name: org.postgresql.Driver
@@ -20,6 +20,23 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
     open-in-view: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+    template:
+      default-topic: file-ingest
+
+  minio:
+    endpoint: http://localhost:29000
+    access-key: kb_minio_admin
+    secret-key: kb_minio_dev_2026
+    bucket: kb-raw
+    presigned-url-expiry: 300
 
   security:
     oauth2:
@@ -39,6 +56,18 @@ spring:
       on-profile: local
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/kb_knowledge
+    url: jdbc:postgresql://localhost:25432/knowledge
     username: kb_ingest
     password: kb_ingest
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:9999

@@ -54,7 +54,7 @@ export default function HomePage() {
       >
         <div style={{ padding: '20px 16px', borderBottom: '1px solid #f0f0f0' }}>
           <Title level={5} style={{ margin: 0, color: '#1677ff' }}>
-            KB Platform
+            ZZY KB Platform
           </Title>
           <Text type="secondary" style={{ fontSize: 12 }}>企业AI知识库</Text>
         </div>

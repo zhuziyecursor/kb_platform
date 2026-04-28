@@ -41,11 +41,11 @@
 
 | 功能 | 状态 | 完成时间 | 备注 |
 |-----|------|---------|------|
-| ingest-service init-upload 接口 | 📋 计划中 | - | MinIO presigned URL |
-| ingest-service verify-upload 接口 | 📋 计划中 | - | sha256 校验 |
-| ingest-service commit 接口 | 📋 计划中 | - | 写 knowledge_doc + doc_acl |
-| ingest-service ingest 接口 | 📋 计划中 | - | 发布 file-ingest Kafka 消息 |
-| ingest-service status 查询接口 | 📋 计划中 | - | 前端轮询 |
+| ingest-service init-upload 接口 | ✅ 已完成 | 2026-04-28 | MinIO presigned URL |
+| ingest-service verify-upload 接口 | ✅ 已完成 | 2026-04-28 | sha256 校验 |
+| ingest-service commit 接口 | ✅ 已完成 | 2026-04-28 | 写 knowledge_doc + doc_acl |
+| ingest-service ingest 接口 | ✅ 已完成 | 2026-04-28 | 发布 file-ingest Kafka 消息 |
+| ingest-service status 查询接口 | ✅ 已完成 | 2026-04-28 | 前端轮询 |
 | kb-doc-processor Kafka Consumer | 📋 计划中 | - | 消费 file-ingest topic |
 | kb-doc-processor TikaParser | 📋 计划中 | - | PDF/Word/PPT/Excel 解析 |
 | kb-doc-processor TextCleaner | 📋 计划中 | - | 编码/特殊字符/HTML/页眉页脚 |

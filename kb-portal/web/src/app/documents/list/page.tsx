@@ -20,6 +20,7 @@ import {
   Divider,
   Form,
   Tabs,
+  Layout,
 } from 'antd';
 import {
   PlusOutlined,
@@ -34,127 +35,35 @@ import {
   SyncOutlined,
   CloseCircleOutlined,
   FolderOutlined,
+  FileTextOutlined,
+  CloudUploadOutlined,
+  RobotOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { KnowledgeDoc, DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
 import { listSpaces } from '@/api/knowledge-space';
+import { listDocs, DocSummary } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import type { LUIAction } from '@/types';
 import dayjs from 'dayjs';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 
 const { Title, Text } = Typography;
+const { Sider, Content } = Layout;
 
-// ============== Mock 数据 ==============
-const MOCK_DOCUMENTS: KnowledgeDoc[] = [
-  {
-    id: '1',
-    docId: 'DOC20260401001',
-    tenantId: 'tenant-001',
-    title: '2026年采购管理办法',
-    version: 3,
-    docType: 'REGULATION',
-    sourceType: 'UPLOAD',
-    srcPath: 's3://kb-raw/tenant-001/COMPLIANCE/2026/04/DOC20260401001/采购办法.pdf',
-    sha256: 'a1b2c3d4e5f6...',
-    ownerUid: 'user-zhangsan',
-    deptId: 'D01',
-    secLevel: 2,
-    regionCode: 'CN-NATIONAL',
-    bizDomain: 'COMPLIANCE',
-    effectiveFrom: '2026-01-01',
-    labelTags: ['采购', '合规', '2026'],
-    status: 'READY',
-    retryCount: 0,
-    createTime: '2026-04-01 09:23:11',
-  },
-  {
-    id: '2',
-    docId: 'DOC20260415002',
-    tenantId: 'tenant-001',
-    title: '信息安全管理制度 V2',
-    version: 2,
-    docType: 'POLICY',
-    sourceType: 'UPLOAD',
-    srcPath: 's3://kb-raw/tenant-001/IT/2026/04/DOC20260415002/信息安全制度.docx',
-    sha256: 'f6e5d4c3b2a1...',
-    ownerUid: 'user-lisi',
-    deptId: 'D02',
-    secLevel: 3,
-    regionCode: 'CN-NATIONAL',
-    bizDomain: 'IT',
-    effectiveFrom: '2026-04-15',
-    labelTags: ['安全', '制度', 'IT'],
-    status: 'PROCESSING',
-    retryCount: 1,
-    createTime: '2026-04-15 14:05:33',
-  },
-  {
-    id: '3',
-    docId: 'DOC20260422003',
-    tenantId: 'tenant-001',
-    title: 'HR 绩效考核操作手册',
-    version: 1,
-    docType: 'MANUAL',
-    sourceType: 'UPLOAD',
-    srcPath: 's3://kb-raw/tenant-001/HR/2026/04/DOC20260422003/绩效考核手册.pdf',
-    sha256: '1a2b3c4d5e6f...',
-    ownerUid: 'user-wangwu',
-    deptId: 'D04',
-    secLevel: 1,
-    regionCode: 'CN-NATIONAL',
-    bizDomain: 'HR',
-    effectiveFrom: '2026-04-22',
-    labelTags: ['HR', '绩效'],
-    status: 'PENDING',
-    retryCount: 0,
-    createTime: '2026-04-22 10:12:07',
-  },
-  {
-    id: '4',
-    docId: 'DOC20260419004',
-    tenantId: 'tenant-001',
-    title: '2025年度审计报告（机密）',
-    version: 1,
-    docType: 'AUDIT',
-    sourceType: 'UPLOAD',
-    srcPath: 's3://kb-raw/tenant-001/COMPLIANCE/2026/04/DOC20260419004/审计报告.pdf',
-    sha256: '9f8e7d6c5b4a...',
-    ownerUid: 'user-zhaoliu',
-    deptId: 'D03',
-    secLevel: 4,
-    regionCode: 'CN-NATIONAL',
-    bizDomain: 'COMPLIANCE',
-    effectiveFrom: '2026-04-19',
-    labelTags: ['审计', '机密'],
-    status: 'FAILED',
-    retryCount: 3,
-    lastError: 'TikaParser: 编码不支持，文件疑似损坏',
-    createTime: '2026-04-19 16:45:22',
-  },
-  {
-    id: '5',
-    docId: 'DOC20260425005',
-    tenantId: 'tenant-001',
-    title: '合同审批流程指引',
-    version: 5,
-    docType: 'CONTRACT',
-    sourceType: 'UPLOAD',
-    srcPath: 's3://kb-raw/tenant-001/COMPLIANCE/2026/04/DOC20260425005/合同审批.docx',
-    sha256: 'abc123def456...',
-    ownerUid: 'user-zhangsan',
-    deptId: 'D01',
-    secLevel: 2,
-    regionCode: 'CN-EAST',
-    bizDomain: 'COMPLIANCE',
-    effectiveFrom: '2026-04-25',
-    labelTags: ['合同', '审批', '华东'],
-    status: 'READY',
-    retryCount: 0,
-    createTime: '2026-04-25 11:30:00',
-  },
+const NAV_ITEMS = [
+  { key: 'home', icon: <FileTextOutlined />, label: '知识库', path: '/' },
+  { key: 'spaces', icon: <FolderOutlined />, label: '知识空间', path: '/spaces/list' },
+  { key: 'docs', icon: <FileTextOutlined />, label: '文档管理', path: '/documents/list' },
+  { key: 'upload', icon: <CloudUploadOutlined />, label: '上传文档', path: '/documents/upload' },
+  { key: 'chat', icon: <RobotOutlined />, label: '知识问答', path: '/rag' },
+  { key: 'settings', icon: <SettingOutlined />, label: '设置', path: '/settings' },
 ];
+
+// ============== 类型映射 ==============
 
 const DOC_TYPE_MAP: Record<DocType, { label: string; color: string }> = {
   REGULATION: { label: '制度', color: 'blue' },
@@ -182,24 +91,39 @@ const SEC_LEVEL_MAP: Record<number, { label: string; color: string }> = {
 
 export default function DocumentListPage() {
   const router = useRouter();
-  const [data] = useState<KnowledgeDoc[]>(MOCK_DOCUMENTS);
+  const pathname = usePathname();
+  const [data, setData] = useState<DocSummary[]>([]);
+  const [loading, setLoading] = useState(false);
   const [spaces, setSpaces] = useState<KnowledgeSpace[]>([]);
   const [activeSpaceTab, setActiveSpaceTab] = useState<string>('ALL');
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocStatus | 'ALL'>('ALL');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<DocSummary | null>(null);
 
   // 加载知识空间列表
   useEffect(() => {
-    // TODO: 替换为真实 API 调用
-    // listSpaces().then(setSpaces).catch(() => message.error('加载知识空间失败'));
-    setSpaces([
-      { id: 'DEFAULT', tenantId: '_system', name: '默认空间', chunkSize: 512, overlapRatio: 10, chunkMode: 'HEAD_FIRST', visibility: 'TEAM', docCount: 3, createTime: '', updateTime: '' },
-      { id: 'space-1', tenantId: 't1', name: '合规文档', description: '合规制度文件', chunkSize: 512, overlapRatio: 10, chunkMode: 'HEAD_FIRST', visibility: 'TEAM', docCount: 2, createTime: '', updateTime: '' },
-    ]);
+    listSpaces().then(setSpaces).catch(() => message.error('加载知识空间失败'));
   }, []);
+
+  // 加载文档列表
+  const fetchDocs = useCallback((spaceId?: string) => {
+    setLoading(true);
+    listDocs(spaceId)
+      .then(res => setData(res.docs.map((doc: any) => ({ ...doc, id: doc.docId }))))
+      .catch(() => message.error('加载文档列表失败'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab);
+  }, [activeSpaceTab, fetchDocs]);
+
+  // 切换知识空间 Tab 时重新加载
+  const handleSpaceTabChange = (key: string) => {
+    setActiveSpaceTab(key);
+  };
 
   // LUI Action Handler
   const handleLUIAction = useCallback((action: LUIAction) => {
@@ -214,7 +138,7 @@ export default function DocumentListPage() {
     }
   }, []);
 
-  const handleMenuClick = (doc: KnowledgeDoc, key: string) => {
+  const handleMenuClick = (doc: DocSummary, key: string) => {
     if (key === 'view') {
       setSelectedDoc(doc);
       setDetailModalOpen(true);
@@ -237,7 +161,7 @@ export default function DocumentListPage() {
     }
   };
 
-  const columns: ColumnsType<KnowledgeDoc> = [
+  const columns: ColumnsType<DocSummary> = [
     {
       title: '文档名称',
       dataIndex: 'title',
@@ -322,7 +246,7 @@ export default function DocumentListPage() {
       dataIndex: 'createTime',
       key: 'createTime',
       width: 160,
-      sorter: (a, b) => a.createTime.localeCompare(b.createTime),
+      sorter: (a, b) => (a.createTime || '').localeCompare(b.createTime || ''),
       render: (time: string) => (
         <Text type="secondary" style={{ fontSize: 12 }}>
           {dayjs(time).format('YYYY-MM-DD HH:mm')}
@@ -353,7 +277,7 @@ export default function DocumentListPage() {
     },
   ];
 
-  const filteredData = data.filter((doc) => {
+  const filteredData = data.filter((doc: DocSummary) => {
     const matchSearch =
       searchText === '' ||
       doc.title.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -364,19 +288,68 @@ export default function DocumentListPage() {
     return matchSearch && matchStatus;
   });
 
-  return (
-    <div style={{ padding: 24 }}>
-      <CommandBar onAction={handleLUIAction} />
+return (
+    <Layout style={{ minHeight: '100vh' }}>
+      {/* 左侧导航 */}
+      <Sider
+        width={200}
+        style={{
+          background: '#fff',
+          borderRight: '1px solid #f0f0f0',
+          position: 'fixed',
+          height: '100vh',
+          left: 0,
+          top: 0,
+        }}
+      >
+        <div style={{ padding: '20px 16px', borderBottom: '1px solid #f0f0f0' }}>
+          <Title level={5} style={{ margin: 0, color: '#1677ff' }}>
+            KB Platform
+          </Title>
+          <Text type="secondary" style={{ fontSize: 12 }}>企业AI知识库</Text>
+        </div>
 
-      <Card
-        title={
-          <Space>
-            <Title level={4} style={{ margin: 0 }}>文档管理</Title>
-            <Badge count={filteredData.length} style={{ backgroundColor: '#1677ff' }} />
-          </Space>
-        }
-        style={{ borderRadius: 8 }}
-        extra={
+        <div style={{ padding: '12px 8px' }}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = item.key === 'docs';
+            return (
+              <Link key={item.key} href={item.path}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    color: isActive ? '#1677ff' : '#595959',
+                    background: isActive ? '#e6f4ff' : 'transparent',
+                    marginBottom: 4,
+                    transition: 'all 0.2s',
+                  }}
+                >
+<span style={{ fontSize: 16 }}>{item.icon}</span>
+                  <Text style={{ fontSize: 14 }}>{item.label}</Text>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </Sider>
+
+      {/* 主内容区 */}
+      <Content style={{ marginLeft: 200, padding: '32px 48px' }}>
+        <CommandBar onAction={handleLUIAction} />
+
+        <Card
+          title={
+            <Space>
+              <Title level={4} style={{ margin: 0 }}>文档管理</Title>
+              <Badge count={filteredData.length} style={{ backgroundColor: '#1677ff' }} />
+            </Space>
+          }
+          style={{ borderRadius: 8 }}
+          extra={
           <Space>
             <Button
               type="primary"
@@ -385,14 +358,14 @@ export default function DocumentListPage() {
             >
               上传文档
             </Button>
-            <Button icon={<ReloadOutlined />}>刷新</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab)}>刷新</Button>
           </Space>
         }
       >
         {/* 知识空间 Tab */}
         <Tabs
           activeKey={activeSpaceTab}
-          onChange={setActiveSpaceTab}
+          onChange={handleSpaceTabChange}
           tabBarExtraContent={
             <Button
               size="small"
@@ -553,8 +526,8 @@ export default function DocumentListPage() {
                 <Text strong>{selectedDoc.title}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="类型">
-                <Tag color={DOC_TYPE_MAP[selectedDoc.docType].color}>
-                  {DOC_TYPE_MAP[selectedDoc.docType].label}
+                <Tag color={DOC_TYPE_MAP[selectedDoc.docType as DocType].color}>
+                  {DOC_TYPE_MAP[selectedDoc.docType as DocType].label}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="版本">v{selectedDoc.version}</Descriptions.Item>
@@ -564,8 +537,8 @@ export default function DocumentListPage() {
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="状态">
-                <Tag color={STATUS_MAP[selectedDoc.status].color}>
-                  {STATUS_MAP[selectedDoc.status].label}
+                <Tag color={STATUS_MAP[selectedDoc.status as DocStatus].color}>
+                  {STATUS_MAP[selectedDoc.status as DocStatus].label}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="业务域">{selectedDoc.bizDomain}</Descriptions.Item>
@@ -584,14 +557,9 @@ export default function DocumentListPage() {
                   {selectedDoc.srcPath}
                 </Text>
               </Descriptions.Item>
-              {selectedDoc.lastError && (
-                <Descriptions.Item label="错误信息" span={2}>
-                  <Text type="danger">{selectedDoc.lastError}</Text>
-                </Descriptions.Item>
-              )}
-              <Descriptions.Item label="标签" span={2}>
+                            <Descriptions.Item label="标签" span={2}>
                 <Space>
-                  {selectedDoc.labelTags.map((tag) => (
+                  {(selectedDoc.labelTags || '').split(',').filter(Boolean).map((tag: string) => (
                     <Tag key={tag}>{tag}</Tag>
                   ))}
                 </Space>
@@ -600,6 +568,7 @@ export default function DocumentListPage() {
           </div>
         )}
       </Modal>
-    </div>
+      </Content>
+    </Layout>
   );
 }

@@ -375,7 +375,7 @@ export default function CommandBar({
               <Space>
                 {result.action ? (
                   <Tag icon={<CheckCircleOutlined />} color="success">
-                    {result.matchedIntent}
+                    识别成功
                   </Tag>
                 ) : (
                   <Tag icon={<QuestionCircleOutlined />} color="default">

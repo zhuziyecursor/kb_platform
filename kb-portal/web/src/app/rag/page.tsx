@@ -210,7 +210,7 @@ export default function RAGPage() {
 
           {messages.map((msg) => (
             <div key={msg.id}>
-              <Space align="top" style={{ marginBottom: 8 }}>
+              <Space align="start" style={{ marginBottom: 8 }}>
                 <Avatar
                   icon={msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
                   style={{
@@ -340,7 +340,7 @@ export default function RAGPage() {
           ))}
 
           {isLoading && (
-            <Space align="top">
+            <Space align="start">
               <Avatar icon={<RobotOutlined />} style={{ background: '#722ed1' }} />
               <div
                 style={{
