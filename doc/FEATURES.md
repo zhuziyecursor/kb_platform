@@ -104,6 +104,7 @@
 | kb-portal 知识空间管理页 | ✅ 已完成 | 2026-04-28 | /spaces 列表、/spaces/create、/spaces/[id] |
 | kb-portal 上传页空间选择器 | ✅ 已完成 | 2026-04-28 | 知识空间选择 + 切片配置 UI |
 | kb-portal 文档列表 Tab 切换 | ✅ 已完成 | 2026-04-28 | 按知识空间分组展示 |
+| kb-portal Space API 对接 | ✅ 已完成 | 2026-04-28 | 前端 Spaces 页面对接真实 API |
 
 ---
 
