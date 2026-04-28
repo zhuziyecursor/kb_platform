@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FileIngestMessage",
+  "description": "ingest-service 发布到 file-ingest topic 的消息格式。触发 kb-doc-processor 开始解析文件。",
+  "type": "object",
+  "required": [
+    "traceId",
+    "tenantId",
+    "docId",
+    "version",
+    "srcPath",
+    "sha256",
+    "secLevel",
+    "regionCode",
+    "bizDomain"
+  ],
+  "properties": {
+    "traceId": {
+      "type": "string",
+      "pattern": "^tr-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "全链路追踪 ID，格式：tr-{uuid4}",
+      "example": "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    },
+    "tenantId": {
+      "type": "string",
+      "description": "租户 ID",
+      "example": "t1"
+    },
+    "docId": {
+      "type": "string",
+      "description": "文档 ID",
+      "example": "DOC123"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "文档版本号",
+      "example": 1
+    },
+    "srcPath": {
+      "type": "string",
+      "description": "MinIO S3 路径，格式：kb-raw/{tenant}/{biz_domain}/{source_type}/{yyyy}/{mm}/{doc_id}/文件名",
+      "example": "kb-raw/t1/COMPLIANCE/UPLOAD/2026/04/DOC123/采购管理办法.pdf"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "文件 SHA256 哈希，用于幂等校验",
+      "example": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+    },
+    "secLevel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "文档密级",
+      "example": 1
+    },
+    "regionCode": {
+      "type": "string",
+      "description": "地域码",
+      "default": "CN-NATIONAL",
+      "example": "CN-NATIONAL"
+    },
+    "bizDomain": {
+      "type": "string",
+      "description": "业务域",
+      "default": "COMPLIANCE",
+      "example": "COMPLIANCE"
+    },
+    "docType": {
+      "type": "string",
+      "enum": ["REGULATION", "POLICY", "AUDIT", "OTHER"],
+      "description": "文档类型"
+    },
+    "ownerUid": {
+      "type": "string",
+      "description": "上传者用户 ID",
+      "example": "u123"
+    },
+    "deptId": {
+      "type": "string",
+      "description": "所属部门 ID",
+      "example": "D01"
+    },
+    "effectiveFrom": {
+      "type": "string",
+      "format": "date",
+      "description": "文档生效日期",
+      "example": "2026-01-01"
+    },
+    "effectiveTo": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "文档失效日期，null 表示永久有效",
+      "example": null
+    },
+    "knowledgeSpaceId": {
+      "type": "string",
+      "default": "DEFAULT",
+      "description": "知识空间ID"
+    },
+    "chunkConfig": {
+      "type": "object",
+      "description": "切片配置",
+      "properties": {
+        "chunkSize": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 2000,
+          "default": 512
+        },
+        "overlapRatio": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "default": 10
+        },
+        "chunkMode": {
+          "type": "string",
+          "enum": ["HEAD_FIRST", "TAIL_FIRST", "UNIFORM"],
+          "default": "HEAD_FIRST"
+        }
+      }
+    },
+    "pageLimit": {
+      "type": "integer",
+      "default": 30,
+      "description": "MVP 一期单文件最大页数限制，processor 必须校验",
+      "example": 30
+    },
+    "ocrDisabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "MVP 一期关闭 OCR，processor 收到此字段为 true 时只使用 TikaParser",
+      "example": true
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "traceId": "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "tenantId": "t1",
+      "docId": "DOC123",
+      "version": 1,
+      "srcPath": "kb-raw/t1/COMPLIANCE/UPLOAD/2026/04/DOC123/采购管理办法.pdf",
+      "sha256": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+      "secLevel": 1,
+      "regionCode": "CN-NATIONAL",
+      "bizDomain": "COMPLIANCE",
+      "docType": "REGULATION",
+      "ownerUid": "u123",
+      "deptId": "D01",
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "pageLimit": 30,
+      "ocrDisabled": true
+    }
+  ]
+}

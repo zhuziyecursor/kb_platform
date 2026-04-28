@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmbedTaskMessage",
+  "description": "kb-doc-processor 发布到 embed-task topic 的消息格式。每个 chunk 对应一条消息，触发 vector-service 向量化并写入 Milvus。",
+  "type": "object",
+  "required": [
+    "traceId",
+    "tenantId",
+    "docId",
+    "version",
+    "chunkSeq",
+    "text",
+    "textHash",
+    "secLevel",
+    "regionCode",
+    "bizDomain",
+    "permGroupId",
+    "aclVersion"
+  ],
+  "properties": {
+    "traceId": {
+      "type": "string",
+      "pattern": "^tr-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "全链路追踪 ID，与 file-ingest 消息中的 traceId 相同（链路传递）",
+      "example": "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    },
+    "tenantId": {
+      "type": "string",
+      "description": "租户 ID",
+      "example": "t1"
+    },
+    "docId": {
+      "type": "string",
+      "description": "文档 ID",
+      "example": "DOC123"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "文档版本号",
+      "example": 1
+    },
+    "chunkSeq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "切片序号，从 0 开始，同一文档内唯一",
+      "example": 0
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "切片文本内容，最大 4096 字符（对应 Milvus text 字段 VARCHAR 上限）",
+      "example": "采购合同应按照以下流程审批：..."
+    },
+    "textHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "text 的 SHA256，用于幂等性保证（embed_task 表的唯一键之一）"
+    },
+    "title": {
+      "type": "string",
+      "description": "文档标题",
+      "example": "采购管理办法"
+    },
+    "sectionPath": {
+      "type": "string",
+      "description": "章节路径，格式：父章节/子章节/...",
+      "example": "1/1.2/1.2.3"
+    },
+    "page": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "切片所在页码",
+      "example": 3
+    },
+    "secLevel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "文档密级（Milvus ACL 预过滤字段）",
+      "example": 1
+    },
+    "regionCode": {
+      "type": "string",
+      "description": "地域码（Milvus ACL 预过滤字段）",
+      "default": "CN-NATIONAL",
+      "example": "CN-NATIONAL"
+    },
+    "bizDomain": {
+      "type": "string",
+      "description": "业务域（Milvus ACL 预过滤字段）",
+      "default": "COMPLIANCE",
+      "example": "COMPLIANCE"
+    },
+    "permGroupId": {
+      "type": "integer",
+      "description": "权限组 ID（Milvus ACL 预过滤字段）。计算方式：hash(tenant_id + accessor_type + accessor_id) % 2^63",
+      "example": 101
+    },
+    "aclVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "ACL 版本号，用于检测 ACL 变更",
+      "example": 1
+    },
+    "ownerUid": {
+      "type": "string",
+      "description": "上传者用户 ID",
+      "example": "u123"
+    },
+    "deptId": {
+      "type": "string",
+      "description": "所属部门 ID",
+      "example": "D01"
+    },
+    "effectiveFrom": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "文档生效日期（Milvus 字段，用于时效过滤）",
+      "example": "2026-01-01"
+    },
+    "effectiveTo": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "文档失效日期，null 表示永久有效（Milvus 字段，ACL 预过滤）",
+      "example": null
+    },
+    "createTime": {
+      "type": "integer",
+      "description": "创建时间 epoch（毫秒），写入 Milvus create_time 字段",
+      "example": 1745760000000
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "traceId": "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "tenantId": "t1",
+      "docId": "DOC123",
+      "version": 1,
+      "chunkSeq": 0,
+      "text": "采购合同应按照以下流程审批：第一步，由采购部门填写申请单...",
+      "textHash": "b665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+      "title": "采购管理办法",
+      "sectionPath": "1/1.2/1.2.3",
+      "page": 3,
+      "secLevel": 1,
+      "regionCode": "CN-NATIONAL",
+      "bizDomain": "COMPLIANCE",
+      "permGroupId": 101,
+      "aclVersion": 1,
+      "ownerUid": "u123",
+      "deptId": "D01",
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "createTime": 1745760000000
+    }
+  ]
+}

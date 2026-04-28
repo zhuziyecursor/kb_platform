@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>企业AI知识库项目排期计划 - 思维导图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .title {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .title h1 {
+            font-size: 2.5em;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .title p {
+            color: #8892b0;
+            font-size: 1.1em;
+        }
+
+        .mindmap {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .node {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .node-content {
+            padding: 15px 25px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            min-width: 180px;
+        }
+
+        .node-content:hover {
+            transform: scale(1.05);
+        }
+
+        /* 根节点 */
+        .root .node-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
+        /* 一级节点 */
+        .level-1 .node-content {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 8px 30px rgba(245, 87, 108, 0.3);
+        }
+
+        .level-1.mvp-pre .node-content {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            box-shadow: 0 8px 30px rgba(79, 172, 254, 0.3);
+        }
+
+        .level-1.mvp-post .node-content {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            box-shadow: 0 8px 30px rgba(250, 112, 154, 0.3);
+        }
+
+        /* 二级节点 */
+        .level-2 .node-content {
+            background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+            font-size: 0.95em;
+            padding: 12px 20px;
+            min-width: 160px;
+        }
+
+        /* 三级节点 */
+        .level-3 .node-content {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            font-size: 0.85em;
+            padding: 10px 16px;
+            min-width: 140px;
+        }
+
+        /* 时间标签 */
+        .time-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75em;
+            margin-top: 8px;
+        }
+
+        /* 连接线 */
+        .connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* 子节点容器 */
+        .children {
+            display: flex;
+            gap: 30px;
+            margin-top: 30px;
+            position: relative;
+        }
+
+        .child-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .connector {
+            width: 2px;
+            height: 30px;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.5), rgba(255,255,255,0.2));
+        }
+
+        .horizontal-line {
+            width: 40px;
+            height: 2px;
+            background: linear-gradient(to right, rgba(255,255,255,0.5), rgba(255,255,255,0.2));
+        }
+
+        /* 展开/收起按钮 */
+        .toggle-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: #fff;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .collapsed .children {
+            display: none;
+        }
+
+        /* 阶段分支 */
+        .phase-container {
+            display: flex;
+            gap: 60px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .phase {
+            position: relative;
+        }
+
+        .phase::before {
+            content: '';
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #00d9ff, transparent);
+        }
+
+        .phase-title {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 25px;
+            font-size: 1.1em;
+        }
+
+        /* 图例 */
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+        }
+
+        .legend-color.pre {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .legend-color.post {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        /* 任务卡片 */
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .task-item {
+            background: rgba(255,255,255,0.08);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.8em;
+            border-left: 3px solid;
+            text-align: left;
+        }
+
+        .task-item.blue { border-left-color: #4facfe; }
+        .task-item.pink { border-left-color: #fa709a; }
+        .task-item.green { border-left-color: #00ff88; }
+        .task-item.orange { border-left-color: #fee140; }
+        .task-item.purple { border-left-color: #667eea; }
+
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            .phase-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .children {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .title h1 {
+                font-size: 1.8em;
+            }
+            .node-content {
+                min-width: 140px !important;
+                padding: 10px 15px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">
+            <h1>📋 企业AI知识库项目排期计划</h1>
+            <p>MVP 阶段开发里程碑规划</p>
+        </div>
+
+        <div class="mindmap">
+            <div class="node root">
+                <div class="node-content">
+                    🚀 企业AI知识库
+                    <span class="time-badge">📅 5/10 前完成MVP</span>
+                </div>
+                
+                <div class="children">
+                    <div class="horizontal-line"></div>
+                    <div class="phase-container">
+                        <!-- MVP前期 -->
+                        <div class="phase">
+                            <div class="phase-title">📦 MVP前期</div>
+                            <div class="node level-1 mvp-pre">
+                                <div class="node-content">
+                                    🎯 MVP前期目标
+                                    <span class="time-badge">⏰ 5/10前</span>
+                                </div>
+                                <div class="children">
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                📊 内容调查
+                                                <span class="time-badge">2天</span>
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item blue">调查现有知识库功能</div>
+                                                <div class="task-item blue">了解数据切片方式</div>
+                                                <div class="task-item blue">了解召回实现机制</div>
+                                                <div class="task-item blue">图片/表格/扫描件协同</div>
+                                                <div class="task-item blue">核心流程推演</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                🏗️ 基础设施
+                                                <span class="time-badge">2天</span>
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item blue">Milvus 单节点部署</div>
+                                                <div class="task-item blue">MinIO 部署</div>
+                                                <div class="task-item blue">Kafka 单节点部署</div>
+                                                <div class="task-item blue">PostgreSQL 部署</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                📐 方案设计
+                                                <span class="time-badge">1.5天</span>
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item blue">元数据配置</div>
+                                                <div class="task-item blue">核心流程梳理</div>
+                                                <div class="task-item blue">数据流程梳理</div>
+                                                <div class="task-item blue">数据迁移方案</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                ⚙️ 功能开发
+                                                <span class="time-badge">一周</span>
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item green">📤 知识上传</div>
+                                                <div class="task-item green">📄 文件解析(Tika)</div>
+                                                <div class="task-item green">✂️ 文本处理/切分</div>
+                                                <div class="task-item green">🔢 向量化入库</div>
+                                                <div class="task-item green">💬 对接知识问答</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MVP后期 -->
+                        <div class="phase">
+                            <div class="phase-title">🔐 MVP后期</div>
+                            <div class="node level-1 mvp-post">
+                                <div class="node-content">
+                                    🔒 MVP后期目标
+                                    <span class="time-badge">⏰ 5/13～5/22</span>
+                                </div>
+                                <div class="children">
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                🔍 调研与设计
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item pink">熟悉BladeX OAuth2</div>
+                                                <div class="task-item pink">确认接口信息</div>
+                                                <div class="task-item pink">权限模型设计</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                🔑 auth-adapter
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item orange">搭建工程框架</div>
+                                                <div class="task-item orange">数据库设计</div>
+                                                <div class="task-item orange">数据流程联调</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                🛡️ OBO+网关校验
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item purple">Token Exchange</div>
+                                                <div class="task-item purple">JWT 签发</div>
+                                                <div class="task-item purple">网关校验</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                🔌 MCP服务
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item green">KB MCP 服务</div>
+                                                <div class="task-item green">OCR MCP 服务</div>
+                                                <div class="task-item green">令牌交换机制</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="child-wrapper">
+                                        <div class="connector"></div>
+                                        <div class="node level-2">
+                                            <div class="node-content">
+                                                🔗 上下游对接
+                                            </div>
+                                            <div class="task-list">
+                                                <div class="task-item pink">OAuth2对接</div>
+                                                <div class="task-item pink">应用接入</div>
+                                                <div class="task-item pink">全链路联调</div>
+                                                <div class="task-item pink">测试用例</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color pre"></div>
+                <span>MVP前期（5/10前）</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color post"></div>
+                <span>MVP后期（5/13～5/22）</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

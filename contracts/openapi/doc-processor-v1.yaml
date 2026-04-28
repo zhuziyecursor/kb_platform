@@ -1,0 +1,208 @@
+openapi: 3.0.3
+info:
+  title: kb-doc-processor HTTP API
+  version: v1
+  description: |
+    文档处理服务内部 HTTP API。
+
+    **主要流程是 Kafka Consumer（消费 file-ingest → 发布 embed-task）。**
+    HTTP API 作为补充，用于：
+    - 单独调用解析/清洗/切片能力（调试、预览）
+    - ingest-service 在特殊场景下直接调用
+
+    **注意：** 这些接口无对外鉴权要求（内部服务），但必须校验 MVP 文件限制。
+
+servers:
+  - url: /api/v1
+
+components:
+  schemas:
+    Page:
+      type: object
+      properties:
+        pageNum: { type: integer, example: 1 }
+        text:    { type: string }
+        width:   { type: number, example: 595 }
+        height:  { type: number, example: 842 }
+
+    Chunk:
+      type: object
+      required: [chunkSeq, text, charCount, tokenCount]
+      properties:
+        chunkSeq:    { type: integer, example: 0 }
+        text:        { type: string }
+        sectionPath: { type: string, example: "1/1.2", description: "章节路径" }
+        page:        { type: integer }
+        charCount:   { type: integer }
+        tokenCount:  { type: integer }
+
+paths:
+  /parse:
+    post:
+      summary: 解析文件
+      description: |
+        解析文件，提取文本和页码信息。
+
+        **MVP 一期：** 只使用 TikaParser（支持 PDF/Word/PPT/Excel）。
+        OCRParser 为 PHASE2，暂不可用（传入 parse_method=OCR 会返回 501）。
+
+        **文件限制（MVP）：**
+        - 最大文件大小：5MB
+        - 最大页数：30页（超过会返回 400）
+      operationId: parseFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "上传文件（PDF/Word/PPT/Excel/txt/md）"
+                parse_method:
+                  type: string
+                  enum: [TIKA, OCR]
+                  default: TIKA
+                  description: "MVP一期只支持 TIKA，OCR 为 PHASE2"
+                lang_hints:
+                  type: array
+                  items: { type: string }
+                  example: ["zh", "en"]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [docId, pages, metadata, traceId]
+                properties:
+                  docId:
+                    type: string
+                  pages:
+                    type: array
+                    items: { $ref: "#/components/schemas/Page" }
+                  metadata:
+                    type: object
+                    properties:
+                      title:       { type: string }
+                      author:      { type: string }
+                      pageCount:   { type: integer }
+                      parseMethod: { type: string, example: "TIKA" }
+                  traceId: { type: string }
+        "400":
+          description: "文件超过 30 页或 5MB 限制"
+        "501":
+          description: "parse_method=OCR 为 PHASE2，MVP 不支持"
+
+  /clean:
+    post:
+      summary: 清洗文本
+      description: |
+        对解析后的文本进行清洗（编码标准化、特殊字符处理、HTML去除、页眉页脚去除）。
+
+        **MVP 一期：** 只使用 TextCleaner。PIIFilter 为 PHASE2，暂不启用。
+      operationId: cleanText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:     { type: string }
+                lang:     { type: string, default: "zh" }
+                metadata: { type: object, description: "页码、标题等元数据" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cleanedText, qualityScore, traceId]
+                properties:
+                  cleanedText:  { type: string }
+                  qualityScore: { type: number, format: float, minimum: 0, maximum: 100, example: 85.5 }
+                  issues:       { type: array, items: { type: string }, example: [] }
+                  traceId:      { type: string }
+
+  /chunk:
+    post:
+      summary: 切片
+      description: |
+        将清洗后的文本切分为 chunks。
+
+        **MVP 一期：** 只使用 FixedLengthChunker（chunk_size=512，overlap=51，约10%）。
+        SemanticChunker 为 PHASE2，传入 chunk_type=semantic 会返回 501。
+      operationId: chunkText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                chunkType:
+                  type: string
+                  enum: [fixed_length, semantic]
+                  default: fixed_length
+                  description: "MVP一期只支持 fixed_length，semantic 为 PHASE2"
+                metadata:
+                  type: object
+                  description: "页码、章节路径等"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chunks, totalChunks, traceId]
+                properties:
+                  chunks:      { type: array, items: { $ref: "#/components/schemas/Chunk" } }
+                  totalChunks: { type: integer }
+                  traceId:     { type: string }
+        "501":
+          description: "chunk_type=semantic 为 PHASE2，MVP 不支持"
+
+  /process:
+    post:
+      summary: 一体化处理（parse + clean + chunk）
+      description: |
+        一次请求完成解析、清洗、切片全流程。适合调试和小文件预览。
+
+        **正式入库流程请使用 Kafka Consumer（消费 file-ingest topic），不建议用此接口做批量处理。**
+      operationId: processFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                chunk_type:
+                  type: string
+                  enum: [fixed_length, semantic]
+                  default: fixed_length
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [docId, chunks, totalChunks, qualityScore, traceId]
+                properties:
+                  docId:        { type: string }
+                  chunks:       { type: array, items: { $ref: "#/components/schemas/Chunk" } }
+                  totalChunks:  { type: integer }
+                  qualityScore: { type: number, format: float }
+                  traceId:      { type: string }

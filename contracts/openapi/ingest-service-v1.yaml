@@ -1,0 +1,429 @@
+openapi: 3.0.3
+info:
+  title: ingest-service API
+  version: v1
+  description: |
+    文档入库服务接口。负责文档元数据管理和入库流水线触发。
+
+    **不处理文件内容**，文件通过 MinIO presigned URL 直传，服务只管理元数据和状态机。
+
+servers:
+  - url: /kb/v1
+
+security:
+  - oboToken: []
+
+components:
+  securitySchemes:
+    oboToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "OBO token (aud=mcp-kb). 通过 auth-adapter Token Exchange 获取。"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:    { type: string }
+        message: { type: string }
+        traceId: { type: string, example: "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+
+    ChunkMode:
+      type: string
+      enum: [HEAD_FIRST, TAIL_FIRST, UNIFORM]
+      description: |
+        - HEAD_FIRST: 从前往后切
+        - TAIL_FIRST: 从后往前切
+        - UNIFORM: 均匀切分
+
+    SpaceVisibility:
+      type: string
+      enum: [PUBLIC, TEAM]
+      description: |
+        - PUBLIC: 公开
+        - TEAM: 团队内
+
+    ChunkConfig:
+      type: object
+      description: 切片配置
+      properties:
+        useSpaceConfig:
+          type: boolean
+          default: true
+          description: true=继承知识空间配置，false=自定义
+        chunkSize:
+          type: integer
+          minimum: 100
+          maximum: 2000
+          default: 512
+          description: 段长度（字符数）
+        overlapRatio:
+          type: integer
+          minimum: 0
+          maximum: 50
+          default: 10
+          description: 相邻块重叠比例（%）
+        chunkMode:
+          $ref: "#/components/schemas/ChunkMode"
+
+    KnowledgeSpace:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        chunkSize: { type: integer }
+        overlapRatio: { type: integer }
+        chunkMode: { $ref: "#/components/schemas/ChunkMode" }
+        visibility: { $ref: "#/components/schemas/SpaceVisibility" }
+        docCount: { type: integer }
+        createTime: { type: string, format: date-time }
+        updateTime: { type: string, format: date-time }
+
+    DocStatus:
+      type: string
+      enum: [DRAFT, PENDING, PROCESSING, READY, FAILED, OFFBOARDED, DEPRECATED]
+      description: |
+        - DRAFT: commit 前的草稿状态
+        - PENDING: commit 后，等待 ingest 触发
+        - PROCESSING: ingest 触发后，处理中
+        - READY: 处理完成，可被检索
+        - FAILED: 处理失败（retry_count >= max_retry 时人工介入）
+        - OFFBOARDED: 被新版本替代后的旧版本
+        - DEPRECATED: 软删除
+
+    AclEntry:
+      type: object
+      required: [accessorType, accessorId, permission]
+      properties:
+        accessorType:
+          type: string
+          enum: [USER, ROLE, DEPT]
+        accessorId:
+          type: string
+          example: "u123"
+        permission:
+          type: string
+          enum: [READ, WRITE, ADMIN]
+          default: READ
+
+paths:
+  /docs/init-upload:
+    post:
+      summary: 初始化上传
+      description: |
+        创建文档元数据记录，返回 MinIO presigned URL 供前端直传。
+
+        **幂等性：** 相同 tenant_id + fileHash(sha256) 的文件已存在时，返回已有 docId 并提示用户确认覆盖。
+      operationId: initUpload
+      security:
+        - oboToken: [kb:upload]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, filename, fileSize, fileHash, docType, bizDomain, regionCode, secLevel, ownerUid, deptId]
+              properties:
+                tenantId:      { type: string, example: "t1" }
+                filename:      { type: string, example: "采购管理办法.pdf" }
+                fileSize:      { type: integer, description: "字节数，最大 5242880 (5MB)", maximum: 5242880 }
+                fileHash:      { type: string, description: "sha256 hex", pattern: "^[0-9a-f]{64}$" }
+                docType:       { type: string, enum: [REGULATION, POLICY, AUDIT, OTHER] }
+                bizDomain:     { type: string, example: "COMPLIANCE" }
+                regionCode:    { type: string, default: "CN-NATIONAL", example: "CN-NATIONAL" }
+                secLevel:      { type: integer, minimum: 1, maximum: 5, default: 1 }
+                effectiveFrom: { type: string, format: date, example: "2026-01-01" }
+                ownerUid:      { type: string, example: "u123" }
+                deptId:        { type: string, example: "D01" }
+                knowledgeSpaceId: { type: string, default: "DEFAULT", description: "知识空间ID，不填则使用默认空间" }
+                chunkConfig:   { $ref: "#/components/schemas/ChunkConfig" }
+                overwriteExisting: { type: boolean, default: false, description: "是否覆盖同名文档" }
+      responses:
+        "200":
+          description: 初始化成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [docId, presignedUrl, expireIn]
+                properties:
+                  docId:        { type: string, example: "DOC123" }
+                  presignedUrl: { type: string, description: "MinIO presigned URL，5分钟有效" }
+                  expireIn:     { type: integer, default: 300, description: "秒" }
+        "409":
+          description: 文件已存在（相同 sha256）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - properties:
+                      code: { example: "DUPLICATE_FILE" }
+                      existingDocId: { type: string }
+
+  /docs/{docId}/verify-upload:
+    post:
+      summary: 验证上传
+      description: |
+        文件直传 MinIO 完成后，调用此接口验证 file_size 和 sha256 一致性。
+        验证通过后文档进入可提交状态。
+      operationId: verifyUpload
+      security:
+        - oboToken: [kb:upload]
+      parameters:
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 验证通过
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docId:   { type: string }
+                  verified: { type: boolean, example: true }
+                  traceId: { type: string }
+        "400":
+          description: 校验失败（文件大小或 sha256 不匹配）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /docs/{docId}/commit:
+    post:
+      summary: 提交入库（附带 ACL）
+      description: |
+        提交文档元数据和 ACL 配置。
+        成功后在 PG 写入 knowledge_doc（status=DRAFT）和 doc_acl。
+        触发 Kafka file-ingest 消息。
+      operationId: commitDoc
+      security:
+        - oboToken: [kb:upload]
+      parameters:
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, sha256, acl]
+              properties:
+                tenantId: { type: string }
+                sha256:   { type: string, pattern: "^[0-9a-f]{64}$" }
+                acl:
+                  type: array
+                  items: { $ref: "#/components/schemas/AclEntry" }
+                  minItems: 1
+      responses:
+        "200":
+          description: 提交成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [docId, version, status]
+                properties:
+                  docId:   { type: string }
+                  version: { type: integer, example: 1 }
+                  status:  { $ref: "#/components/schemas/DocStatus", example: "PENDING" }
+
+  /docs/{docId}/ingest:
+    post:
+      summary: 触发入库
+      description: |
+        显式触发入库流水线，将文档状态从 PENDING → PROCESSING，
+        并发布 file-ingest Kafka 消息。
+      operationId: ingestDoc
+      security:
+        - oboToken: [kb:upload]
+      parameters:
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 入库任务已提交
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docId:   { type: string }
+                  version: { type: integer }
+                  status:  { $ref: "#/components/schemas/DocStatus", example: "PENDING" }
+                  message: { type: string, example: "入库任务已提交" }
+                  traceId: { type: string }
+
+  /docs/{docId}/status:
+    get:
+      summary: 查询文档处理状态
+      description: 前端轮询使用。策略：2s（前30s）→ 5s（30s~120s）→ 30s（2分钟后），超时10分钟。
+      operationId: getDocStatus
+      security:
+        - oboToken: [kb:upload]
+      parameters:
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [docId, version, status]
+                properties:
+                  docId:      { type: string }
+                  version:    { type: integer }
+                  status:     { $ref: "#/components/schemas/DocStatus" }
+                  retryCount: { type: integer }
+                  lastError:  { type: string, nullable: true }
+                  traceId:    { type: string }
+
+  /spaces:
+    get:
+      summary: 获取知识空间列表
+      description: 获取当前租户下的所有知识空间
+      operationId: listSpaces
+      security:
+        - oboToken: [kb:read]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  spaces:
+                    type: array
+                    items: { $ref: "#/components/schemas/KnowledgeSpace" }
+    post:
+      summary: 创建知识空间
+      description: 创建一个新的知识空间
+      operationId: createSpace
+      security:
+        - oboToken: [kb:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:        { type: string, example: "合规文档空间" }
+                description: { type: string, example: "存放合规相关制度文件" }
+                chunkSize:   { type: integer, minimum: 100, maximum: 2000, default: 512 }
+                overlapRatio: { type: integer, minimum: 0, maximum: 50, default: 10 }
+                chunkMode:   { $ref: "#/components/schemas/ChunkMode" }
+                visibility:  { $ref: "#/components/schemas/SpaceVisibility" }
+      responses:
+        "200":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeSpace"
+
+  /spaces/{spaceId}:
+    get:
+      summary: 获取知识空间详情
+      operationId: getSpace
+      security:
+        - oboToken: [kb:read]
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeSpace"
+    put:
+      summary: 更新知识空间
+      operationId: updateSpace
+      security:
+        - oboToken: [kb:write]
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:        { type: string }
+                description: { type: string }
+                chunkSize:   { type: integer, minimum: 100, maximum: 2000 }
+                overlapRatio: { type: integer, minimum: 0, maximum: 50 }
+                chunkMode:   { $ref: "#/components/schemas/ChunkMode" }
+                visibility:  { $ref: "#/components/schemas/SpaceVisibility" }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeSpace"
+    delete:
+      summary: 删除知识空间
+      description: 仅空空间可删除
+      operationId: deleteSpace
+      security:
+        - oboToken: [kb:admin]
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 删除成功
+        "400":
+          description: 空间非空，无法删除
+
+  /spaces/{spaceId}/docs:
+    get:
+      summary: 获取空间内的文档列表
+      operationId: getSpaceDocs
+      security:
+        - oboToken: [kb:read]
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docs:
+                    type: array
+                    items: { type: object }

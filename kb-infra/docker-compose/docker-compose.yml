@@ -1,0 +1,378 @@
+# =============================================================================
+# 企业 AI 知识库 - 本地开发环境基础设施
+# =============================================================================
+# 架构说明:
+#   - PostgreSQL 15: 知识元数据 / ACL / 认证 / 审计日志
+#   - Redis 7: 用户上下文缓存 / introspection 缓存 / ACL 热点缓存
+#   - MinIO: Raw 文件存储 (原始文档 / 图片 / 模型产物)
+#   - Milvus 2.4 Standalone: 向量检索 (内含 etcd + MinIO for Milvus)
+#   - Kafka 3.6 (KRaft): 异步消息总线 (file-ingest / embed-task / user_cud)
+#   - Zookeeper (Milvus 依赖): 仅 Milvus 使用
+#
+# 设计决策:
+#   1. Milvus Standalone 模式, 内置 etcd/MinIO, 与业务 MinIO 隔离
+#   2. Kafka 使用 KRaft 模式, 去除 ZooKeeper 依赖
+#   3. 所有状态数据使用 Docker named volumes 持久化
+#   4. 资源限制适配 macOS 16GB 内存 + 10 核 CPU
+#   5. 端口映射避开 OCR 项目已占用的端口 (5432/6379/9000/9001/80/443)
+#
+# 使用方式:
+#   cp .env.example .env     # 首次使用, 按需修改配置
+#   docker compose up -d     # 启动全部服务
+#   docker compose down      # 停止 (保留数据)
+#   docker compose down -v   # 停止并清除数据 (慎用)
+# =============================================================================
+
+services:
+
+# =============================================================================
+# PostgreSQL 15 - 知识元数据库
+# =============================================================================
+# 用途: knowledge_doc / knowledge_clean / knowledge_structured / knowledge_version
+#       doc_acl / kb_search_audit / oauth_client / token_audit / user 等
+# 设计: 单库多 schema, 开发阶段可按需拆分
+# =============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: kb-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-25432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kb_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kb_postgres_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge}
+      # 连接池与性能调优
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: >
+      postgres
+        -c max_connections=200
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c maintenance_work_mem=256MB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=16MB
+        -c default_statistics_target=100
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c work_mem=4MB
+        -c min_wal_size=1GB
+        -c max_wal_size=4GB
+        -c log_min_duration_statement=500
+        -c log_line_prefix='%t [%p] %q%u@%d '
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kb_admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "1.0"
+          memory: 512M
+    networks:
+      - kb-network
+    # 优雅退出: 给予充足时间完成 checkpoint
+    stop_grace_period: 30s
+
+# =============================================================================
+# Redis 7 - 缓存与会话
+# =============================================================================
+# 用途:
+#   - ctx:{tenant_id}:{uid} → 用户上下文 (TTL 3min)
+#   - introspect:{token_hash} → introspection 结果 (TTL 60s)
+#   - jwkset → JWKS 缓存 (TTL 15min)
+#   - perm_group / ACL 热点缓存
+# =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: kb-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-26379}:6379"
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:-kb_redis_dev}
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - "900"
+      - "1"
+      - --save
+      - "300"
+      - "10"
+      - --save
+      - "60"
+      - "10000"
+      - --tcp-keepalive
+      - "300"
+      - --client-output-buffer-limit
+      - normal
+      - 16mb
+      - 8mb
+      - "60"
+      - --client-output-buffer-limit
+      - pubsub
+      - 32mb
+      - 8mb
+      - "60"
+      - --loglevel
+      - notice
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-kb_redis_dev}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    networks:
+      - kb-network
+    stop_grace_period: 10s
+
+# =============================================================================
+# MinIO - 业务对象存储
+# =============================================================================
+# 用途:
+#   - Raw 文件存储: s3://kb-raw/{tenant_id}/{business_unit}/...
+#   - 模型产物: embedding 模型文件 / rerank 模型文件
+#   - 数据备份: PostgreSQL dump / Milvus backup
+# 设计:
+#   - 独立于 Milvus 内部 MinIO, 此为业务存储
+#   - macOS 开发环境使用单节点模式
+#   - 生产环境需分布式部署
+# =============================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: kb-minio
+    restart: unless-stopped
+    ports:
+      - "${MINIO_API_PORT:-29000}:9000"
+      - "${MINIO_CONSOLE_PORT:-29001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-kb_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-kb_minio_admin_dev}
+      # 性能调优
+      MINIO_API_REQUESTS_MAX: 1600
+      MINIO_API_REQUESTS_DEADLINE: 30s
+    command: server /data --console-address ":9001" --address ":9000"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    networks:
+      - kb-network
+    stop_grace_period: 15s
+
+# =============================================================================
+# Milvus 2.4 Standalone - 向量数据库
+# =============================================================================
+# 用途:
+#   - paragraph collection: HNSW (M=32, efConstruction=200)
+#   - doc_summary collection: IVF_FLAT (nlist=1024) (二期)
+# 设计:
+#   - Standalone 模式内置 etcd + MinIO, 与业务 MinIO 完全隔离
+#   - macOS Docker Desktop 默认内存可能不足，需要手动调整
+#   - 生产环境需集群模式 (etcd cluster + Milvus cluster)
+#
+# 内存配置建议:
+#   - macOS 开发环境: Docker Desktop 建议分配 ≥8GB 内存，否则 Milvus 可能启动失败
+#     (Docker Desktop → Settings → Resources → Memory → 8GB 或更高)
+#   - 测试评估阶段: 若数据量小，可降至 4GB（当前 limits.memory=4G）
+#   - 轻量开发: 若仅验证基本功能，可临时降至 2GB（不推荐长期使用）
+#     修改方法: 将下方 deploy.resources.limits.memory 改为 "2G"
+# =============================================================================
+  milvus:
+    image: milvusdb/milvus:v2.4.17
+    container_name: kb-milvus
+    restart: unless-stopped
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_METRICS_PORT:-9091}:9091"
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      COMMON_STORAGETYPE: local
+      MINIO_ADDRESS: localhost
+      MINIO_PORT: "9000"
+    command: ["milvus", "run", "standalone"]
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "2.0"
+          memory: 2G
+    networks:
+      - kb-network
+    stop_grace_period: 30s
+
+# =============================================================================
+# Kafka 3.6 (KRaft 模式) - 异步消息总线
+# =============================================================================
+# 用途:
+#   - file-ingest: 文件入库触发 (Raw → Parse → Clean → Structured)
+#   - embed-task: 向量化任务 (Chunk → Embedding → Milvus Upsert)
+#   - delta-notify: 增量更新通知 (知识版本变更)
+#   - user_cud: 用户/组织/角色变更广播
+# 设计:
+#   - KRaft 模式, 无需独立 ZooKeeper (Milvus 自带 etcd, 与 Kafka 无关)
+#   - macOS 开发环境单节点, 生产环境需 3+ broker 集群
+#   - 日志保留 7 天 (开发环境), 生产环境按需调整
+#   - 自动创建 topic 在首次启动时通过 init-kafka.sh 完成
+#
+# 内存配置建议:
+#   - 当前 limits.memory=1G 适配 macOS 16GB 内存开发环境
+#   - 若 Kafka 启动缓慢或频繁 GC，可增加至 1.5G 或 2G
+#   - 修改方法: 将下方 deploy.resources.limits.memory 改为 "1.5G" 或 "2G"
+# =============================================================================
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: kb-kafka
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+      - "29092:29092"
+    environment:
+      # KRaft 配置 (单节点)
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # 监听器配置 (kafka:9092 用于容器内通信, localhost:29092 用于宿主机访问)
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # 存储与性能
+      KAFKA_CFG_LOG_DIRS: /bitnami/kafka/data
+      KAFKA_CFG_NUM_PARTITIONS: 3
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_CFG_LOG_RETENTION_HOURS: 168
+      KAFKA_CFG_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_CFG_LOG_SEGMENT_BYTES: 536870912
+      KAFKA_CFG_LOG_CLEANUP_POLICY: delete
+      # JVM 参数 (适配 16GB 内存环境)
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+      # 开发便利
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/bitnami/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1G
+        reservations:
+          cpus: "1.0"
+          memory: 512M
+    networks:
+      - kb-network
+    stop_grace_period: 15s
+
+# =============================================================================
+# Kafka UI - 可选的 Kafka 管理界面 (开发环境便利工具)
+# =============================================================================
+# 用途: 可视化查看 topic / consumer group / 消息, 便于开发调试
+# 生产环境: 不部署, 使用 Kafka CLI 或 Confluent Control Center
+# =============================================================================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kb-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_UI_PORT:-28090}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: kb-kafka-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    networks:
+      - kb-network
+    profiles:
+      - dev-tools
+
+# =============================================================================
+# 资源定义
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  milvus_data:
+    driver: local
+  kafka_data:
+    driver: local
+
+# =============================================================================
+# 网络定义
+# =============================================================================
+networks:
+  kb-network:
+    driver: bridge
