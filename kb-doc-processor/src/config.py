@@ -56,11 +56,24 @@ class ChunkDefaults(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    url: str = "http://192.168.30.47:31296/embeddings"
+    # url: str = "http://192.168.30.47:31296/embeddings"
+    url: str = "http://193.134.211.121:31296/embeddings"
     timeout_seconds: int = 60
     max_retries: int = 3
     model_name: str = "BGE-zh-v1.5"
     dim: int = 1024
+
+
+class IntelligentChunkerConfig(BaseModel):
+    enabled: bool = True
+    api_base: str = "https://api.minimax.chat/v1/text/chatcompletion_v2"
+    api_key: str = ""
+    model: str = "abab6.5s-chat"
+    temperature: float = 0.0
+    max_tokens: int = 4096
+    timeout_seconds: int = 30
+    max_retries: int = 2
+    batch_paragraphs: int = 80
 
 
 class RetryConfig(BaseModel):
@@ -77,6 +90,21 @@ class AppConfig(BaseModel):
     chunk_defaults: ChunkDefaults = ChunkDefaults()
     embedding: EmbeddingConfig = EmbeddingConfig()
     retry: RetryConfig = RetryConfig()
+    intelligent_chunker: IntelligentChunkerConfig = IntelligentChunkerConfig()
+
+
+def _resolve_env_vars(obj, _path=()):
+    """Recursively resolve ${ENV_VAR} placeholders in dict/list config values."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            obj[k] = _resolve_env_vars(v, _path + (str(k),))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            obj[i] = _resolve_env_vars(v, _path + (str(i),))
+    elif isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
+        env_var = obj[2:-1]
+        return os.environ.get(env_var, '')
+    return obj
 
 
 def load_config(config_path: Optional[str] = None) -> AppConfig:
@@ -89,6 +117,9 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
+    # Resolve ${ENV_VAR} placeholders in the raw config
+    _resolve_env_vars(raw)
+
     processor_cfg = raw.get("kb_document_processor", {})
 
     return AppConfig(
@@ -100,4 +131,5 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         chunk_defaults=ChunkDefaults(**processor_cfg.get("chunk_defaults", {})),
         embedding=EmbeddingConfig(**processor_cfg.get("embedding", {})),
         retry=RetryConfig(**processor_cfg.get("retry", {})),
+        intelligent_chunker=IntelligentChunkerConfig(**processor_cfg.get("intelligent_chunker", {})),
     )

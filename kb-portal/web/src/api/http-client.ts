@@ -36,7 +36,7 @@ export interface InitUploadRequest {
     useSpaceConfig: boolean;
     chunkSize: number;
     overlapRatio: number;
-    chunkMode: 'HEAD_FIRST' | 'TAIL_FIRST' | 'UNIFORM';
+    chunkMode: 'HEAD_FIRST' | 'TAIL_FIRST' | 'UNIFORM' | 'SMART' | 'SMART_LLM';
   };
   overwriteExisting: boolean;
 }
@@ -191,5 +191,38 @@ export interface DocSummary {
   fileSize: number | null;
   knowledgeSpaceId: string;
 }
+
+// ============== Document Processor APIs (debug/internal) ==============
+
+const processorClient = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_PROCESSOR_URL || 'http://localhost:31001',
+  timeout: 30000,
+});
+
+export interface ChunkInfo {
+  chunkSeq: number;
+  text: string;
+  charCount: number;
+  charStart: number;
+  charEnd: number;
+  sectionPath: string | null;
+  status: string;
+}
+
+export interface DocChunksResponse {
+  docId: string;
+  version: number;
+  totalChunks: number;
+  cleanedText: string;
+  chunks: ChunkInfo[];
+  traceId: string;
+}
+
+/**
+ * Get chunk visualization data for a document
+ */
+export const getDocChunks = (docId: string, version: number = 1): Promise<DocChunksResponse> => {
+  return processorClient.get<DocChunksResponse>(`/api/v1/docs/${docId}/chunks`, { params: { version } }).then(res => res.data);
+};
 
 export default httpClient;

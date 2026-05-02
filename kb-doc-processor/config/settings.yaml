@@ -44,7 +44,8 @@ kb_document_processor:
 
   # Embedding 服务配置
   embedding:
-    url: "http://192.168.30.47:31296/embeddings"
+    # url: "http://192.168.30.47:31296/embeddings"
+    url: "http://193.134.211.121:31296/embeddings"
     timeout_seconds: 60
     max_retries: 3
     model_name: "BGE-zh-v1.5"
@@ -71,4 +72,18 @@ kb_document_processor:
     - name: FixedLengthChunker
       enabled: true
     - name: SemanticChunker
-      enabled: false  # PHASE2: 语义切分
+      enabled: true
+    - name: LLMChunker
+      enabled: true  # 第二层：LLM 精修
+
+  # MiniMax 智能分片配置
+  intelligent_chunker:
+    enabled: true
+    api_base: "https://api.minimax.chat/v1/text/chatcompletion_v2"
+    api_key: "${MINIMAX_API_KEY}"
+    model: "abab6.5s-chat"
+    temperature: 0.0
+    max_tokens: 4096
+    timeout_seconds: 30
+    max_retries: 2
+    batch_paragraphs: 80

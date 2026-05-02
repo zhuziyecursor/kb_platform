@@ -4,6 +4,7 @@ import sys
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.app import init_app, get_config
 from src.config import load_config
@@ -52,6 +53,13 @@ def main():
     consumer.start()
 
     app = FastAPI(title="kb-doc-processor", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3105", "http://localhost:3106"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     from src.api import router
     app.include_router(router)
 

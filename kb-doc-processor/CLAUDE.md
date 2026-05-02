@@ -31,7 +31,7 @@ DB 用户：`kb_processor`（Python 通过 psycopg2/SQLAlchemy 连接）
 |-----|---------|----------------|
 | Parser | `TikaParser` | `OCRParser` |
 | Cleaner | `TextCleaner` | `PIIFilter` |
-| Chunker | `FixedLengthChunker`（chunk_size=512, overlap=51） | `SemanticChunker` |
+| Chunker | `FixedLengthChunker` / `SemanticChunker` / `LLMChunker` | 无（一期已实现全部三种分片器） |
 
 ## PHASE2 标注要求
 
@@ -95,5 +95,7 @@ kb_document_processor:
       chunk_size: 512
       overlap_ratio: 0.1
     - name: SemanticChunker
-      enabled: false  # PHASE2: 语义切分
+      enabled: true  # 规则引擎智能分片
+    - name: LLMChunker
+      enabled: true  # LLM 精修层，依赖 MiniMax API
 ```

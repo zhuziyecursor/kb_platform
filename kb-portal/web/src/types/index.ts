@@ -167,7 +167,7 @@ export interface LUICommandResult {
 // ============== Knowledge Space Types ==============
 
 /** 切片模式 */
-export type ChunkMode = 'HEAD_FIRST' | 'TAIL_FIRST' | 'UNIFORM';
+export type ChunkMode = 'HEAD_FIRST' | 'TAIL_FIRST' | 'UNIFORM' | 'SMART' | 'SMART_LLM';
 
 /** 知识空间可见范围 */
 export type SpaceVisibility = 'PUBLIC' | 'TEAM';

@@ -55,7 +55,10 @@
 | kb-doc-processor TikaParser | ✅ 已完成 | 2026-04-29 | 通过 Tika Server HTTP API 解析 PDF/Word/PPT/Excel |
 | kb-doc-processor TextCleaner | ✅ 已完成 | 2026-04-29 | 编码/特殊字符/HTML/页眉页脚/空行压缩 |
 | kb-doc-processor FixedLengthChunker | ✅ 已完成 | 2026-04-29 | HEAD_FIRST/TAIL_FIRST/UNIFORM 三种模式 |
+| kb-doc-processor SemanticChunker（智能分片规则引擎） | ✅ 已完成 | 2026-05-02 | 标题识别→章节分组→语义边界切分，支持中英文 8 种标题模式 |
+| kb-doc-processor LLMChunker（LLM 精修层） | ✅ 已完成 | 2026-05-02 | MiniMax abab6.5s-chat 增强，LLM 失败自动回退规则引擎 |
 | kb-doc-processor 发布 embed-task 消息 | ✅ 已完成 | 2026-04-29 | 每个 chunk 一条消息，符合 kafka-schemas 定义 |
+| kb-doc-processor 分片查询端点 | ✅ 已完成 | 2026-05-02 | GET /api/v1/docs/{doc_id}/chunks，返回清洗文本+分片位置+状态 |
 | kb-doc-processor HTTP API | ✅ 已完成 | 2026-04-29 | /api/v1/parse, /clean, /chunk, /process |
 | kb-doc-processor Pipeline 编排 | ✅ 已完成 | 2026-04-29 | parse→clean→chunk→save DB→publish Kafka |
 | Docker Compose Tika Server | ✅ 已完成 | 2026-04-29 | apache/tika:2.9.3.0-full，端口 29998 |
@@ -127,6 +130,8 @@
 | kb-portal 设置页面 | ✅ 已完成 | 2026-04-30 | /settings，主题/连接/系统信息 |
 | kb-portal Space API 对接 | ✅ 已完成 | 2026-04-28 | 前端 Spaces 页面对接真实 API |
 | kb-portal Docs API 对接 | ✅ 已完成 | 2026-04-30 | 文档列表/详情/删除对接真实 API |
+| kb-portal 分片可视化组件 | ✅ 已完成 | 2026-05-02 | ChunkVisualizer：原文标注+分片列表双视图，交互式导航 |
+| kb-portal 文档详情页「查看分片」 | ✅ 已完成 | 2026-05-02 | READY 状态可查看，对接 kb-doc-processor 分片 API |
 | kb-portal RAG API 对接 | 📋 计划中 | - | 替换 mock，对接真实 /rag/v1/chat |
 
 ---
@@ -136,7 +141,6 @@
 | 功能 | 状态 | 备注 |
 |-----|------|------|
 | OCRParser（扫描件解析） | ⏸ 暂缓（二期） | 依赖 Tesseract+EasyOCR |
-| SemanticChunker（语义切片） | ⏸ 暂缓（二期） | 一期用 FixedLengthChunker，支持 HEAD_FIRST/TAIL_FIRST/UNIFORM 模式 |
 | PIIFilter（PII 脱敏） | ⏸ 暂缓（二期） | 需完成数据合规评审 |
 | BM25 混合检索 | ⏸ 暂缓（二期） | 依赖 Elasticsearch 8.x |
 | search-service（独立搜索服务） | ⏸ 暂缓（二期） | - |

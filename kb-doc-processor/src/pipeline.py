@@ -4,6 +4,8 @@ import time
 from datetime import datetime, timezone
 
 from src.chunker.fixed_length_chunker import FixedLengthChunker
+from src.chunker.semantic_chunker import SemanticChunker
+from src.chunker.llm_chunker import LLMChunker
 from src.cleaner.text_cleaner import TextCleaner
 from src.config import AppConfig
 from src.db.models import EmbedTask, KnowledgeClean, KnowledgeStructured
@@ -65,11 +67,28 @@ class Pipeline:
 
     def _chunk(self, clean_result: CleanResult, msg: FileIngestMessage) -> ChunkResult:
         chunk_cfg = msg.chunk_config
-        chunker = FixedLengthChunker(
-            chunk_size=chunk_cfg.get("chunkSize", self._config.chunk_defaults.chunk_size),
-            overlap_ratio=chunk_cfg.get("overlapRatio", self._config.chunk_defaults.overlap_ratio),
-            mode=chunk_cfg.get("chunkMode", self._config.chunk_defaults.chunk_mode),
-        )
+        chunk_mode = chunk_cfg.get("chunkMode", self._config.chunk_defaults.chunk_mode)
+        chunk_size = chunk_cfg.get("chunkSize", self._config.chunk_defaults.chunk_size)
+        overlap_ratio = chunk_cfg.get("overlapRatio", self._config.chunk_defaults.overlap_ratio)
+
+        if chunk_mode == "SMART_LLM":
+            chunker = LLMChunker(
+                config=self._config.intelligent_chunker,
+                chunk_size=chunk_size,
+                overlap_ratio=overlap_ratio,
+            )
+        elif chunk_mode == "SMART":
+            chunker = SemanticChunker(
+                chunk_size=chunk_size,
+                overlap_ratio=overlap_ratio,
+            )
+        else:
+            chunker = FixedLengthChunker(
+                chunk_size=chunk_size,
+                overlap_ratio=overlap_ratio,
+                mode=chunk_mode,
+            )
+
         result = chunker.chunk(clean_result.cleaned_text)
         result.trace_id = msg.trace_id
         return result

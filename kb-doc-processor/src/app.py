@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from src.config import AppConfig
 from src.db import session as db_session
 from src.db.models import Base

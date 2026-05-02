@@ -661,11 +661,13 @@ export default function UploadPage() {
                     <Select
                       value={chunkConfig.chunkMode}
                       onChange={(val) => setChunkConfig({ ...chunkConfig, chunkMode: val as ChunkMode })}
-                      style={{ width: 200 }}
+                      style={{ width: 280 }}
                     >
-                      <Select.Option value="HEAD_FIRST">从前到后</Select.Option>
-                      <Select.Option value="TAIL_FIRST">从后到前</Select.Option>
-                      <Select.Option value="UNIFORM">均匀切分</Select.Option>
+                      <Select.Option value="SMART">智能切分 (SMART)</Select.Option>
+                      <Select.Option value="SMART_LLM">智能切分 + LLM增强 (SMART_LLM)</Select.Option>
+                      <Select.Option value="HEAD_FIRST">固定长度 — 从前到后</Select.Option>
+                      <Select.Option value="TAIL_FIRST">固定长度 — 从后到前</Select.Option>
+                      <Select.Option value="UNIFORM">固定长度 — 均匀切分</Select.Option>
                     </Select>
                   </Form.Item>
                 </Card>

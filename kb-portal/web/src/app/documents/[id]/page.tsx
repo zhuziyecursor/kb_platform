@@ -16,6 +16,7 @@ import {
   EyeOutlined,
   DeleteOutlined,
   ReloadOutlined,
+  FileTextOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
@@ -29,8 +30,9 @@ import {
   ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useParams, useRouter } from 'next/navigation';
-import { getDoc, getDocStatus, deleteDoc, DocSummary } from '@/api/http-client';
+import { getDoc, getDocStatus, deleteDoc, getDocChunks, DocSummary, DocChunksResponse } from '@/api/http-client';
 import FilePreview from '@/components/FilePreview';
+import ChunkVisualizer from '@/components/ChunkVisualizer';
 import AppLayout from '@/components/AppLayout';
 import dayjs from 'dayjs';
 
@@ -75,6 +77,9 @@ export default function DocumentDetailPage() {
   const [doc, setDoc] = useState<DocSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [chunkOpen, setChunkOpen] = useState(false);
+  const [chunkData, setChunkData] = useState<DocChunksResponse | null>(null);
+  const [chunkLoading, setChunkLoading] = useState(false);
   const { modal, message } = App.useApp();
 
   const fetchStatus = useCallback(async () => {
@@ -103,6 +108,20 @@ export default function DocumentDetailPage() {
     const timer = setInterval(fetchStatus, 3000);
     return () => clearInterval(timer);
   }, [doc, fetchStatus]);
+
+  const handleChunkView = async () => {
+    if (!doc) return;
+    setChunkOpen(true);
+    setChunkLoading(true);
+    try {
+      const data = await getDocChunks(doc.docId, doc.version);
+      setChunkData(data);
+    } catch {
+      message.error('获取分片数据失败，请确认文档已完成处理');
+    } finally {
+      setChunkLoading(false);
+    }
+  };
 
   const handleDelete = () => {
     if (!doc) return;
@@ -177,6 +196,11 @@ export default function DocumentDetailPage() {
             <Button icon={<EyeOutlined />} onClick={() => setPreviewOpen(true)}>
               文件预览
             </Button>
+            {doc.status === 'READY' && (
+              <Button icon={<FileTextOutlined />} onClick={handleChunkView}>
+                查看分片
+              </Button>
+            )}
             {!TERMINAL_STATUSES.includes(doc.status) && (
               <Button icon={<ReloadOutlined />} onClick={fetchStatus}>
                 刷新状态
@@ -253,6 +277,13 @@ export default function DocumentDetailPage() {
         filename={doc.title}
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
+      />
+
+      <ChunkVisualizer
+        open={chunkOpen}
+        onClose={() => { setChunkOpen(false); setChunkData(null); }}
+        data={chunkData}
+        loading={chunkLoading}
       />
     </AppLayout>
   );
