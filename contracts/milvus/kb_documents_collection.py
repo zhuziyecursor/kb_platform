@@ -55,8 +55,8 @@ def get_schema() -> CollectionSchema:
             name="id",
             dtype=DataType.INT64,
             is_primary=True,
-            auto_id=True,
-            description="Milvus 自动生成主键",
+            auto_id=False,
+            description="应用层生成的主键（snowflake）",
         ),
 
         # ── 业务标识 ─────────────────────────────────────────────────────────────

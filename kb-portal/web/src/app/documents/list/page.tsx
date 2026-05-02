@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Table,
   Card,
@@ -11,57 +11,52 @@ import {
   Select,
   Typography,
   Badge,
-  Dropdown,
-  Menu,
   Modal,
+  App,
   message,
   Tooltip,
   Descriptions,
   Divider,
   Form,
   Tabs,
-  Layout,
+  Segmented,
+  Row,
+  Col,
+  Dropdown,
 } from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
   ReloadOutlined,
   DeleteOutlined,
-  EditOutlined,
   EyeOutlined,
-  MoreOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
   CloseCircleOutlined,
   FolderOutlined,
+  GlobalOutlined,
+  LockOutlined,
+  SafetyOutlined,
+  SecurityScanOutlined,
+  SafetyCertificateOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  MoreOutlined,
   FileTextOutlined,
-  CloudUploadOutlined,
-  RobotOutlined,
-  SettingOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { KnowledgeDoc, DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
 import { listSpaces } from '@/api/knowledge-space';
-import { listDocs, DocSummary } from '@/api/http-client';
+import { listDocs, deleteDoc, DocSummary } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
+import FilePreview from '@/components/FilePreview';
+import AppLayout from '@/components/AppLayout';
 import type { LUIAction } from '@/types';
 import dayjs from 'dayjs';
-import { useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const { Title, Text } = Typography;
-const { Sider, Content } = Layout;
-
-const NAV_ITEMS = [
-  { key: 'home', icon: <FileTextOutlined />, label: '知识库', path: '/' },
-  { key: 'spaces', icon: <FolderOutlined />, label: '知识空间', path: '/spaces/list' },
-  { key: 'docs', icon: <FileTextOutlined />, label: '文档管理', path: '/documents/list' },
-  { key: 'upload', icon: <CloudUploadOutlined />, label: '上传文档', path: '/documents/upload' },
-  { key: 'chat', icon: <RobotOutlined />, label: '知识问答', path: '/rag' },
-  { key: 'settings', icon: <SettingOutlined />, label: '设置', path: '/settings' },
-];
 
 // ============== 类型映射 ==============
 
@@ -81,31 +76,43 @@ const STATUS_MAP: Record<DocStatus, { label: string; color: string; icon?: React
   FAILED: { label: '失败', color: 'error', icon: <CloseCircleOutlined /> },
 };
 
-const SEC_LEVEL_MAP: Record<number, { label: string; color: string }> = {
-  1: { label: '🌍 公开', color: 'green' },
-  2: { label: '🔒 内部', color: 'blue' },
-  3: { label: '🔐 机密', color: 'orange' },
-  4: { label: '🔒 秘密', color: 'red' },
-  5: { label: '🛡️ 绝密', color: 'purple' },
+const SEC_LEVEL_MAP: Record<number, { label: string; color: string; icon: React.ReactNode }> = {
+  1: { label: '公开', color: 'green', icon: <GlobalOutlined /> },
+  2: { label: '内部', color: 'blue', icon: <LockOutlined /> },
+  3: { label: '机密', color: 'orange', icon: <SafetyOutlined /> },
+  4: { label: '秘密', color: 'red', icon: <SecurityScanOutlined /> },
+  5: { label: '绝密', color: 'purple', icon: <SafetyCertificateOutlined /> },
 };
 
 export default function DocumentListPage() {
   const router = useRouter();
-  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlSpaceId = searchParams.get('spaceId');
   const [data, setData] = useState<DocSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [spaces, setSpaces] = useState<KnowledgeSpace[]>([]);
-  const [activeSpaceTab, setActiveSpaceTab] = useState<string>('ALL');
+  const [activeSpaceTab, setActiveSpaceTab] = useState<string>(urlSpaceId || 'ALL');
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocStatus | 'ALL'>('ALL');
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<DocSummary | null>(null);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<DocSummary | null>(null);
+  const { modal } = App.useApp();
 
   // 加载知识空间列表
   useEffect(() => {
     listSpaces().then(setSpaces).catch(() => message.error('加载知识空间失败'));
   }, []);
+
+  // 同步 URL spaceId 参数到 activeSpaceTab
+  useEffect(() => {
+    if (urlSpaceId) {
+      setActiveSpaceTab(urlSpaceId);
+    }
+  }, [urlSpaceId]);
 
   // 加载文档列表
   const fetchDocs = useCallback((spaceId?: string) => {
@@ -138,27 +145,64 @@ export default function DocumentListPage() {
     }
   }, []);
 
+  const handleDelete = (doc: DocSummary) => {
+    const config = {
+      title: '确认删除',
+      content: `确认永久删除文档「${doc.title}」吗？此操作不可撤销。`,
+      okText: '确认删除',
+      okButtonProps: { danger: true } as any,
+      onOk: () => {
+        return deleteDoc(doc.docId, doc.version)
+          .then(() => {
+            message.success(`文档「${doc.title}」已删除`);
+            fetchDocs();
+          })
+          .catch(() => {
+            message.error('删除失败');
+          });
+      },
+    };
+    modal.confirm(config);
+  };
+
   const handleMenuClick = (doc: DocSummary, key: string) => {
     if (key === 'view') {
-      setSelectedDoc(doc);
-      setDetailModalOpen(true);
+      router.push(`/documents/${doc.docId}`);
     }
     if (key === 'retry') {
-      Modal.confirm({
+      modal.confirm({
         title: '确认重试',
         content: `确认重新触发文档「${doc.title}」的入库流程吗？`,
-        onOk: () => message.success(`已触发文档 ${doc.docId} 的重试流程`),
+        onOk() {
+          message.success(`已触发文档 ${doc.docId} 的重试流程`);
+        },
       });
     }
     if (key === 'delete') {
-      Modal.confirm({
-        title: '确认删除',
-        content: `确认永久删除文档「${doc.title}」吗？此操作不可撤销。`,
-        okText: '确认删除',
-        okButtonProps: { danger: true },
-        onOk: () => message.success(`文档 ${doc.docId} 已删除`),
-      });
+      handleDelete(doc);
     }
+  };
+
+  const handleBatchDelete = () => {
+    const selectedDocs = data.filter((doc: any) => selectedRowKeys.includes(doc.id));
+    const config = {
+      title: '确认批量删除',
+      content: `确认永久删除选中的 ${selectedRowKeys.length} 个文档吗？此操作不可撤销。`,
+      okText: '确认删除',
+      okButtonProps: { danger: true } as any,
+      onOk: () => {
+        return Promise.all(selectedDocs.map((doc: any) => deleteDoc(doc.docId, doc.version)))
+          .then(() => {
+            message.success(`已删除 ${selectedRowKeys.length} 个文档`);
+            setSelectedRowKeys([]);
+            fetchDocs();
+          })
+          .catch(() => {
+            message.error('部分文档删除失败');
+          });
+      },
+    };
+    modal.confirm(config);
   };
 
   const columns: ColumnsType<DocSummary> = [
@@ -192,7 +236,10 @@ export default function DocumentListPage() {
       key: 'secLevel',
       width: 90,
       render: (level: SecLevel) => (
-        <Tag color={SEC_LEVEL_MAP[level].color}>{SEC_LEVEL_MAP[level].label}</Tag>
+        <Space size={4}>
+          {SEC_LEVEL_MAP[level].icon}
+          <Tag color={SEC_LEVEL_MAP[level].color}>{SEC_LEVEL_MAP[level].label}</Tag>
+        </Space>
       ),
     },
     {
@@ -256,23 +303,17 @@ export default function DocumentListPage() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 180,
       fixed: 'right',
       render: (_, record) => (
-        <Dropdown
-          menu={{
-            items: [
-              { key: 'view', label: '查看详情', icon: <EyeOutlined /> },
-              ...(record.status === 'FAILED'
-                ? [{ key: 'retry', label: '重新解析', icon: <ReloadOutlined /> }]
-                : []),
-              { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
-            ],
-            onClick: ({ key }) => handleMenuClick(record, key),
-          }}
-        >
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleMenuClick(record, 'view')}>
+            查看
+          </Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
+            删除
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -283,73 +324,22 @@ export default function DocumentListPage() {
       doc.title.toLowerCase().includes(searchText.toLowerCase()) ||
       doc.docId.toLowerCase().includes(searchText.toLowerCase());
     const matchStatus = statusFilter === 'ALL' || doc.status === statusFilter;
-    // TODO: 后续接入真实数据后，knowledgeSpaceId 需要从 doc 中读取
-    // const matchSpace = activeSpaceTab === 'ALL' || doc.knowledgeSpaceId === activeSpaceTab;
     return matchSearch && matchStatus;
   });
 
-return (
-    <Layout style={{ minHeight: '100vh' }}>
-      {/* 左侧导航 */}
-      <Sider
-        width={200}
-        style={{
-          background: '#fff',
-          borderRight: '1px solid #f0f0f0',
-          position: 'fixed',
-          height: '100vh',
-          left: 0,
-          top: 0,
-        }}
-      >
-        <div style={{ padding: '20px 16px', borderBottom: '1px solid #f0f0f0' }}>
-          <Title level={5} style={{ margin: 0, color: '#1677ff' }}>
-            KB Platform
-          </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>企业AI知识库</Text>
-        </div>
+  return (
+    <AppLayout>
+      <CommandBar onAction={handleLUIAction} />
 
-        <div style={{ padding: '12px 8px' }}>
-          {NAV_ITEMS.map((item) => {
-            const isActive = item.key === 'docs';
-            return (
-              <Link key={item.key} href={item.path}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    color: isActive ? '#1677ff' : '#595959',
-                    background: isActive ? '#e6f4ff' : 'transparent',
-                    marginBottom: 4,
-                    transition: 'all 0.2s',
-                  }}
-                >
-<span style={{ fontSize: 16 }}>{item.icon}</span>
-                  <Text style={{ fontSize: 14 }}>{item.label}</Text>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </Sider>
-
-      {/* 主内容区 */}
-      <Content style={{ marginLeft: 200, padding: '32px 48px' }}>
-        <CommandBar onAction={handleLUIAction} />
-
-        <Card
-          title={
-            <Space>
-              <Title level={4} style={{ margin: 0 }}>文档管理</Title>
-              <Badge count={filteredData.length} style={{ backgroundColor: '#1677ff' }} />
-            </Space>
-          }
-          style={{ borderRadius: 8 }}
-          extra={
+      <Card
+        title={
+          <Space>
+            <Title level={4} style={{ margin: 0 }}>文档管理</Title>
+            <Badge count={filteredData.length} style={{ backgroundColor: 'var(--color-accent)' }} />
+          </Space>
+        }
+        style={{ borderRadius: 'var(--radius-lg)' }}
+        extra={
           <Space>
             <Button
               type="primary"
@@ -405,50 +395,157 @@ return (
             marginBottom: 16,
             flexWrap: 'wrap',
             alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          <Input
-            placeholder="搜索文档名称或ID..."
-            prefix={<SearchOutlined />}
-            style={{ width: 260 }}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            allowClear
-          />
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 130 }}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Input
+              placeholder="搜索文档名称或ID..."
+              prefix={<SearchOutlined />}
+              style={{ width: 260 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
+            <Select
+              value={statusFilter}
+              onChange={setStatusFilter}
+              style={{ width: 130 }}
+              options={[
+                { label: '全部状态', value: 'ALL' },
+                ...Object.entries(STATUS_MAP).map(([value, { label }]) => ({
+                  label,
+                  value,
+                })),
+              ]}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              共 {filteredData.length} 条记录
+            </Text>
+          </div>
+          <Segmented
+            value={viewMode}
+            onChange={(val) => setViewMode(val as 'list' | 'card')}
             options={[
-              { label: '全部状态', value: 'ALL' },
-              ...Object.entries(STATUS_MAP).map(([value, { label }]) => ({
-                label,
-                value,
-              })),
+              { label: '列表', value: 'list', icon: <UnorderedListOutlined /> },
+              { label: '卡片', value: 'card', icon: <AppstoreOutlined /> },
             ]}
           />
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            共 {filteredData.length} 条记录
-          </Text>
         </div>
 
-        {/* 表格 */}
-        <Table
-          columns={columns}
-          dataSource={filteredData}
-          rowKey="id"
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条`,
-          }}
-          scroll={{ x: 1200 }}
-          size="middle"
-          rowSelection={{
-            selectedRowKeys,
-            onChange: setSelectedRowKeys,
-          }}
-        />
+        {/* 列表 / 卡片视图 */}
+        {viewMode === 'list' ? (
+          <Table
+            columns={columns}
+            dataSource={filteredData}
+            rowKey="id"
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`,
+            }}
+            scroll={{ x: 'max-content' }}
+            size="middle"
+            rowSelection={{
+              selectedRowKeys,
+              onChange: setSelectedRowKeys,
+            }}
+          />
+        ) : (
+          <Row gutter={[16, 16]}>
+            {filteredData.map((doc) => {
+              const typeInfo = DOC_TYPE_MAP[doc.docType as DocType] || { label: doc.docType, color: 'default' };
+              const statusInfo = STATUS_MAP[doc.status as DocStatus] || { label: doc.status, color: 'default' };
+              const secInfo = SEC_LEVEL_MAP[doc.secLevel] || { label: `${doc.secLevel}`, color: 'default', icon: null };
+              const tags = (doc.labelTags || '').split(',').filter(Boolean);
+
+              return (
+                <Col key={doc.docId} xs={24} sm={12} md={8} lg={6}>
+                  <Card
+                    hoverable
+                    size="small"
+                    onClick={() => router.push(`/documents/${doc.docId}`)}
+                    style={{ borderRadius: 10, height: '100%' }}
+                    styles={{ body: { padding: '16px', display: 'flex', flexDirection: 'column', height: '100%' } }}
+                  >
+                    {/* 头部：类型 + 状态 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <Tag color={typeInfo.color} style={{ margin: 0 }}>{typeInfo.label}</Tag>
+                      <Space size={4}>
+                        {statusInfo.icon}
+                        <Tag color={statusInfo.color} style={{ margin: 0, fontSize: 11 }}>{statusInfo.label}</Tag>
+                      </Space>
+                    </div>
+
+                    {/* 标题 */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, flex: 1 }}>
+                      <FileTextOutlined style={{ color: 'var(--color-accent)', marginTop: 3, flexShrink: 0 }} />
+                      <Text strong style={{ fontSize: 14, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {doc.title}
+                      </Text>
+                    </div>
+
+                    {/* 元信息 */}
+                    <div style={{ marginBottom: 8 }}>
+                      <Space size={4} wrap>
+                        {secInfo.icon}
+                        <Text type="secondary" style={{ fontSize: 11 }}>{secInfo.label}</Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{doc.bizDomain}</Text>
+                      </Space>
+                    </div>
+
+                    {/* 标签 */}
+                    {tags.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <Space size={4} wrap>
+                          {tags.map((tag: string) => (
+                            <Tag key={tag} style={{ fontSize: 10, margin: 0 }}>{tag}</Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    )}
+
+                    {/* 底部：时间 + 操作 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 'auto' }}>
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {doc.createTime ? dayjs(doc.createTime).format('MM-DD HH:mm') : '—'}
+                      </Text>
+                      <Space size={0}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EyeOutlined />}
+                          onClick={(e) => { e.stopPropagation(); router.push(`/documents/${doc.docId}`); }}
+                        />
+                        <Dropdown
+                          menu={{
+                            items: [
+                              { key: 'view', label: '查看详情', icon: <EyeOutlined /> },
+                              { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
+                            ],
+                            onClick: ({ key, domEvent }) => {
+                              domEvent.stopPropagation();
+                              if (key === 'view') router.push(`/documents/${doc.docId}`);
+                              if (key === 'delete') handleDelete(doc);
+                            },
+                          }}
+                          trigger={['click']}
+                        >
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<MoreOutlined />}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </Dropdown>
+                      </Space>
+                    </div>
+                  </Card>
+                </Col>
+              )})}
+          </Row>
+        )}
 
         {/* 批量操作 */}
         {selectedRowKeys.length > 0 && (
@@ -456,8 +553,8 @@ return (
             style={{
               position: 'sticky',
               bottom: 0,
-              background: '#fff',
-              borderTop: '1px solid #f0f0f0',
+              background: 'var(--color-surface)',
+              borderTop: '1px solid var(--color-border)',
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
@@ -466,7 +563,7 @@ return (
             }}
           >
             <Text strong>已选择 {selectedRowKeys.length} 项</Text>
-            <Button size="small" danger icon={<DeleteOutlined />}>
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>
               批量删除
             </Button>
             <Button
@@ -506,9 +603,16 @@ return (
             key="delete"
             danger
             icon={<DeleteOutlined />}
-            onClick={() => {
-              message.success('已删除');
-              setDetailModalOpen(false);
+            onClick={async () => {
+              if (!selectedDoc) return;
+              try {
+                await deleteDoc(selectedDoc.docId, selectedDoc.version);
+                message.success(`文档「${selectedDoc.title}」已删除`);
+                setDetailModalOpen(false);
+                fetchDocs();
+              } catch (err) {
+                message.error('删除失败');
+              }
             }}
           >
             删除
@@ -532,9 +636,12 @@ return (
               </Descriptions.Item>
               <Descriptions.Item label="版本">v{selectedDoc.version}</Descriptions.Item>
               <Descriptions.Item label="密级">
-                <Tag color={SEC_LEVEL_MAP[selectedDoc.secLevel].color}>
-                  {SEC_LEVEL_MAP[selectedDoc.secLevel].label}
-                </Tag>
+                <Space size={4}>
+                  {SEC_LEVEL_MAP[selectedDoc.secLevel]?.icon}
+                  <Tag color={SEC_LEVEL_MAP[selectedDoc.secLevel].color}>
+                    {SEC_LEVEL_MAP[selectedDoc.secLevel].label}
+                  </Tag>
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="状态">
                 <Tag color={STATUS_MAP[selectedDoc.status as DocStatus].color}>
@@ -557,7 +664,7 @@ return (
                   {selectedDoc.srcPath}
                 </Text>
               </Descriptions.Item>
-                            <Descriptions.Item label="标签" span={2}>
+              <Descriptions.Item label="标签" span={2}>
                 <Space>
                   {(selectedDoc.labelTags || '').split(',').filter(Boolean).map((tag: string) => (
                     <Tag key={tag}>{tag}</Tag>
@@ -568,7 +675,17 @@ return (
           </div>
         )}
       </Modal>
-      </Content>
-    </Layout>
+
+      {/* 文件预览弹窗 */}
+      {previewDoc && (
+        <FilePreview
+          docId={previewDoc.docId}
+          version={previewDoc.version}
+          filename={previewDoc.title}
+          open={previewModalOpen}
+          onClose={() => setPreviewModalOpen(false)}
+        />
+      )}
+    </AppLayout>
   );
 }

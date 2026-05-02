@@ -9,11 +9,13 @@ import com.kb.ingest.repository.KnowledgeDocRepository;
 import com.kb.ingest.repository.KnowledgeVersionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +42,8 @@ public class DocServiceImpl implements DocService {
             throw new IllegalArgumentException("文件大小不能超过 50MB（MVP 限制）");
         }
 
-        var existingDoc = docRepository.findByTenantIdAndSha256(request.getTenantId(), request.getFileHash());
+        var existingDoc = docRepository.findByTenantIdAndSha256AndCreateTime(
+                request.getTenantId(), request.getFileHash(), LocalDateTime.now());
         if (existingDoc.isPresent()) {
             if (Boolean.TRUE.equals(request.getOverwriteExisting())) {
                 throw new UnsupportedOperationException("PHASE2_PLACEHOLDER: 覆盖已有文档");
@@ -52,8 +55,9 @@ public class DocServiceImpl implements DocService {
         String docId = minioService.generateDocId();
         String srcPath = minioService.buildObjectPath(
                 request.getTenantId(), request.getBizDomain(), docId, request.getFilename());
+        String contentType = getContentType(request.getFilename());
         String presignedUrl = minioService.generatePresignedUrl(
-                request.getTenantId(), request.getBizDomain(), docId, request.getFilename());
+                request.getTenantId(), request.getBizDomain(), docId, request.getFilename(), contentType);
 
         // 解析 chunk config
         Integer chunkSize = 512;
@@ -89,6 +93,7 @@ public class DocServiceImpl implements DocService {
                 .overlapRatio(overlapRatio)
                 .chunkMode(chunkMode)
                 .fileSize(request.getFileSize())
+                .labelTags(request.getLabelTags())
                 .verified(false)
                 .build();
 
@@ -286,5 +291,78 @@ public class DocServiceImpl implements DocService {
                 .docs(summaries)
                 .total(summaries.size())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DocFileResponse getDocFile(String tenantId, String docId, Integer version) {
+        KnowledgeDoc doc = findDocOrThrow(tenantId, docId, version);
+
+        Resource resource = minioService.getObject(doc.getSrcPath());
+
+        String filename = doc.getTitle();
+        String contentType = getContentType(filename);
+        String previewType = minioService.getPreviewType(filename, null);
+
+        return DocFileResponse.builder()
+                .resource(resource)
+                .contentType(contentType)
+                .previewType(previewType)
+                .filename(filename)
+                .build();
+    }
+
+    @Override
+    public UploadResponse uploadFile(String tenantId, String docId, Integer version, byte[] fileData, String filename, String contentType) {
+        KnowledgeDoc doc = findDocOrThrow(tenantId, docId, version);
+        minioService.putObject(doc.getSrcPath(), fileData, contentType);
+        log.info("upload-file: docId={}, tenantId={}, filename={}, size={}", docId, tenantId, filename, fileData.length);
+        return UploadResponse.builder()
+                .docId(docId)
+                .success(true)
+                .message("文件上传成功")
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void deleteDoc(String tenantId, String docId, Integer version) {
+        KnowledgeDoc doc = findDocOrThrow(tenantId, docId, version);
+        String srcPath = doc.getSrcPath();
+        // 先删数据库记录（即使 MinIO 文件不存在也要能删除）
+        docRepository.delete(doc);
+        // 再删 MinIO 文件（文件不存在不算错误）
+        try {
+            minioService.deleteObject(srcPath);
+        } catch (Exception e) {
+            log.warn("MinIO file not found or delete failed, doc already deleted from DB: {}", srcPath);
+        }
+        log.info("deleted-doc: docId={}, tenantId={}, version={}", docId, tenantId, version);
+    }
+
+    private String getContentType(String filename) {
+        if (filename == null) {
+            return "application/octet-stream";
+        }
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".pdf")) {
+            return "application/pdf";
+        }
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lower.endsWith(".svg")) {
+            return "image/svg+xml";
+        }
+        if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+            return "text/markdown";
+        }
+        return "application/octet-stream";
     }
 }

@@ -41,7 +41,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-kb_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kb_postgres_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-knowledge}
+      POSTGRES_DB: ${POSTGRES_DB:-kb_knowledge}
       # 连接池与性能调优
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -198,6 +198,41 @@ services:
     networks:
       - kb-network
     stop_grace_period: 15s
+
+# =============================================================================
+# Apache Tika Server 2.9 - 文档解析服务
+# =============================================================================
+# 用途:
+#   - PDF/Word/PPT/Excel/txt/md 文本提取
+#   - kb-doc-processor 通过 HTTP API 调用
+# 设计:
+#   - 使用 full 镜像（包含所有解析器依赖）
+#   - 纯 CPU 运算，无需 GPU
+#   - 单文件解析超时 120s
+# =============================================================================
+  tika:
+    image: apache/tika:2.9.3.0-full
+    container_name: kb-tika
+    restart: unless-stopped
+    ports:
+      - "${TIKA_PORT:-29998}:9998"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+    networks:
+      - kb-network
+    stop_grace_period: 10s
 
 # =============================================================================
 # Milvus 2.4 Standalone - 向量数据库

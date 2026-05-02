@@ -265,11 +265,11 @@ export default function CommandBar({
                 width: 52,
                 height: 52,
                 borderRadius: 16,
-                background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
+                background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-primary) 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 16px rgba(22, 119, 255, 0.4)',
+                boxShadow: '0 4px 16px rgba(37, 99, 235, 0.35)',
                 transition: 'transform 0.2s, box-shadow 0.2s',
               }}
             >
@@ -335,10 +335,10 @@ export default function CommandBar({
               alignItems: 'center',
               padding: '14px 16px',
               gap: 12,
-              borderBottom: result ? '1px solid #f0f0f0' : 'none',
+              borderBottom: result ? '1px solid var(--color-border)' : 'none',
             }}
           >
-            <RobotOutlined style={{ fontSize: 20, color: '#1677ff', flexShrink: 0 }} />
+            <RobotOutlined style={{ fontSize: 20, color: 'var(--color-accent)', flexShrink: 0 }} />
             <Input
               ref={inputRef as React.RefObject<any>}
               value={input}
@@ -371,7 +371,7 @@ export default function CommandBar({
 
           {/* 理解结果反馈 */}
           {result && (
-            <div style={{ padding: '12px 16px', background: '#fafafa' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--color-muted)' }}>
               <Space>
                 {result.action ? (
                   <Tag icon={<CheckCircleOutlined />} color="success">
@@ -449,7 +449,7 @@ export default function CommandBar({
                       transition: 'background 0.15s',
                     }}
                     onMouseEnter={(e) =>
-                      ((e.currentTarget as HTMLDivElement).style.background = '#f0f0f0')
+                      ((e.currentTarget as HTMLDivElement).style.background = 'var(--color-muted)')
                     }
                     onMouseLeave={(e) =>
                       ((e.currentTarget as HTMLDivElement).style.background = 'transparent')
@@ -483,8 +483,8 @@ export default function CommandBar({
           <div
             style={{
               padding: '8px 16px',
-              background: '#fafafa',
-              borderTop: '1px solid #f0f0f0',
+              background: 'var(--color-muted)',
+              borderTop: '1px solid var(--color-border)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',

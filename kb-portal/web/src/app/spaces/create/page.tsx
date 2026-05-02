@@ -15,6 +15,7 @@ import {
   Divider,
 } from 'antd';
 import { useRouter } from 'next/navigation';
+import AppLayout from '@/components/AppLayout';
 import { createSpace } from '@/api/knowledge-space';
 
 const { Title, Text } = Typography;
@@ -39,7 +40,7 @@ export default function CreateSpacePage() {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <AppLayout>
       <Card
         title={
           <Space>
@@ -155,6 +156,6 @@ export default function CreateSpacePage() {
           </Form.Item>
         </Form>
       </Card>
-    </div>
+    </AppLayout>
   );
 }

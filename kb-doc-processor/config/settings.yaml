@@ -1,0 +1,74 @@
+kb_document_processor:
+  # Tika Server 配置
+  tika:
+    server_uri: "http://localhost:29998"
+    timeout_seconds: 120
+
+  # MinIO 配置
+  minio:
+    endpoint: "localhost:29000"
+    access_key: "kb_minio_admin"
+    secret_key: "kb_minio_dev_2026"
+    bucket: "kb-raw"
+    secure: false
+
+  # Kafka 配置
+  kafka:
+    bootstrap_servers: "localhost:29092"
+    consumer_group: "kb-doc-processor"
+    file_ingest_topic: "file-ingest"
+    embed_task_topic: "embed-task"
+    auto_offset_reset: "earliest"
+    enable_auto_commit: false
+
+  # 数据库配置
+  database:
+    host: "localhost"
+    port: 25432
+    name: "kb_knowledge"
+    username: "kb_processor"
+    password: "kb_processor"
+    schema: "kb_knowledge"
+
+  # MVP 限制
+  mvp_limits:
+    max_file_size_mb: 100
+    max_file_pages: 30
+    ocr_disabled: true
+
+  # Chunk 默认值（当消息中未指定 chunkConfig 时使用）
+  chunk_defaults:
+    chunk_size: 512
+    overlap_ratio: 10
+    chunk_mode: "HEAD_FIRST"
+
+  # Embedding 服务配置
+  embedding:
+    url: "http://192.168.30.47:31296/embeddings"
+    timeout_seconds: 60
+    max_retries: 3
+    model_name: "BGE-zh-v1.5"
+    dim: 1024
+
+  # 重试配置
+  retry:
+    max_retries: 3
+    backoff_base_seconds: 5
+
+  parsers:
+    - name: TikaParser
+      enabled: true
+    - name: OCRParser
+      enabled: false  # PHASE2: 二期启用，依赖 Tesseract+EasyOCR
+
+  cleaners:
+    - name: TextCleaner
+      enabled: true
+    - name: PIIFilter
+      enabled: false  # PHASE2: 合规评审后启用
+
+  chunkers:
+    - name: FixedLengthChunker
+      enabled: true
+    - name: SemanticChunker
+      enabled: false  # PHASE2: 语义切分

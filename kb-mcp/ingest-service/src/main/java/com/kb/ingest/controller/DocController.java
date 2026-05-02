@@ -5,8 +5,12 @@ import com.kb.ingest.service.DocService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @RestController
@@ -63,5 +67,61 @@ public class DocController {
             @RequestParam(required = false) String spaceId) {
         DocListResponse response = docService.listDocs(DEV_TENANT_ID, spaceId);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{docId}/download")
+    public ResponseEntity<InputStreamResource> getDocFile(
+            @PathVariable String docId,
+            @RequestParam(defaultValue = "1") Integer version) throws Exception {
+        DocFileResponse docFile = docService.getDocFile(DEV_TENANT_ID, docId, version);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(docFile.getContentType()));
+        headers.setContentDispositionFormData("inline", docFile.getFilename());
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(new InputStreamResource(docFile.getResource().getInputStream()));
+    }
+
+    @PostMapping("/{docId}/upload")
+    public ResponseEntity<UploadResponse> uploadFile(
+            @PathVariable String docId,
+            @RequestParam(defaultValue = "1") Integer version,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            byte[] fileData;
+            try {
+                fileData = file.getBytes();
+            } catch (Exception e) {
+                log.error("Failed to read file data for docId: {}", docId, e);
+                return ResponseEntity.badRequest()
+                        .body(UploadResponse.builder()
+                                .docId(docId)
+                                .success(false)
+                                .message("读取文件失败: " + e.getMessage())
+                                .build());
+            }
+            UploadResponse response = docService.uploadFile(
+                    DEV_TENANT_ID, docId, version,
+                    fileData, file.getOriginalFilename(), file.getContentType());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to upload file for docId: {}", docId, e);
+            return ResponseEntity.internalServerError()
+                    .body(UploadResponse.builder()
+                            .docId(docId)
+                            .success(false)
+                            .message("上传失败: " + e.getMessage())
+                            .build());
+        }
+    }
+
+    @DeleteMapping("/{docId}")
+    public ResponseEntity<Void> deleteDoc(
+            @PathVariable String docId,
+            @RequestParam(defaultValue = "1") Integer version) {
+        docService.deleteDoc(DEV_TENANT_ID, docId, version);
+        return ResponseEntity.noContent().build();
     }
 }

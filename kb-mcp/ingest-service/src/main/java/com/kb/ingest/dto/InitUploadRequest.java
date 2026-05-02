@@ -51,6 +51,8 @@ public class InitUploadRequest {
 
     private ChunkConfigDto chunkConfig;
 
+    private String labelTags;
+
     @Builder.Default
     private Boolean overwriteExisting = false;
 

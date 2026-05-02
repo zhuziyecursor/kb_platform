@@ -23,7 +23,6 @@ import {
   Slider,
   Switch,
   Radio,
-  Layout,
   Spin,
 } from 'antd';
 import {
@@ -33,13 +32,12 @@ import {
   LoadingOutlined,
   DownOutlined,
   SettingOutlined,
-  FileTextOutlined,
-  CloudUploadOutlined,
-  FolderOutlined,
-  RobotOutlined,
+  GlobalOutlined,
+  LockOutlined,
+  SafetyOutlined,
+  SecurityScanOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import { usePathname } from 'next/navigation';
-import Link from 'next/link';
 import type { UploadFile, RcFile } from 'antd/es/upload';
 import type { UploadProps } from 'antd';
 import dayjs from 'dayjs';
@@ -61,30 +59,24 @@ import {
   commitDoc,
   ingestDoc,
   getDocStatus,
+  uploadFile,
   InitUploadRequest,
   CommitRequest,
 } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
+import AppLayout from '@/components/AppLayout';
 import type { LUIAction } from '@/types';
+import { useRouter } from 'next/navigation';
 
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 const { Dragger } = Upload;
-const { Sider, Content } = Layout;
 
-const NAV_ITEMS = [
-  { key: 'home', icon: <FileTextOutlined />, label: '知识库', path: '/' },
-  { key: 'spaces', icon: <FolderOutlined />, label: '知识空间', path: '/spaces/list' },
-  { key: 'docs', icon: <FileTextOutlined />, label: '文档管理', path: '/documents/list' },
-  { key: 'upload', icon: <CloudUploadOutlined />, label: '上传文档', path: '/documents/upload' },
-  { key: 'chat', icon: <RobotOutlined />, label: '知识问答', path: '/rag' },
-  { key: 'settings', icon: <SettingOutlined />, label: '设置', path: '/settings' },
-];
 
-// ============== Mock 数据 ==============
-const MOCK_DOC_ID = 'DOC20260427001';
-const MOCK_TENANT_ID = 'tenant-demo-001';
+// ============== 常量 ==============
+const EMBEDDING_MODEL = 'BGE-zh-v1.5';
+const EMBEDDING_DIM = 1024;
 
 // 详细流水线进度（带子步骤）
 const MOCK_PIPELINE_STEPS: PipelineStep[] = [
@@ -96,7 +88,7 @@ const MOCK_PIPELINE_STEPS: PipelineStep[] = [
     subSteps: [
       { label: '获取 presigned URL', status: 'finish', detail: '来自 kb-gateway' },
       { label: '文件直传至 MinIO', status: 'finish', detail: '大小: 2.1 MB' },
-      { label: '生成 docId', status: 'finish', detail: MOCK_DOC_ID },
+      { label: '生成 docId', status: 'finish', detail: '等待生成...' },
     ],
   },
   {
@@ -146,8 +138,8 @@ const MOCK_PIPELINE_STEPS: PipelineStep[] = [
 
 // ============== 页面组件 ==============
 export default function UploadPage() {
+  const router = useRouter();
   const [form] = Form.useForm();
-  const pathname = usePathname();
   const [currentStep, setCurrentStep] = useState(0); // 0=填写表单 1=上传文件 2=流水线
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<PipelineStep[]>(MOCK_PIPELINE_STEPS);
@@ -171,6 +163,8 @@ export default function UploadPage() {
   const [tenantId] = useState<string>('dev-tenant-001');
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [overwriteExisting, setOverwriteExisting] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null);
+  const startTimeRef = useRef<number>(0);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // 清理轮询
@@ -312,6 +306,8 @@ export default function UploadPage() {
     }
 
     setIsProcessing(true);
+    setElapsedSeconds(null);
+    startTimeRef.current = Date.now();
     setCurrentStep(2);
     setUploadProgress([...MOCK_PIPELINE_STEPS]);
 
@@ -341,6 +337,7 @@ export default function UploadPage() {
         ownerUid: formValues.ownerUid || 'current-user',
         deptId: formValues.deptId || 'D01',
         knowledgeSpaceId: selectedSpace,
+        labelTags: Array.isArray(formValues.labelTags) ? formValues.labelTags.join(',') : (formValues.labelTags || undefined),
         chunkConfig: {
           useSpaceConfig: !useCustomChunk,
           chunkSize: chunkConfig.chunkSize,
@@ -361,29 +358,25 @@ export default function UploadPage() {
         if (updated[0].subSteps) {
           updated[0].subSteps[0] = { label: '获取 presigned URL', status: 'finish', detail: initResp.docId };
         }
-        updated[0].subSteps![1] = { label: '文件直传至 MinIO', status: 'process', detail: 'PUT 上传...' };
+        updated[0].subSteps![1] = { label: '文件上传至后端', status: 'process', detail: 'POST 上传...' };
         return updated;
       });
 
-      // 2. 使用 presigned URL 直传文件到 MinIO
-      const putResp = await fetch(presignedUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type },
-      });
+      // 2. 使用后端代理接口上传文件到 MinIO（避免 CORS 问题）
+      const uploadResp = await uploadFile(initResp.docId, version, file);
 
-      if (!putResp.ok) {
-        throw new Error(`MinIO 上传失败: ${putResp.status}`);
+      if (!uploadResp.success) {
+        throw new Error(`文件上传失败: ${uploadResp.message}`);
       }
 
       // 更新步骤：文件上传完成
       setUploadProgress(prev => {
         const updated = [...prev];
         if (updated[0].subSteps) {
-          updated[0].subSteps[1] = { label: '文件直传至 MinIO', status: 'finish', detail: `${(file.size / 1024).toFixed(1)} KB` };
+          updated[0].subSteps[1] = { label: '文件上传至后端', status: 'finish', detail: `${(file.size / 1024).toFixed(1)} KB` };
           updated[0].subSteps[2] = { label: '生成 docId', status: 'finish', detail: initResp.docId };
         }
-        updated[0] = { ...updated[0], status: 'finish', description: 'MinIO presigned URL 直传完成', timestamp: new Date().toLocaleString('zh-CN') };
+        updated[0] = { ...updated[0], status: 'finish', description: '后端代理上传完成', timestamp: new Date().toLocaleString('zh-CN') };
         return updated;
       });
 
@@ -443,7 +436,9 @@ export default function UploadPage() {
           if (status.status === 'READY') {
             // 所有步骤完成
             updated.forEach(u => { u.status = 'finish'; });
-            message.success('🎉 文档入库完成，已进入可检索状态！');
+            const elapsed = ((Date.now() - startTimeRef.current) / 1000).toFixed(1);
+            setElapsedSeconds(parseFloat(elapsed));
+            message.success('文档入库完成，已进入可检索状态！');
             setIsProcessing(false);
             if (pollingRef.current) clearInterval(pollingRef.current);
           }
@@ -469,63 +464,14 @@ export default function UploadPage() {
 
   // ============== 渲染流水线步骤图标 ==============
   const stepIcon = (status: PipelineStep['status']) => {
-    if (status === 'finish') return <CheckCircleFilled style={{ color: '#52c41a' }} />;
-    if (status === 'error') return <CloseCircleFilled style={{ color: '#ff4d4f' }} />;
-    if (status === 'process') return <LoadingOutlined style={{ color: '#1677ff' }} />;
+    if (status === 'finish') return <CheckCircleFilled style={{ color: 'var(--color-success)' }} />;
+    if (status === 'error') return <CloseCircleFilled style={{ color: 'var(--color-destructive)' }} />;
+    if (status === 'process') return <LoadingOutlined style={{ color: 'var(--color-accent)' }} />;
     return null;
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      {/* 左侧导航 */}
-      <Sider
-        width={200}
-        style={{
-          background: '#fff',
-          borderRight: '1px solid #f0f0f0',
-          position: 'fixed',
-          height: '100vh',
-          left: 0,
-          top: 0,
-        }}
-      >
-        <div style={{ padding: '20px 16px', borderBottom: '1px solid #f0f0f0' }}>
-          <Title level={5} style={{ margin: 0, color: '#1677ff' }}>
-            KB Platform
-          </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>企业AI知识库</Text>
-        </div>
-
-        <div style={{ padding: '12px 8px' }}>
-          {NAV_ITEMS.map((item) => {
-            const isActive = item.key === 'upload';
-            return (
-              <Link key={item.key} href={item.path}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    color: isActive ? '#1677ff' : '#595959',
-                    background: isActive ? '#e6f4ff' : 'transparent',
-                    marginBottom: 4,
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>{item.icon}</span>
-                  <Text style={{ fontSize: 14 }}>{item.label}</Text>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </Sider>
-
-      {/* 主内容区 */}
-      <Content style={{ marginLeft: 200, padding: '32px 48px' }}>
+    <AppLayout>
         {/* 智能指令条 */}
         <CommandBar onAction={handleLUIAction} />
 
@@ -620,11 +566,11 @@ export default function UploadPage() {
 
                 <Form.Item name="secLevel" label="密级" rules={[{ required: true }]}>
                   <Select>
-                    <Select.Option value={1}>🌍 公开 (1)</Select.Option>
-                    <Select.Option value={2}>🔒 内部 (2)</Select.Option>
-                    <Select.Option value={3}>🔐 机密 (3)</Select.Option>
-                    <Select.Option value={4}>🔒 秘密 (4)</Select.Option>
-                    <Select.Option value={5}>🛡️ 绝密 (5)</Select.Option>
+                    <Select.Option value={1}><GlobalOutlined /> 公开 (1)</Select.Option>
+                    <Select.Option value={2}><LockOutlined /> 内部 (2)</Select.Option>
+                    <Select.Option value={3}><SafetyOutlined /> 机密 (3)</Select.Option>
+                    <Select.Option value={4}><SecurityScanOutlined /> 秘密 (4)</Select.Option>
+                    <Select.Option value={5}><SafetyCertificateOutlined /> 绝密 (5)</Select.Option>
                   </Select>
                 </Form.Item>
 
@@ -682,7 +628,7 @@ export default function UploadPage() {
               </Form.Item>
 
               {useCustomChunk && (
-                <Card size="small" style={{ background: '#fafafa', marginBottom: 16 }}>
+                <Card size="small" style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
                   <Form.Item label="段长度" style={{ marginBottom: 12 }}>
                     <Slider
                       min={100}
@@ -772,7 +718,7 @@ export default function UploadPage() {
             />
             <Dragger {...uploadProps} style={{ padding: '32px 0', borderRadius: 8 }}>
               <p className="ant-upload-drag-icon">
-                <InboxOutlined style={{ fontSize: 48, color: '#1677ff' }} />
+                <InboxOutlined style={{ fontSize: 48, color: 'var(--color-accent)' }} />
               </p>
               <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
               <p className="ant-upload-hint">
@@ -827,8 +773,8 @@ export default function UploadPage() {
             />
 
             <Card
-              title="🔄 文档入库流水线"
-              style={{ marginBottom: 24, background: '#fafafa' }}
+              title="文档入库流水线"
+              style={{ marginBottom: 24, background: 'var(--color-muted)' }}
             >
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
                 {uploadProgress.map((step, index) => (
@@ -836,8 +782,8 @@ export default function UploadPage() {
                     key={index}
                     size="small"
                     style={{
-                      background: step.status === 'process' ? '#e6f4ff' : '#fafafa',
-                      border: step.status === 'process' ? '1px solid #91caff' : '1px solid #f0f0f0',
+                      background: step.status === 'process' ? 'rgba(37, 99, 235, 0.06)' : 'var(--color-muted)',
+                      border: step.status === 'process' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
                     }}
                   >
                     {/* 主步骤头部 */}
@@ -864,7 +810,7 @@ export default function UploadPage() {
                         </Text>
                         {step.timestamp && (
                           <Text type="secondary" style={{ fontSize: 11 }}>
-                            ⏱ {step.timestamp}
+                            {step.timestamp}
                           </Text>
                         )}
                       </Space>
@@ -894,26 +840,26 @@ export default function UploadPage() {
                                       display: 'flex',
                                       alignItems: 'center',
                                       padding: '6px 0',
-                                      borderLeft: sub.status === 'process' ? '2px solid #1677ff' : '2px solid transparent',
+                                      borderLeft: sub.status === 'process' ? '2px solid var(--color-accent)' : '2px solid transparent',
                                       paddingLeft: sub.status === 'process' ? 12 : 14,
                                     }}
                                   >
                                     {sub.status === 'finish' && (
-                                      <CheckCircleFilled style={{ color: '#52c41a', marginRight: 8, fontSize: 12 }} />
+                                      <CheckCircleFilled style={{ color: 'var(--color-success)', marginRight: 8, fontSize: 12 }} />
                                     )}
                                     {sub.status === 'process' && (
-                                      <LoadingOutlined style={{ color: '#1677ff', marginRight: 8, fontSize: 12 }} />
+                                      <LoadingOutlined style={{ color: 'var(--color-accent)', marginRight: 8, fontSize: 12 }} />
                                     )}
                                     {sub.status === 'wait' && (
                                       <div style={{
                                         width: 12,
                                         height: 12,
                                         borderRadius: '50%',
-                                        border: '1px solid #d9d9d9',
+                                        border: '1px solid var(--color-border)',
                                         marginRight: 8,
                                       }} />
                                     )}
-                                    <Text style={{ fontSize: 13, color: sub.status === 'process' ? '#1677ff' : undefined }}>
+                                    <Text style={{ fontSize: 13, color: sub.status === 'process' ? 'var(--color-accent)' : undefined }}>
                                       {sub.label}
                                     </Text>
                                     {sub.detail && (
@@ -939,17 +885,32 @@ export default function UploadPage() {
 
             {/* 处理结果汇总 */}
             {uploadProgress.every((s) => s.status === 'finish') && (
-              <Card title="📋 入库结果" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+              <Card title="入库结果" style={{ background: 'rgba(22, 163, 74, 0.06)', border: '1px solid var(--color-success)' }}>
                 <Descriptions column={2}>
                   <Descriptions.Item label="文档ID">
-                    <Text code>{MOCK_DOC_ID}</Text>
+                    <Text code copyable>{docId}</Text>
                   </Descriptions.Item>
-                  <Descriptions.Item label="版本号">v1</Descriptions.Item>
-                  <Descriptions.Item label="处理耗时">约 4.8 秒</Descriptions.Item>
-                  <Descriptions.Item label="生成切片数">12 chunks</Descriptions.Item>
-                  <Descriptions.Item label="向量维度">1024 (BGE-zh-v1.5)</Descriptions.Item>
-                  <Descriptions.Item label="Milvus 分区">
-                    <Tag>tenant-demo-001</Tag>
+                  <Descriptions.Item label="版本号">v{version}</Descriptions.Item>
+                  <Descriptions.Item label="文件名">
+                    {fileList[0]?.name || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="文件大小">
+                    {fileList[0]?.size != null ? `${(fileList[0].size / 1024).toFixed(1)} KB` : '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="处理耗时">
+                    {elapsedSeconds != null ? `${elapsedSeconds} 秒` : '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="文档密级">
+                    {formValues.secLevel === 1 ? '公开' :
+                     formValues.secLevel === 2 ? '内部' :
+                     formValues.secLevel === 3 ? '机密' :
+                     formValues.secLevel === 4 ? '秘密' : '绝密'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="切片规则">
+                    段长 {chunkConfig.chunkSize}，重叠 {chunkConfig.overlapRatio}%
+                  </Descriptions.Item>
+                  <Descriptions.Item label="向量模型">
+                    {EMBEDDING_MODEL}（{EMBEDDING_DIM} 维）
                   </Descriptions.Item>
                   <Descriptions.Item label="状态">
                     <Tag color="success" icon={<CheckCircleFilled />}>
@@ -957,16 +918,32 @@ export default function UploadPage() {
                     </Tag>
                   </Descriptions.Item>
                   <Descriptions.Item label="可检索时间">
-                    <Text type="success">约 5 分钟内（当前 4.8s）</Text>
+                    <Text type="success">
+                      {elapsedSeconds != null
+                        ? `约 ${Math.ceil(elapsedSeconds / 60)} 分钟内`
+                        : '待确认'}
+                    </Text>
                   </Descriptions.Item>
                 </Descriptions>
 
                 <Divider />
 
                 <Space>
-                  <Button type="primary">查看文档详情</Button>
-                  <Button>继续上传</Button>
-                  <Button>进入知识问答</Button>
+                  <Button type="primary" onClick={() => router.push(`/documents/${docId}`)}>
+                    查看文档详情
+                  </Button>
+                  <Button onClick={() => {
+                    setCurrentStep(0);
+                    setFileList([]);
+                    setUploadProgress([...MOCK_PIPELINE_STEPS]);
+                    setIsProcessing(false);
+                    setElapsedSeconds(null);
+                  }}>
+                    继续上传
+                  </Button>
+                  <Button onClick={() => router.push('/rag')}>
+                    进入知识问答
+                  </Button>
                 </Space>
               </Card>
             )}
@@ -977,7 +954,6 @@ export default function UploadPage() {
           </div>
         )}
       </Card>
-      </Content>
-    </Layout>
+    </AppLayout>
   );
 }

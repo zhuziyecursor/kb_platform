@@ -1,0 +1,57 @@
+server:
+  port: ${SERVER_PORT:31002}
+
+spring:
+  application:
+    name: vector-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:25432/kb_knowledge}
+    username: ${DB_USERNAME:kb_vector}
+    password: ${DB_PASSWORD:kb_vector}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: kb_knowledge
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      group-id: vector-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 32
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.value.default.type: com.kb.vector.dto.EmbedTaskMessage
+    listener:
+      type: batch
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080/auth}
+
+app:
+  kafka:
+    embed-task-topic: ${EMBED_TASK_TOPIC:embed-task}
+
+milvus:
+  host: ${MILVUS_HOST:localhost}
+  port: ${MILVUS_PORT:19530}
+  collection-name: ${MILVUS_COLLECTION:kb_documents}
+  batch-size: 32
+
+logging:
+  level:
+    com.kb.vector: DEBUG

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { ConfigProvider, App } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
 import React from "react";
+import ThemeProvider from "@/components/ThemeProvider";
+import './globals.css';
 
 export const metadata: Metadata = {
   title: "企业AI知识库管理门户",
@@ -15,12 +15,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body style={{ margin: 0, padding: 0, backgroundColor: '#f0f2f5' }}>
-        <ConfigProvider locale={zhCN}>
-          <App>
-            {children}
-          </App>
-        </ConfigProvider>
+      <body>
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -15,7 +15,9 @@ import {
   Descriptions,
   Tag,
 } from 'antd';
+import { CloudUploadOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
+import AppLayout from '@/components/AppLayout';
 import { getSpace, updateSpace } from '@/api/knowledge-space';
 import type { KnowledgeSpace } from '@/types';
 
@@ -82,7 +84,7 @@ export default function SpaceDetailPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
+    <AppLayout>
       <Card
         title={
           <Space>
@@ -99,9 +101,17 @@ export default function SpaceDetailPage() {
                 </Button>
               </>
             ) : (
-              <Button type="primary" onClick={() => setIsEditing(true)}>
-                编辑
-              </Button>
+              <>
+                <Button onClick={() => router.push(`/documents/list?spaceId=${spaceId}`)}>
+                  查看文档
+                </Button>
+                <Button icon={<CloudUploadOutlined />} onClick={() => router.push('/documents/upload')}>
+                  上传文档
+                </Button>
+                <Button type="primary" onClick={() => setIsEditing(true)}>
+                  编辑
+                </Button>
+              </>
             )}
           </Space>
         }
@@ -173,6 +183,6 @@ export default function SpaceDetailPage() {
           </Form>
         )}
       </Card>
-    </div>
+    </AppLayout>
   );
 }

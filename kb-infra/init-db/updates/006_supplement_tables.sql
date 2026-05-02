@@ -51,7 +51,7 @@ CREATE TABLE kb_knowledge.embed_task (
     doc_id          VARCHAR(128) NOT NULL,
     version         INT         NOT NULL,
     chunk_seq       INT         NOT NULL,
-    text_hash       CHAR(64)    NOT NULL,  -- 用于幂等性校验
+    text_hash       VARCHAR(64) NOT NULL,  -- 用于幂等性校验
     title           VARCHAR(256),
     section_path    VARCHAR(256),
     page            INT,

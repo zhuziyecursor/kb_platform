@@ -31,6 +31,7 @@ export interface InitUploadRequest {
   ownerUid: string;
   deptId: string;
   knowledgeSpaceId: string;
+  labelTags?: string;
   chunkConfig: {
     useSpaceConfig: boolean;
     chunkSize: number;
@@ -96,7 +97,7 @@ export const initUpload = (request: InitUploadRequest): Promise<InitUploadRespon
  * Verify that file was successfully uploaded to MinIO via presigned URL
  */
 export const verifyUpload = (docId: string, version: number): Promise<VerifyUploadResponse> => {
-  return httpClient.post<VerifyUploadResponse>(`/kb/v1/docs/${docId}/verify-upload`, { version }).then(res => res.data);
+  return httpClient.post<VerifyUploadResponse>(`/kb/v1/docs/${docId}/verify-upload`, null, { params: { version } }).then(res => res.data);
 };
 
 /**
@@ -121,16 +122,55 @@ export const getDocStatus = (docId: string, version: number): Promise<DocStatusR
 };
 
 /**
+ * Upload file through backend proxy (replaces browser direct upload to MinIO)
+ */
+export const uploadFile = (docId: string, version: number, file: File): Promise<{ docId: string; success: boolean; message: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return httpClient.post(`/kb/v1/docs/${docId}/upload`, formData, {
+    params: { version },
+    // 不手动设置 Content-Type，浏览器/axios 自动带正确的 boundary
+  }).then(res => res.data);
+};
+
+/**
  * List documents with optional space filter
  */
 export const listDocs = (spaceId?: string): Promise<DocListResponse> => {
   return httpClient.get<DocListResponse>('/kb/v1/docs', { params: { spaceId } }).then(res => res.data);
 };
 
+/**
+ * Get document file for preview/download (returns blob)
+ */
+export const getDocFile = (docId: string, version: number = 1): Promise<Blob> => {
+  return httpClient.get(`/kb/v1/docs/${docId}/download`, {
+    params: { version },
+    responseType: 'blob',
+  }).then(res => res.data);
+};
+
+/**
+ * Delete a document (deletes from MinIO and database)
+ */
+export const deleteDoc = (docId: string, version: number = 1): Promise<void> => {
+  return httpClient.delete(`/kb/v1/docs/${docId}`, { params: { version } }).then(res => res.data);
+};
+
 export interface DocListResponse {
   docs: DocSummary[];
   total: number;
 }
+
+export interface DocFileResponse {
+  resource: Blob;
+  contentType: string;
+  previewType: string;
+  filename: string;
+}
+
+export const getDoc = (docId: string): Promise<DocSummary | null> =>
+  listDocs().then(res => res.docs.find(d => d.docId === docId) ?? null);
 
 export interface DocSummary {
   docId: string;

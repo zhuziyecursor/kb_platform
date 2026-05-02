@@ -1,0 +1,260 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* ── Light Palette ── */
+  --color-primary: #475569;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #64748B;
+  --color-accent: #2563EB;
+  --color-background: #F8FAFC;
+  --color-foreground: #1E293B;
+  --color-muted: #EAEFF3;
+  --color-border: #E2E8F0;
+  --color-destructive: #DC2626;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #FFFFFF;
+
+  /* ── Semantic ── */
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-info: #2563EB;
+
+  /* ── Typography ── */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.9375rem;
+  --font-size-lg: 1.0625rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.6;
+  --line-height-relaxed: 1.75;
+
+  /* ── Spacing (4px base) ── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ── Border Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  /* ── Shadows (Swiss-inspired, sharp-tapered) ── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+
+  /* ── Transitions ── */
+  --transition-fast: 200ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+
+  /* ── Layout ── */
+  --sidebar-width: 200px;
+  --sidebar-collapsed: 64px;
+  --content-max-width: 1440px;
+
+  /* ── Breakpoints (informational) ── */
+  --bp-sm: 375px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1440px;
+}
+
+/* ── Dark Mode Overrides ── */
+[data-theme='dark'] {
+  --color-primary: #64748B;
+  --color-on-primary: #0F172A;
+  --color-secondary: #94A3B8;
+  --color-accent: #3B82F6;
+  --color-background: #0F172A;
+  --color-foreground: #E2E8F0;
+  --color-muted: #1E293B;
+  --color-border: #334155;
+  --color-destructive: #EF4444;
+  --color-surface: #1E293B;
+  --color-surface-raised: #1E293B;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Base Elements ── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-background);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  color: var(--color-foreground);
+  line-height: var(--line-height-normal);
+  min-height: 100vh;
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-secondary);
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Card Hover (replaces JS DOM manipulation) ── */
+.hover-card {
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  cursor: pointer;
+}
+
+.hover-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* ── Navigation Items (replaces inline sidebar styles) ── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--color-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.nav-item:hover {
+  color: var(--color-accent);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.nav-item--active {
+  color: var(--color-accent);
+  background: rgba(37, 99, 235, 0.08);
+  font-weight: 600;
+  border-left: 3px solid var(--color-accent);
+  padding-left: 9px;
+}
+
+.nav-item--collapsed {
+  justify-content: center;
+  padding: 12px 0;
+  margin: 0 8px 4px;
+  border-left: none;
+}
+
+.nav-item--active.nav-item--collapsed {
+  border-left: none;
+  border-right: 3px solid var(--color-accent);
+  padding-right: 9px;
+}
+
+/* ── Sider Overrides ── */
+.app-sider {
+  background: var(--color-surface) !important;
+  border-right: 1px solid var(--color-border) !important;
+}
+
+[data-theme='dark'] .app-sider {
+  background: var(--color-surface) !important;
+}
+
+/* ── Content Area ── */
+.app-content {
+  transition: margin-left var(--transition-base);
+}
+
+/* ── Quick Link ── */
+.quick-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.quick-link:hover {
+  color: var(--color-primary);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .app-content {
+    padding: var(--space-4) !important;
+  }
+}
+
+@media (max-width: 375px) {
+  .app-content {
+    padding: var(--space-3) !important;
+  }
+}

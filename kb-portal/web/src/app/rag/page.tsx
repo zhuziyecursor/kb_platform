@@ -12,7 +12,6 @@ import {
   Tag,
   Spin,
   message,
-  Divider,
   Collapse,
   Tooltip,
 } from 'antd';
@@ -22,18 +21,17 @@ import {
   SendOutlined,
   BookOutlined,
   CopyOutlined,
-  CheckCircleOutlined,
   HistoryOutlined,
 } from '@ant-design/icons';
 import type { ChatMessage, Citation } from '@/types';
 import CommandBar from '@/components/LUI/CommandBar';
+import AppLayout from '@/components/AppLayout';
 import type { LUIAction } from '@/types';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
-// ============== Mock Citations ==============
 const MOCK_CITATIONS: Citation[] = [
   {
     docId: 'DOC20260401001',
@@ -71,12 +69,9 @@ export default function RAGPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showCitations, setShowCitations] = useState(false);
-  const [lastCitations, setLastCitations] = useState<Citation[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // LUI Action Handler
   const handleLUIAction = useCallback((action: LUIAction) => {
     if (action.type === 'NAVIGATE' && action.payload.path === '/rag') {
       message.success('已导航到知识问答页面');
@@ -107,9 +102,7 @@ export default function RAGPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-    setShowCitations(false);
 
-    // 模拟 RAG 处理延迟
     await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
 
     const assistantMessage: ChatMessage = {
@@ -122,8 +115,6 @@ export default function RAGPage() {
     };
 
     setMessages((prev) => [...prev, assistantMessage]);
-    setLastCitations(MOCK_CITATIONS);
-    setShowCitations(true);
     setIsLoading(false);
   }, [input]);
 
@@ -134,288 +125,209 @@ export default function RAGPage() {
   };
 
   return (
-    <div style={{ padding: 24, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <AppLayout contentStyle={{ padding: 0, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <CommandBar onAction={handleLUIAction} />
 
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ padding: '20px 32px 0', flexShrink: 0 }}>
         <Space>
-          <RobotOutlined style={{ fontSize: 22, color: '#722ed1' }} />
+          <RobotOutlined style={{ fontSize: 20, color: 'var(--color-primary)' }} />
           <Title level={4} style={{ margin: 0 }}>知识问答</Title>
           <Tag color="purple">RAG + LLM</Tag>
         </Space>
-        <Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
-          基于知识库文档，返回带引用的可信答案。
-        </Paragraph>
+        <Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 2 }}>
+          基于知识库文档，返回带引用的可信答案
+        </Text>
       </div>
 
-      {/* 聊天区域 */}
-      <Card
-        style={{
-          flex: 1,
-          borderRadius: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-        styles={{
-          body: {
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            padding: 0,
-            overflow: 'hidden',
-          },
-        }}
-      >
-        {/* 消息列表 */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '20px 24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-          }}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 32px', minHeight: 0, overflow: 'hidden' }}>
+        <Card
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRadius: 12, overflow: 'hidden', minHeight: 0 }}
+          styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' } }}
         >
-          {messages.length === 0 && !isLoading && (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 16,
-                color: '#d9d9d9',
-              }}
-            >
-              <RobotOutlined style={{ fontSize: 48 }} />
-              <Text type="secondary">开始提问吧，例如："采购合同审批流程是什么？"</Text>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 480 }}>
-                {['采购合同审批流程', '信息安全制度有哪些', '绩效考核如何计算'].map((q) => (
-                  <Tag
-                    key={q}
-                    onClick={() => setInput(q)}
-                    style={{ cursor: 'pointer' }}
-                    color="processing"
-                  >
-                    {q}
-                  </Tag>
-                ))}
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }} role="log">
+            {messages.length === 0 && !isLoading && (
+              <div style={{
+                flex: 1, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 12,
+              }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: 'var(--color-muted)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <RobotOutlined style={{ fontSize: 28, color: 'var(--color-primary)' }} />
+                </div>
+                <Text style={{ color: 'var(--color-secondary)', fontSize: 14 }}>
+                  开始提问吧，例如：
+                </Text>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {['采购合同审批流程', '信息安全制度有哪些', '绩效考核如何计算'].map((q) => (
+                    <Tag key={q} onClick={() => setInput(q)} style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }} color="processing">
+                      {q}
+                    </Tag>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {messages.map((msg) => (
-            <div key={msg.id}>
-              <Space align="start" style={{ marginBottom: 8 }}>
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+                }}
+              >
                 <Avatar
                   icon={msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
                   style={{
-                    background: msg.role === 'user' ? '#1677ff' : '#722ed1',
+                    background: msg.role === 'user' ? 'var(--color-accent)' : 'var(--color-primary)',
                     flexShrink: 0,
                   }}
                 />
-                <div style={{ flex: 1 }}>
-                  <Space>
-                    <Text strong>{msg.role === 'user' ? '你' : '知识库助手'}</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {dayjs(msg.timestamp).format('HH:mm:ss')}
+                <div style={{ maxWidth: '75%', minWidth: 0 }}>
+                  <div style={{ marginBottom: 4, display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <Text strong style={{ fontSize: 13 }}>
+                      {msg.role === 'user' ? '你' : '知识库助手'}
                     </Text>
-                  </Space>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {dayjs(msg.timestamp).format('HH:mm')}
+                    </Text>
+                  </div>
 
-                  {/* 消息内容 */}
-                  <div
-                    style={{
-                      marginTop: 6,
-                      padding: '10px 14px',
-                      background: msg.role === 'user' ? '#1677ff' : '#fafafa',
-                      color: msg.role === 'user' ? '#fff' : 'inherit',
-                      borderRadius: 8,
-                      maxWidth: '85%',
-                    }}
-                  >
-                    <pre
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        fontFamily: 'inherit',
-                        margin: 0,
-                        fontSize: 14,
-                        lineHeight: 1.7,
-                      }}
-                    >
+                  <div style={{
+                    padding: '12px 16px',
+                    background: msg.role === 'user' ? 'var(--color-accent)' : 'var(--color-muted)',
+                    color: msg.role === 'user' ? '#fff' : 'var(--color-foreground)',
+                    borderRadius: msg.role === 'user' ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+                    lineHeight: 1.75,
+                    fontSize: 14,
+                  }}>
+                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', margin: 0 }}>
                       {msg.content}
                     </pre>
                   </div>
 
-                  {/* 引用展示 */}
                   {msg.citations && msg.citations.length > 0 && (
                     <div style={{ marginTop: 10 }}>
                       <Collapse
                         ghost
                         size="small"
-                        items={[
-                          {
-                            key: '1',
-                            label: (
-                              <Space>
-                                <BookOutlined />
-                                <Text type="secondary" style={{ fontSize: 12 }}>
-                                  引用来源 ({msg.citations!.length} 篇)
+                        items={[{
+                          key: '1',
+                          label: (
+                            <Space size={4}>
+                              <BookOutlined style={{ fontSize: 12 }} />
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {msg.citations.length} 篇引用来源
+                              </Text>
+                              {msg.traceId && (
+                                <Text type="secondary" style={{ fontSize: 10 }} code>
+                                  {msg.traceId}
                                 </Text>
-                                {msg.traceId && (
-                                  <Text type="secondary" style={{ fontSize: 10 }}>
-                                    trace_id: {msg.traceId}
-                                  </Text>
-                                )}
-                              </Space>
-                            ),
-                            children: (
-                              <List
-                                size="small"
-                                dataSource={msg.citations}
-                                renderItem={(cite, index) => (
-                                  <List.Item
-                                    style={{
-                                      padding: '8px 0',
-                                      borderBottom:
-                                        index < msg.citations!.length - 1
-                                        ? '1px dashed #f0f0f0'
-                                        : 'none',
-                                    }}
-                                  >
-                                    <div style={{ width: '100%' }}>
-                                      <Space style={{ marginBottom: 4 }}>
-                                        <Tag color="blue">{index + 1}</Tag>
-                                        <Text strong style={{ fontSize: 13 }}>
-                                          {cite.title}
-                                        </Text>
-                                        <Tag style={{ fontSize: 10 }}>
-                                          v{cite.version}
-                                        </Tag>
-                                        <Text type="secondary" style={{ fontSize: 11 }}>
-                                          第{cite.page}页 · {cite.sectionPath}
-                                        </Text>
-                                        <Tag color="green" style={{ fontSize: 10 }}>
-                                          相似度 {(cite.score * 100).toFixed(0)}%
-                                        </Tag>
-                                        <Tooltip title="复制引用文本">
-                                          <Button
-                                            type="text"
-                                            size="small"
-                                            icon={<CopyOutlined />}
-                                            onClick={() => copyToClipboard(cite.text)}
-                                          />
-                                        </Tooltip>
-                                      </Space>
-                                      <Paragraph
-                                        type="secondary"
-                                        style={{
-                                          margin: 0,
-                                          fontSize: 12,
-                                          padding: '6px 8px',
-                                          background: '#f5f5f5',
-                                          borderRadius: 4,
-                                          borderLeft: '3px solid #1677ff',
-                                        }}
-                                      >
-                                        {cite.text}
-                                      </Paragraph>
-                                    </div>
-                                  </List.Item>
-                                )}
-                              />
-                            ),
-                          },
-                        ]}
+                              )}
+                            </Space>
+                          ),
+                          children: (
+                            <List
+                              size="small"
+                              dataSource={msg.citations}
+                              renderItem={(cite, index) => (
+                                <List.Item style={{ padding: '10px 0', borderBottom: index < msg.citations!.length - 1 ? '1px dashed var(--color-border)' : 'none' }}>
+                                  <div style={{ width: '100%' }}>
+                                    <Space size={4} style={{ marginBottom: 6 }} wrap>
+                                      <Tag color="blue" style={{ fontSize: 11 }}>#{index + 1}</Tag>
+                                      <Text strong style={{ fontSize: 13 }}>{cite.title}</Text>
+                                      <Text type="secondary" style={{ fontSize: 11 }}>
+                                        v{cite.version} · 第{cite.page}页 · {cite.sectionPath}
+                                      </Text>
+                                      <Tag color="green" style={{ fontSize: 10 }}>
+                                        {(cite.score * 100).toFixed(0)}%
+                                      </Tag>
+                                      <Tooltip title="复制引用文本">
+                                        <Button type="text" size="small" icon={<CopyOutlined style={{ fontSize: 12 }} />} onClick={() => copyToClipboard(cite.text)} />
+                                      </Tooltip>
+                                    </Space>
+                                    <Paragraph
+                                      type="secondary"
+                                      style={{
+                                        margin: 0, fontSize: 12, padding: '8px 10px',
+                                        background: 'var(--color-muted)', borderRadius: 6,
+                                        borderLeft: '3px solid var(--color-accent)',
+                                      }}
+                                    >
+                                      {cite.text}
+                                    </Paragraph>
+                                  </div>
+                                </List.Item>
+                              )}
+                            />
+                          ),
+                        }]}
                       />
                     </div>
                   )}
                 </div>
-              </Space>
-            </div>
-          ))}
-
-          {isLoading && (
-            <Space align="start">
-              <Avatar icon={<RobotOutlined />} style={{ background: '#722ed1' }} />
-              <div
-                style={{
-                  padding: '12px 14px',
-                  background: '#fafafa',
-                  borderRadius: 8,
-                  maxWidth: '70%',
-                }}
-              >
-                <Spin size="small" />{' '}
-                <Text type="secondary" style={{ fontSize: 13, marginLeft: 8 }}>
-                  正在检索知识库并生成答案...
-                </Text>
               </div>
-            </Space>
-          )}
+            ))}
 
-          <div ref={messagesEndRef} />
-        </div>
+            {isLoading && (
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Avatar icon={<RobotOutlined />} style={{ background: 'var(--color-primary)', flexShrink: 0 }} />
+                <div style={{ padding: '12px 16px', background: 'var(--color-muted)', borderRadius: '4px 16px 16px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Spin size="small" />
+                  <Text type="secondary" style={{ fontSize: 13 }}>正在检索知识库并生成答案...</Text>
+                </div>
+              </div>
+            )}
 
-        {/* 输入区域 */}
-        <div
-          style={{
-            borderTop: '1px solid #f0f0f0',
-            padding: '16px 24px',
-            background: '#fff',
-          }}
-        >
-          <Space.Compact style={{ width: '100%' }}>
-            <TextArea
-              ref={inputRef as React.RefObject<any>}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="输入你的问题... (Shift+Enter 换行，Enter 发送)"
-              autoSize={{ minRows: 1, maxRows: 4 }}
-              style={{ flex: 1 }}
-            />
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              onClick={handleSend}
-              loading={isLoading}
-              disabled={!input.trim()}
-              style={{ height: 'auto', minHeight: 36 }}
-            >
-              发送
-            </Button>
-          </Space.Compact>
-
-          <div
-            style={{
-              marginTop: 8,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Space>
-              <HistoryOutlined />
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                {messages.length > 0 ? `${messages.length} 条对话` : '新对话'}
-              </Text>
-            </Space>
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              💡 回答基于知识库文档，带有引用标注，点击可查看来源
-            </Text>
+            <div ref={messagesEndRef} />
           </div>
-        </div>
-      </Card>
-    </div>
+
+          {/* Input */}
+          <div style={{ borderTop: '1px solid var(--color-border)', padding: '16px 24px', background: 'var(--color-surface)', flexShrink: 0 }}>
+            <Space.Compact style={{ width: '100%' }}>
+              <TextArea
+                ref={inputRef as React.RefObject<any>}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPressEnter={(e) => {
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="输入你的问题... (Shift+Enter 换行，Enter 发送)"
+                autoSize={{ minRows: 1, maxRows: 4 }}
+                style={{ borderRadius: '8px 0 0 8px' }}
+              />
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={handleSend}
+                loading={isLoading}
+                disabled={!input.trim()}
+                style={{ height: 'auto', minHeight: 36, borderRadius: '0 8px 8px 0' }}
+              >
+                发送
+              </Button>
+            </Space.Compact>
+            <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Space size={4}>
+                <HistoryOutlined style={{ fontSize: 12, color: 'var(--color-secondary)' }} />
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {messages.length > 0 ? `${messages.length} 条对话` : '新对话'}
+                </Text>
+              </Space>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                回答基于知识库文档，带有引用标注
+              </Text>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </AppLayout>
   );
 }

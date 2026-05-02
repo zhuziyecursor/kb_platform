@@ -19,6 +19,8 @@ public interface KnowledgeDocRepository extends JpaRepository<KnowledgeDoc, Long
 
     Optional<KnowledgeDoc> findByTenantIdAndSha256(String tenantId, String sha256);
 
+    Optional<KnowledgeDoc> findByTenantIdAndSha256AndCreateTime(String tenantId, String sha256, java.time.LocalDateTime createTime);
+
     @Query("SELECT d FROM KnowledgeDoc d WHERE d.tenantId = :tenantId AND d.docId = :docId ORDER BY d.version DESC")
     List<KnowledgeDoc> findVersionsByDocId(@Param("tenantId") String tenantId, @Param("docId") String docId);
 

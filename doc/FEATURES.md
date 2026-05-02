@@ -23,11 +23,13 @@
 
 ---
 
-## Sprint 1 — 认证基础
+## Sprint 1 — 基础设施
 
 | 功能 | 状态 | 完成时间 | 备注 |
 |-----|------|---------|------|
-| kb-infra Docker Compose 基础设施 | 📋 计划中 | - | PG/Redis/MinIO/Kafka/Milvus |
+| kb-infra Docker Compose（PG/Redis/MinIO/Kafka/Milvus） | ✅ 已完成 | 2026-04-27 | 全部容器化，端口规范 |
+| kb-infra init-db 建表脚本 | ✅ 已完成 | 2026-04-27 | 004~007，含 knowledge_doc/knowledge_space/doc_acl/embed_task 等 |
+| kb-infra init-db 服务用户授权 | ✅ 已完成 | 2026-04-27 | 6个DB用户精确授权隔离 |
 | auth-adapter OIDC 登录端点 | 📋 计划中 | - | OIDC 标准端点 |
 | auth-adapter OBO Token Exchange | 📋 计划中 | - | RFC 8693，桥接 BladeX |
 | kb-gateway JWT 校验 Filter | 📋 计划中 | - | iss/aud/scope/tenant 校验 |
@@ -41,16 +43,23 @@
 
 | 功能 | 状态 | 完成时间 | 备注 |
 |-----|------|---------|------|
-| ingest-service init-upload 接口 | ✅ 已完成 | 2026-04-28 | MinIO presigned URL |
-| ingest-service verify-upload 接口 | ✅ 已完成 | 2026-04-28 | sha256 校验 |
+| ingest-service init-upload 接口 | ✅ 已完成 | 2026-04-28 | MinIO presigned URL，前后端对接完成 |
+| ingest-service verify-upload 接口 | ✅ 已完成 | 2026-04-28 | sha256 校验，前后端对接完成 |
 | ingest-service commit 接口 | ✅ 已完成 | 2026-04-28 | 写 knowledge_doc + doc_acl |
 | ingest-service ingest 接口 | ✅ 已完成 | 2026-04-28 | 发布 file-ingest Kafka 消息 |
 | ingest-service status 查询接口 | ✅ 已完成 | 2026-04-28 | 前端轮询 |
-| kb-doc-processor Kafka Consumer | 📋 计划中 | - | 消费 file-ingest topic |
-| kb-doc-processor TikaParser | 📋 计划中 | - | PDF/Word/PPT/Excel 解析 |
-| kb-doc-processor TextCleaner | 📋 计划中 | - | 编码/特殊字符/HTML/页眉页脚 |
-| kb-doc-processor FixedLengthChunker | 📋 计划中 | - | chunk_size=512, overlap=51 |
-| kb-doc-processor 发布 embed-task 消息 | 📋 计划中 | - | 符合 kafka-schemas 定义 |
+| ingest-service listDocs 接口 | ✅ 已完成 | 2026-04-30 | GET /kb/v1/docs，按 spaceId 过滤 |
+| ingest-service deleteDoc 接口 | ✅ 已完成 | 2026-04-30 | 删除 MinIO 文件 + DB 记录 |
+| ingest-service labelTags 写入支持 | ✅ 已完成 | 2026-04-30 | InitUploadRequest + initUpload builder |
+| kb-doc-processor Kafka Consumer | ✅ 已完成 | 2026-04-29 | 消费 file-ingest topic，手动 commit |
+| kb-doc-processor TikaParser | ✅ 已完成 | 2026-04-29 | 通过 Tika Server HTTP API 解析 PDF/Word/PPT/Excel |
+| kb-doc-processor TextCleaner | ✅ 已完成 | 2026-04-29 | 编码/特殊字符/HTML/页眉页脚/空行压缩 |
+| kb-doc-processor FixedLengthChunker | ✅ 已完成 | 2026-04-29 | HEAD_FIRST/TAIL_FIRST/UNIFORM 三种模式 |
+| kb-doc-processor 发布 embed-task 消息 | ✅ 已完成 | 2026-04-29 | 每个 chunk 一条消息，符合 kafka-schemas 定义 |
+| kb-doc-processor HTTP API | ✅ 已完成 | 2026-04-29 | /api/v1/parse, /clean, /chunk, /process |
+| kb-doc-processor Pipeline 编排 | ✅ 已完成 | 2026-04-29 | parse→clean→chunk→save DB→publish Kafka |
+| Docker Compose Tika Server | ✅ 已完成 | 2026-04-29 | apache/tika:2.9.3.0-full，端口 29998 |
+| kb_processor DB 用户 | ✅ 已完成 | 2026-04-29 | knowledge_clean/structured/embed_task 表权限 |
 
 ### 知识空间（Knowledge Space）
 
@@ -59,8 +68,9 @@
 | knowledge_space 表 | ✅ 已完成 | 2026-04-28 | 见 init-db/updates/007_knowledge_space_tables.sql |
 | knowledge_doc.knowledge_space_id 列 | ✅ 已完成 | 2026-04-28 | 默认 DEFAULT |
 | Space CRUD API | ✅ 已完成 | 2026-04-28 | /kb/v1/spaces（list/get/create/update/delete） |
-| init-upload 支持 knowledgeSpaceId + chunkConfig | 📋 计划中 | - | 见 contracts/openapi |
+| init-upload 支持 knowledgeSpaceId + chunkConfig | ✅ 已完成 | 2026-04-28 | 上传时选择空间 + 切片配置 |
 | file-ingest-message.json 扩展 | ✅ 已完成 | 2026-04-28 | 新增 knowledgeSpaceId + chunkConfig |
+| 空间 → 文档列表导航 | ✅ 已完成 | 2026-04-30 | 点击空间名/详情页按钮跳转过滤视图 |
 
 ---
 
@@ -68,12 +78,13 @@
 
 | 功能 | 状态 | 完成时间 | 备注 |
 |-----|------|---------|------|
-| embedding-service BGE 向量化接口 | 📋 计划中 | - | BGE-zh-v1.5，dim=1024 |
-| vector-service embed-task Kafka 消费 | 📋 计划中 | - | 批量处理 batch_size=32 |
-| vector-service Milvus upsert | 📋 计划中 | - | 含 ACL 预过滤字段 |
-| vector-service 更新 knowledge_version 状态 | 📋 计划中 | - | PROCESSING→READY/FAILED |
-| vector-service 版本软下线（OFFBOARDED） | 📋 计划中 | - | 5分钟后异步删除旧向量 |
-| vector-service 熔断降级 | 📋 计划中 | - | Embedding 5xx>1% 熔断 |
+| embedding-service BGE 向量化接口 | ✅ 已完成 | 2026-04-29 | kb-doc-processor 内嵌调用 BGE HTTP 服务 |
+| vector-service embed-task Kafka 消费 | ✅ 已完成 | 2026-04-29 | batch listener，batch_size=32 |
+| vector-service Milvus upsert | ✅ 已完成 | 2026-04-29 | kb_documents collection，含全部 ACL 预过滤字段 |
+| vector-service 更新 knowledge_version 状态 | ✅ 已完成 | 2026-04-29 | 全部 chunk DONE → READY |
+| vector-service 更新 embed_task 状态 | ✅ 已完成 | 2026-04-29 | PENDING → DONE/FAILED |
+| vector-service 版本软下线（OFFBOARDED） | ⏸ 暂缓（二期） | - | PHASE2 |
+| vector-service 熔断降级 | ⏸ 暂缓（二期） | - | PHASE2 |
 
 ---
 
@@ -90,6 +101,7 @@
 | rag-service Prompt 构造 + citations | 📋 计划中 | - | 返回带引用的答案 |
 | llm-gateway 路由与审计 | 📋 计划中 | - | - |
 | 检索结果 Redis 缓存 | 📋 计划中 | - | key 必须含 perm_group_ids |
+| kb-portal RAG 对话 UI | ✅ 已完成 | 2026-04-30 | 对话气泡 + citations 展开 + mock 数据，待对接真实 API |
 
 ---
 
@@ -97,14 +109,25 @@
 
 | 功能 | 状态 | 完成时间 | 备注 |
 |-----|------|---------|------|
-| kb-portal 文档上传流程 | 📋 计划中 | - | init-upload→直传→verify→commit→ingest |
-| kb-portal 元数据填写界面 | 📋 计划中 | - | docType/bizDomain/regionCode/secLevel/ACL |
-| kb-portal 状态轮询展示 | 📋 计划中 | - | 2s→5s→30s，超时10分钟 |
-| kb-portal 知识问答界面 | 📋 计划中 | - | 展示 answer + citations |
-| kb-portal 知识空间管理页 | ✅ 已完成 | 2026-04-28 | /spaces 列表、/spaces/create、/spaces/[id] |
+| kb-portal 项目脚手架 | ✅ 已完成 | 2026-04-29 | Next.js + Ant Design + TypeScript |
+| kb-portal AppLayout（侧边栏导航） | ✅ 已完成 | 2026-04-29 | 可折叠侧边栏，知识库/空间/文档/问答/设置 |
+| kb-portal 主题系统（ThemeProvider） | ✅ 已完成 | 2026-04-29 | 浅色/深色/随系统，CSS 变量驱动 |
+| kb-portal 登录页面 | ✅ 已完成 | 2026-04-29 | 账号 admin / 密码 admin123 |
+| kb-portal 路由权限控制 | ✅ 已完成 | 2026-04-29 | middleware 保护未登录访问 |
+| kb-portal 文档上传流程 | ✅ 已完成 | 2026-04-28 | init-upload→后端代理上传→verify→commit→ingest |
+| kb-portal 元数据填写界面 | ✅ 已完成 | 2026-04-28 | docType/bizDomain/regionCode/secLevel/labelTags |
 | kb-portal 上传页空间选择器 | ✅ 已完成 | 2026-04-28 | 知识空间选择 + 切片配置 UI |
-| kb-portal 文档列表 Tab 切换 | ✅ 已完成 | 2026-04-28 | 按知识空间分组展示 |
+| kb-portal 状态轮询展示 | ✅ 已完成 | 2026-04-28 | 流水线动画 + 子步骤详情 |
+| kb-portal 文档列表页 | ✅ 已完成 | 2026-04-30 | 按空间 Tab 筛选 + URL ?spaceId=xxx 参数 |
+| kb-portal 文档详情页 | ✅ 已完成 | 2026-04-30 | /documents/[id]，元数据 + 标签 + 文件预览 |
+| kb-portal 文档删除 | ✅ 已完成 | 2026-04-30 | 列表批量/单项删除 + 详情页删除 |
+| kb-portal 文件预览组件 | ✅ 已完成 | 2026-04-30 | pdf/图片在线预览 + 其他格式下载 |
+| kb-portal 知识空间管理页 | ✅ 已完成 | 2026-04-28 | /spaces 列表、创建、详情/编辑、删除 |
+| kb-portal 知识问答界面 | ✅ 已完成 | 2026-04-30 | 对话 UI + citations 引用 + mock 数据 |
+| kb-portal 设置页面 | ✅ 已完成 | 2026-04-30 | /settings，主题/连接/系统信息 |
 | kb-portal Space API 对接 | ✅ 已完成 | 2026-04-28 | 前端 Spaces 页面对接真实 API |
+| kb-portal Docs API 对接 | ✅ 已完成 | 2026-04-30 | 文档列表/详情/删除对接真实 API |
+| kb-portal RAG API 对接 | 📋 计划中 | - | 替换 mock，对接真实 /rag/v1/chat |
 
 ---
 

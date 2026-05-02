@@ -129,6 +129,13 @@
       "type": "integer",
       "description": "创建时间 epoch（毫秒），写入 Milvus create_time 字段",
       "example": 1745760000000
+    },
+    "vector": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 1024,
+      "maxItems": 1024,
+      "description": "BGE-zh-v1.5 向量，dim=1024。由 kb-doc-processor 调用 embedding 服务生成，vector-service 直接写入 Milvus。"
     }
   },
   "additionalProperties": false,
