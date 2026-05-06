@@ -29,6 +29,9 @@ SERVICES_INGEST="ingest|8081|kb-mcp/ingest-service"
 SERVICES_VECTOR="vector|31002|kb-mcp/vector-service"
 SERVICES_DOC="doc-processor|31001|kb-doc-processor"
 SERVICES_PORTAL="portal|3105|kb-portal/web"
+SERVICES_RERANK="rerank|31003|rerank-service"
+SERVICES_LLM="llm-gateway|31004|kb-mcp/llm-gateway"
+SERVICES_RAG="rag|31005|kb-mcp/rag-service"
 
 # -----------------------------------------------------------------------------
 # 通用函数
@@ -209,6 +212,104 @@ restart_doc_processor() {
   start_doc_processor
 }
 
+start_rerank() {
+  local work_dir="$SCRIPT_DIR/rerank-service"
+  local port=31003
+  local pid_file="$work_dir/.dev.pid"
+  local log_file="$work_dir/.dev.log"
+  local venv_python="$work_dir/.venv/bin/python"
+
+  if port_pid $port > /dev/null 2>&1; then
+    log_skip "[rerank] 已在运行 (端口 $port)，跳过"
+    return
+  fi
+
+  log_info "[rerank] 启动 rerank-service (端口 $port)..."
+
+  if [ ! -x "$venv_python" ]; then
+    log_warn "[rerank] venv 未找到，创建中..."
+    python3 -m venv "$work_dir/.venv" 2>/dev/null || python -m venv "$work_dir/.venv" 2>/dev/null || {
+      log_fail "[rerank] 无法创建 venv，请确保 python3 -m venv 可用"
+      return
+    }
+    "$work_dir/.venv/bin/pip" install -e "$work_dir" 2>/dev/null || true
+  fi
+
+  cd "$work_dir"
+  nohup .venv/bin/python -m src.main > "$log_file" 2>&1 &
+  echo $! > "$pid_file"
+  cd "$SCRIPT_DIR"
+
+  if wait_for_port $port "rerank" 60 3; then
+    log_ok "[rerank] 启动成功 (端口 $port)"
+  else
+    log_fail "[rerank] 启动超时，查看日志: $log_file"
+  fi
+}
+
+restart_rerank() {
+  stop_service "rerank" 31003 "$SCRIPT_DIR/rerank-service/.dev.pid"
+  start_rerank
+}
+
+start_llm_gateway() {
+  local work_dir="$SCRIPT_DIR/kb-mcp/llm-gateway"
+  local port=31004
+  local pid_file="$work_dir/.dev.pid"
+  local log_file="$work_dir/.dev.log"
+
+  if port_pid $port > /dev/null 2>&1; then
+    log_skip "[llm-gateway] 已在运行 (端口 $port)，跳过"
+    return
+  fi
+
+  log_info "[llm-gateway] 启动 llm-gateway (端口 $port)..."
+  cd "$work_dir"
+  nohup mvn spring-boot:run > "$log_file" 2>&1 &
+  echo $! > "$pid_file"
+  cd "$SCRIPT_DIR"
+
+  if wait_for_port $port "llm-gateway" 90 3; then
+    log_ok "[llm-gateway] 启动成功 (端口 $port)"
+  else
+    log_fail "[llm-gateway] 启动超时，查看日志: $log_file"
+  fi
+}
+
+restart_llm_gateway() {
+  stop_service "llm-gateway" 31004 "$SCRIPT_DIR/kb-mcp/llm-gateway/.dev.pid"
+  start_llm_gateway
+}
+
+start_rag() {
+  local work_dir="$SCRIPT_DIR/kb-mcp/rag-service"
+  local port=31005
+  local pid_file="$work_dir/.dev.pid"
+  local log_file="$work_dir/.dev.log"
+
+  if port_pid $port > /dev/null 2>&1; then
+    log_skip "[rag] 已在运行 (端口 $port)，跳过"
+    return
+  fi
+
+  log_info "[rag] 启动 rag-service (端口 $port)..."
+  cd "$work_dir"
+  nohup mvn spring-boot:run > "$log_file" 2>&1 &
+  echo $! > "$pid_file"
+  cd "$SCRIPT_DIR"
+
+  if wait_for_port $port "rag" 90 3; then
+    log_ok "[rag] 启动成功 (端口 $port)"
+  else
+    log_fail "[rag] 启动超时，查看日志: $log_file"
+  fi
+}
+
+restart_rag() {
+  stop_service "rag" 31005 "$SCRIPT_DIR/kb-mcp/rag-service/.dev.pid"
+  start_rag
+}
+
 start_portal() {
   local work_dir="$SCRIPT_DIR/kb-portal/web"
   local port=3105
@@ -262,6 +363,9 @@ check_status() {
   check_one "ingest"        8081
   check_one "vector"        31002
   check_one "doc-processor" 31001
+  check_one "rerank"        31003
+  check_one "llm-gateway"   31004
+  check_one "rag"           31005
   check_one "portal"        3105
 
   echo ""
@@ -312,6 +416,12 @@ restart_all() {
   echo ""
   restart_doc_processor
   echo ""
+  restart_rerank
+  echo ""
+  restart_llm_gateway
+  echo ""
+  restart_rag
+  echo ""
   restart_portal
   echo ""
 
@@ -339,6 +449,15 @@ case "${1:-}" in
   doc-processor|docproc|processor)
     restart_doc_processor
     ;;
+  rerank)
+    restart_rerank
+    ;;
+  llm-gateway|llm)
+    restart_llm_gateway
+    ;;
+  rag)
+    restart_rag
+    ;;
   portal)
     restart_portal
     ;;
@@ -350,6 +469,9 @@ case "${1:-}" in
     echo "ingest       只重启 ingest-service"
     echo "vector       只重启 vector-service"
     echo "doc-processor 只重启 kb-doc-processor"
+    echo "rerank       只重启 rerank-service (BGE-Reranker)"
+    echo "llm-gateway  只重启 llm-gateway (LLM 网关)"
+    echo "rag          只重启 rag-service (RAG 检索服务)"
     echo "portal       只重启 kb-portal 前端"
     echo "--help, -h  显示此帮助"
     echo ""

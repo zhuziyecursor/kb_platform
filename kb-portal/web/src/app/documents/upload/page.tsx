@@ -14,7 +14,7 @@ import {
   Typography,
   Space,
   Tag,
-  message,
+  App,
   Alert,
   Descriptions,
   Divider,
@@ -138,6 +138,7 @@ const MOCK_PIPELINE_STEPS: PipelineStep[] = [
 
 // ============== 页面组件 ==============
 export default function UploadPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [form] = Form.useForm();
   const [currentStep, setCurrentStep] = useState(0); // 0=填写表单 1=上传文件 2=流水线

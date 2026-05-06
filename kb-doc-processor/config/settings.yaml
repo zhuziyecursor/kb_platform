@@ -44,8 +44,8 @@ kb_document_processor:
 
   # Embedding 服务配置
   embedding:
-    # url: "http://192.168.30.47:31296/embeddings"
-    url: "http://193.134.211.121:31296/embeddings"
+    url: "http://192.168.30.47:31296/embeddings"
+    # url: "http://193.134.211.121:31296/embeddings"
     timeout_seconds: 60
     max_retries: 3
     model_name: "BGE-zh-v1.5"

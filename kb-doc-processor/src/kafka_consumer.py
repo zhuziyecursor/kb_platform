@@ -13,6 +13,8 @@ _PERMANENT_ERRORS = (
     "NoSuchKey",
     "UniqueViolation",
     "duplicate key value violates unique constraint",
+    "Expecting value",          # JSON 解析失败 — 消息体为空/损坏，重试无意义
+    "JSONDecodeError",          # 消息体格式错误
 )
 
 

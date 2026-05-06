@@ -46,11 +46,15 @@ GRANT SELECT, UPDATE ON kb_knowledge.knowledge_version TO kb_vector;
 GRANT SELECT, UPDATE ON kb_knowledge.knowledge_doc TO kb_vector;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA kb_knowledge TO kb_vector;
 
+-- 创建 kb_rag 用户（RAG 检索服务，只读）
+CREATE USER kb_rag WITH PASSWORD 'kb_rag';
+GRANT CONNECT ON DATABASE kb_knowledge TO kb_rag;
+
+-- kb_rag 用户的表权限（只读）
+GRANT USAGE ON SCHEMA kb_knowledge TO kb_rag;
+GRANT SELECT ON kb_knowledge.doc_acl TO kb_rag;
+GRANT SELECT ON kb_knowledge.knowledge_version TO kb_rag;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA kb_knowledge TO kb_rag;
+
 -- 创建其他服务用户（占位，待后续实现）
 -- CREATE USER kb_user_svc WITH PASSWORD 'kb_user_svc';
--- CREATE USER kb_rag WITH PASSWORD 'kb_rag';
-
--- 后续服务用户权限示例：
--- kb_vector: embed_task (SELECT, UPDATE), knowledge_version (SELECT, UPDATE status)
--- kb_user_svc: user_context_cache
--- kb_rag: knowledge_doc (SELECT), doc_acl (SELECT) - 只读

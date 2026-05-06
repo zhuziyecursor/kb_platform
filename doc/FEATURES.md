@@ -88,6 +88,41 @@
 | vector-service 更新 embed_task 状态 | ✅ 已完成 | 2026-04-29 | PENDING → DONE/FAILED |
 | vector-service 版本软下线（OFFBOARDED） | ⏸ 暂缓（二期） | - | PHASE2 |
 | vector-service 熔断降级 | ⏸ 暂缓（二期） | - | PHASE2 |
+| kb_documents 标签与语义字段 | 📋 计划中 | - | tags + chunk_type 设计已写入 contracts/milvus/ |
+
+### 标签与语义字段（`kb_documents` Collection 扩展）
+
+> 设计动机：当前向量检索只有 `vector + text + ACL`，缺少两个关键维度：**标签维度**（用户无法按业务标签过滤）和**语义维度**（向量盲区，两段文本词汇重叠但含义不同）。
+
+**新增字段**（定义见 `contracts/milvus/kb_documents_collection.py`）：
+
+| 字段 | 类型 | 优先级 | 检索用途 |
+|------|------|--------|---------|
+| `tags` | `VARCHAR(512)` | **MVP 现在加** | 继承展平标签（文档→章节→分片，最多 9 个），逗号分隔，建 INVERTED 索引 |
+| `chunk_type` | `VARCHAR(32)` | **MVP 现在加** | 段落类型：`definition` / `procedure` / `rule` / `example` / `disclaimer` |
+| `keywords` | `VARCHAR(256)` | 二期 (PHASE2) | 关键词（空格分隔），支持 BM25 混合检索 |
+| `summary` | `VARCHAR(256)` | 三期 (PHASE3) | LLM 单句摘要，rerank 时 query vs summary 比 query vs 原文更准 |
+
+**标签继承展平**（写时解析）：
+```
+文档标签:  ["合规", "金融", "2026"]
+  └─ 章节标签: ["反洗钱", "KYC"]
+       └─ 分片标签: ["大额交易", "报告义务"]
+            → 最终存入 tags: "合规,金融,2026,反洗钱,KYC,大额交易,报告义务"
+```
+
+**`chunk_type` 语义区分**（补偿向量盲区）：
+- `definition` — 概念定义，适合回答「什么是」
+- `procedure` — 操作步骤，适合回答「怎么做」
+- `rule` — 规定/条款，适合回答「什么规定」
+- `example` — 案例/示例
+- `disclaimer` — 免责声明，低信息量，rerank 降权
+
+**涉及改动范围**：
+- `contracts/milvus/kb_documents_collection.py` — Schema 定义（已更新）
+- `kb-doc-processor/src/pipeline.py` — 入库时写入 tags + chunk_type
+- `vector-service` — Milvus upsert 传递新字段
+- `rag-service` — 检索时支持 tags filter + chunk_type 优先级
 
 ---
 
@@ -95,16 +130,17 @@
 
 | 功能 | 状态 | 完成时间 | 备注 |
 |-----|------|---------|------|
-| rag-service query 改写（同义词扩展） | 📋 计划中 | - | - |
-| rag-service 关键词兜底 | 📋 计划中 | - | 精确匹配条款编号/制度名称 |
-| rag-service Milvus 向量检索 Top20 + ACL 预过滤 | 📋 计划中 | - | 必须含全部 ACL filter 字段 |
-| rerank-service BGE-Reranker | 📋 计划中 | - | Top20→Top5 精排 |
-| rag-service ACL 二次校验 | 📋 计划中 | - | 查 doc_acl 表 |
-| rag-service 拒答逻辑 | 📋 计划中 | - | NO_MATCH/NO_PERMISSION/LOW_CONFIDENCE |
-| rag-service Prompt 构造 + citations | 📋 计划中 | - | 返回带引用的答案 |
-| llm-gateway 路由与审计 | 📋 计划中 | - | - |
-| 检索结果 Redis 缓存 | 📋 计划中 | - | key 必须含 perm_group_ids |
-| kb-portal RAG 对话 UI | ✅ 已完成 | 2026-04-30 | 对话气泡 + citations 展开 + mock 数据，待对接真实 API |
+| rag-service query 改写（同义词扩展） | ✅ 已完成 | 2026-05-02 | 中文同义词词典 + 指代消解（规则） |
+| rag-service 关键词兜底 | ✅ 已完成 | 2026-05-02 | 正则匹配条款编号/章节 |
+| rag-service Milvus 向量检索 Top20 + ACL 预过滤 | ✅ 已完成 | 2026-05-02 | 含全部 ACL filter 字段 |
+| rerank-service BGE-Reranker | ✅ 已完成 | 2026-05-02 | Python FastAPI, BAAI/bge-reranker-v2-m3 |
+| rag-service ACL 二次校验 | ✅ 已完成 | 2026-05-02 | 查 doc_acl 表 + knowledge_version |
+| rag-service 拒答逻辑 | ✅ 已完成 | 2026-05-02 | NO_MATCH/NO_PERMISSION/LOW_CONFIDENCE |
+| rag-service Prompt 构造 + citations | ✅ 已完成 | 2026-05-02 | 含会话历史 + 引用标注 |
+| llm-gateway 路由与审计 | ✅ 已完成 | 2026-05-02 | MiniMax abab6.5s-chat, 结构化审计日志 |
+| 检索结果 Redis 缓存 | ✅ 已完成 | 2026-05-02 | key 含 perm_group_ids |
+| rag-service 多轮会话管理 | ✅ 已完成 | 2026-05-02 | Redis session, TTL 30min, 最多 10 轮 |
+| kb-portal RAG 对话 UI | ✅ 已完成 | 2026-04-30 | 对话气泡 + citations 展开 + 真实 API 对接 |
 
 ---
 
@@ -132,7 +168,7 @@
 | kb-portal Docs API 对接 | ✅ 已完成 | 2026-04-30 | 文档列表/详情/删除对接真实 API |
 | kb-portal 分片可视化组件 | ✅ 已完成 | 2026-05-02 | ChunkVisualizer：原文标注+分片列表双视图，交互式导航 |
 | kb-portal 文档详情页「查看分片」 | ✅ 已完成 | 2026-05-02 | READY 状态可查看，对接 kb-doc-processor 分片 API |
-| kb-portal RAG API 对接 | 📋 计划中 | - | 替换 mock，对接真实 /rag/v1/chat |
+| kb-portal RAG API 对接 | ✅ 已完成 | 2026-05-02 | 替换 mock，对接 /rag/v1/chat，含拒答处理 |
 
 ---
 

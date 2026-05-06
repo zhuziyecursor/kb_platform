@@ -10,7 +10,7 @@ import {
   Typography,
   Badge,
   Modal,
-  message,
+  App,
   Popconfirm,
 } from 'antd';
 import {
@@ -40,6 +40,7 @@ const VISIBILITY_MAP: Record<string, { label: string; color: string }> = {
 };
 
 export default function SpaceListPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [spaces, setSpaces] = useState<KnowledgeSpace[]>([]);
   const [loading, setLoading] = useState(false);

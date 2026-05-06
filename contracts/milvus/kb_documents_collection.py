@@ -4,7 +4,7 @@ Milvus Collection 定义脚本：kb_documents
 用途：
   - 存储所有知识文档的向量化 chunks
   - 支持向量相似度检索（HNSW）
-  - 支持 ACL 预过滤（tenant_id, sec_level, perm_group_id, region_code, effective_to）
+  - 支持 ACL 预过滤 + 标签自选过滤（tenant_id, sec_level, perm_group_id, region_code, effective_to）+ tags/chunk_type
 
 执行方式：
   python contracts/milvus/kb_documents_collection.py
@@ -46,8 +46,9 @@ def get_schema() -> CollectionSchema:
     2. 业务标识字段：doc_id, tenant_id, version, chunk_seq
     3. 向量字段：vector
     4. 内容字段：text, title, section_path, page
-    5. ACL 预过滤字段：sec_level, region_code, biz_domain, perm_group_id, effective_from, effective_to
-    6. 元数据字段：owner_uid, acl_version, create_time
+    5. 标签与语义字段：tags, chunk_type（MVP）；keywords, summary（二期/三期）
+    6. ACL 预过滤字段：sec_level, region_code, biz_domain, perm_group_id, effective_from, effective_to
+    7. 元数据字段：owner_uid, acl_version, create_time
     """
     fields = [
         # ── 主键 ────────────────────────────────────────────────────────────────
@@ -114,6 +115,36 @@ def get_schema() -> CollectionSchema:
             name="page",
             dtype=DataType.INT32,
             description="切片所在页码",
+        ),
+
+        # ── 标签与语义字段 ────────────────────────────────────────────────────────
+        # tags 采用继承展平：文档标签 + 章节标签 + 分片标签，逗号分隔，最多 9 个（3×3）
+        # chunk_type 补偿向量盲区：区分 definition / procedure / rule / example / disclaimer
+        # keywords（二期）：关键词提取，支持 BM25 混合检索
+        # summary（三期）：LLM 单句摘要，rerank 时 query vs summary 比 query vs 原文更准
+        FieldSchema(
+            name="tags",
+            dtype=DataType.VARCHAR,
+            max_length=512,
+            description='展平标签（逗号分隔），继承自文档→章节→分片，最多 9 个。检索时 filter：tags like "%keyword%"',
+        ),
+        FieldSchema(
+            name="chunk_type",
+            dtype=DataType.VARCHAR,
+            max_length=32,
+            description="段落类型：definition / procedure / rule / example / disclaimer，补偿纯向量检索的语义盲区",
+        ),
+        FieldSchema(
+            name="keywords",
+            dtype=DataType.VARCHAR,
+            max_length=256,
+            description="[PHASE2] 关键词（空格分隔），由 chunker 自动提取，支持 BM25 混合检索",
+        ),
+        FieldSchema(
+            name="summary",
+            dtype=DataType.VARCHAR,
+            max_length=256,
+            description="[PHASE3] LLM 精修单句摘要，用于 rerank 阶段 query vs summary 提高精度",
         ),
 
         # ── ACL 预过滤字段 ────────────────────────────────────────────────────────
@@ -211,6 +242,7 @@ def get_scalar_index_fields() -> list:
     """
     return [
         "tenant_id",       # 所有查询都有此过滤条件
+        "tags",            # 标签自选过滤（like 查询）
         "sec_level",       # sec_level <= user_sec_level
         "perm_group_id",   # perm_group_id in [...]
         "region_code",     # 地域隔离
@@ -248,11 +280,13 @@ def create_collection(drop_if_exists: bool = False) -> Collection:
     )
 
     # 建标量索引（ACL 预过滤加速）
+    # Milvus 2.4+ 必须显式指定 index_type="INVERTED"，否则 AND 组合过滤表达式会失败
     for field in get_scalar_index_fields():
         print(f"[INFO] 创建标量索引: {field}")
         collection.create_index(
             field_name=field,
             index_name=f"scalar_index_{field}",
+            index_params={"index_type": "INVERTED"},
         )
 
     collection.load()

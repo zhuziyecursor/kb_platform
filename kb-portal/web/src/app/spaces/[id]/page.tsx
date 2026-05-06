@@ -10,7 +10,7 @@ import {
   Button,
   Typography,
   Space,
-  message,
+  App,
   Divider,
   Descriptions,
   Tag,
@@ -35,6 +35,7 @@ const VISIBILITY_MAP: Record<string, { label: string; color: string }> = {
 };
 
 export default function SpaceDetailPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const params = useParams();
   const spaceId = params.id as string;

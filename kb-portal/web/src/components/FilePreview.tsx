@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Modal, Spin, message, Button, Space } from 'antd';
+import { Modal, Spin, App, Button, Space } from 'antd';
 import { DownloadOutlined, ExpandOutlined, FileTextOutlined } from '@ant-design/icons';
 import { getDocFile } from '@/api/http-client';
 
@@ -43,6 +43,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   open,
   onClose,
 }) => {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<PreviewType>('loading');

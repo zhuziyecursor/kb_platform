@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 const httpClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8081',
-  timeout: 10000,
+  baseURL: process.env.NEXT_PUBLIC_GATEWAY_URL || '',
+  timeout: 60000,
 });
 
 // 请求拦截：注入 OBO token，禁止注入自定义用户头
@@ -223,6 +223,47 @@ export interface DocChunksResponse {
  */
 export const getDocChunks = (docId: string, version: number = 1): Promise<DocChunksResponse> => {
   return processorClient.get<DocChunksResponse>(`/api/v1/docs/${docId}/chunks`, { params: { version } }).then(res => res.data);
+};
+
+// ============== RAG Chat API ==============
+
+export interface RagChatRequest {
+  tenantId: string;
+  sessionId?: string;
+  biz?: string;
+  lang?: 'zh' | 'en';
+  query: string;
+  topK?: number;
+}
+
+export interface RagChatResponse {
+  answer: string;
+  citations: Citation[];
+  traceId: string;
+  reason?: 'NO_MATCH' | 'NO_PERMISSION' | 'LOW_CONFIDENCE';
+  sessionId?: string;
+}
+
+export interface Citation {
+  docId: string;
+  chunkSeq: number;
+  title: string;
+  version: number;
+  page: number;
+  sectionPath?: string;
+  regionCode?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  isCurrent: boolean;
+  score: number;
+  text: string;
+}
+
+/**
+ * Send a RAG chat query to the retrieval pipeline
+ */
+export const ragChat = (request: RagChatRequest): Promise<RagChatResponse> => {
+  return httpClient.post<RagChatResponse>('/rag/v1/chat', request).then(res => res.data);
 };
 
 export default httpClient;

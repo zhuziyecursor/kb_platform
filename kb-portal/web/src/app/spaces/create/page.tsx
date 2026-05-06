@@ -10,7 +10,7 @@ import {
   Button,
   Typography,
   Space,
-  message,
+  App,
   Alert,
   Divider,
 } from 'antd';
@@ -21,6 +21,7 @@ import { createSpace } from '@/api/knowledge-space';
 const { Title, Text } = Typography;
 
 export default function CreateSpacePage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);

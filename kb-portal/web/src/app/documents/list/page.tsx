@@ -13,7 +13,6 @@ import {
   Badge,
   Modal,
   App,
-  message,
   Tooltip,
   Descriptions,
   Divider,
@@ -100,7 +99,7 @@ export default function DocumentListPage() {
   const [selectedDoc, setSelectedDoc] = useState<DocSummary | null>(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocSummary | null>(null);
-  const { modal } = App.useApp();
+  const { modal, message } = App.useApp();
 
   // 加载知识空间列表
   useEffect(() => {

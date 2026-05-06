@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, message, Select } from 'antd';
+import { Form, Input, Button, Card, Typography, App, Select } from 'antd';
 import { UserOutlined, LockOutlined, IdcardOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 
@@ -18,6 +18,7 @@ const ROLE_OPTIONS = [
 ];
 
 export default function LoginPage() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 

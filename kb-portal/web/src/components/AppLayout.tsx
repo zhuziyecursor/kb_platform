@@ -16,6 +16,7 @@ import {
   CheckOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTheme } from './ThemeProvider';
 
@@ -118,21 +119,20 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* Brand Header */}
           <div style={{
-            padding: collapsed ? '16px 0' : '20px 16px',
-            borderBottom: '1px solid var(--color-border)',
+            padding: collapsed ? '12px 0' : '16px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'space-between',
             transition: 'padding var(--transition-base)',
-            minHeight: collapsed ? 56 : undefined,
+            minHeight: collapsed ? 52 : undefined,
             flexShrink: 0,
           }}>
             {!collapsed && (
-              <div>
-                <Title level={5} style={{ margin: 0, color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                <Image src="/logo.png" alt="logo" width={28} height={28} style={{ borderRadius: 6, flexShrink: 0 }} />
+                <Title level={5} style={{ margin: 0, color: 'var(--color-foreground)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   企业AI知识库
                 </Title>
-                <Text style={{ fontSize: 11, color: 'var(--color-secondary)' }}>KB Platform</Text>
               </div>
             )}
             <Button
@@ -144,7 +144,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav style={{ flex: 1, padding: collapsed ? '12px 0' : '8px', overflow: 'auto' }}>
+          <nav style={{ flex: 1, padding: collapsed ? '12px 0' : '12px 12px', overflow: 'auto' }}>
             {NAV_ITEMS.map((item) => {
               const active = isActive(item.key);
               const className = [
@@ -175,11 +175,11 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
 
           {/* User Footer */}
           <div style={{
-            borderTop: '1px solid var(--color-border)',
-            padding: collapsed ? '12px 0' : '12px',
-            display: 'flex',
-            justifyContent: 'center',
+            padding: collapsed ? '12px 0' : '12px 12px',
             flexShrink: 0,
+            background: 'var(--color-muted)',
+            margin: 8,
+            borderRadius: 'var(--radius-md)',
           }}>
             <Dropdown menu={{ items: userMenuItems, onClick: handleMenuClick }} placement="topRight" trigger={['click']}>
               <div style={{
@@ -187,19 +187,19 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                 alignItems: 'center',
                 gap: collapsed ? 0 : 10,
                 cursor: 'pointer',
-                padding: collapsed ? 4 : '8px 12px',
-                borderRadius: 'var(--radius-md)',
+                padding: collapsed ? 4 : '6px 8px',
+                borderRadius: 'var(--radius-sm)',
                 transition: 'background var(--transition-fast)',
                 width: collapsed ? undefined : '100%',
               }}>
                 <Avatar
-                  size={collapsed ? 32 : 36}
+                  size={collapsed ? 28 : 32}
                   icon={<UserOutlined />}
-                  style={{ background: 'var(--color-primary)', flexShrink: 0 }}
+                  style={{ background: 'var(--color-accent)', flexShrink: 0 }}
                 />
                 {!collapsed && (
                   <div style={{ overflow: 'hidden', flex: 1 }}>
-                    <Text style={{ fontSize: 13, display: 'block', color: 'var(--color-foreground)' }}>
+                    <Text style={{ fontSize: 13, display: 'block', color: 'var(--color-foreground)', fontWeight: 500 }}>
                       {(typeof window !== 'undefined' && sessionStorage.getItem('username')) || 'admin'}
                     </Text>
                     <Text style={{ fontSize: 11, color: 'var(--color-secondary)' }}>
