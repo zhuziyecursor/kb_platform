@@ -1,0 +1,20 @@
+server:
+  port: ${LLM_GATEWAY_PORT:31004}
+
+spring:
+  application:
+    name: llm-gateway
+
+app:
+  minimax:
+    api-base: ${MINIMAX_API_BASE:https://api.minimax.chat/v1/text/chatcompletion_v2}
+    api-key: ${MINIMAX_API_KEY:}
+    model: ${MINIMAX_MODEL:MiniMax-M2.7}
+    temperature: ${LLM_TEMPERATURE:0.3}
+    max-tokens: ${LLM_MAX_TOKENS:2048}
+    timeout-seconds: ${LLM_TIMEOUT_SECONDS:60}
+    max-retries: ${LLM_MAX_RETRIES:3}
+
+logging:
+  level:
+    com.kb.llm: DEBUG

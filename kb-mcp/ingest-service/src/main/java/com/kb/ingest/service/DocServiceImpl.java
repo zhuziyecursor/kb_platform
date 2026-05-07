@@ -218,6 +218,7 @@ public class DocServiceImpl implements DocService {
         message.put("effectiveFrom", doc.getEffectiveFrom() != null ? doc.getEffectiveFrom().toString() : null);
         message.put("effectiveTo", doc.getEffectiveTo() != null ? doc.getEffectiveTo().toString() : null);
         message.put("knowledgeSpaceId", doc.getKnowledgeSpaceId());
+        message.put("labelTags", doc.getLabelTags() != null ? doc.getLabelTags() : "");
         message.put("chunkConfig", chunkConfig);
         message.put("pageLimit", 30);
         message.put("ocrDisabled", true);
@@ -338,6 +339,21 @@ public class DocServiceImpl implements DocService {
             log.warn("MinIO file not found or delete failed, doc already deleted from DB: {}", srcPath);
         }
         log.info("deleted-doc: docId={}, tenantId={}, version={}", docId, tenantId, version);
+    }
+
+    @Override
+    @Transactional
+    public IngestResponse retryDoc(String tenantId, String docId, Integer version) {
+        KnowledgeDoc doc = findDocOrThrow(tenantId, docId, version);
+
+        if (!"FAILED".equals(doc.getStatus())) {
+            throw new IllegalStateException("只有处理失败(FAILED)的文档才能重试，当前状态: " + doc.getStatus());
+        }
+
+        // 重置为 PENDING，再走 ingest 流程
+        docRepository.updateStatus(tenantId, docId, version, "PENDING");
+
+        return ingest(tenantId, docId, version);
     }
 
     private String getContentType(String filename) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Typography,
@@ -63,6 +63,13 @@ export default function SettingsPage() {
   const [editingModel, setEditingModel] = useState<LLMModelConfig | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<LLMProvider>('minimax');
   const [form] = Form.useForm();
+  const [username, setUsername] = useState('admin');
+  const [roleLabel, setRoleLabel] = useState('管理员');
+
+  useEffect(() => {
+    setUsername(sessionStorage.getItem('username') || 'admin');
+    setRoleLabel(sessionStorage.getItem('roleLabel') || '管理员');
+  }, []);
 
   // 打开添加/编辑弹窗
   const openModal = (model?: LLMModelConfig) => {
@@ -208,14 +215,10 @@ export default function SettingsPage() {
         <Card title={<><UserOutlined /> 个人设置</>}>
           <Descriptions column={1} size="small" labelStyle={{ width: 120 }}>
             <Descriptions.Item label="用户名">
-              <Text strong>
-                {(typeof window !== 'undefined' && sessionStorage.getItem('username')) || 'admin'}
-              </Text>
+              <Text strong>{username}</Text>
             </Descriptions.Item>
             <Descriptions.Item label="角色">
-              <Tag color="blue">
-                {(typeof window !== 'undefined' && sessionStorage.getItem('roleLabel')) || '管理员'}
-              </Tag>
+              <Tag color="blue">{roleLabel}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="登录方式">
               <Tag>OAuth2 / OBO Token</Tag>

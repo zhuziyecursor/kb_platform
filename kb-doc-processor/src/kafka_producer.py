@@ -25,6 +25,7 @@ class FileIngestMessage:
     chunk_config: dict = field(default_factory=dict)
     page_limit: int = 30
     ocr_disabled: bool = True
+    label_tags: str = ""  # 文档级标签，逗号分隔（从 ingest-service InitUploadRequest 传入）
 
     @classmethod
     def from_dict(cls, data: dict) -> "FileIngestMessage":
@@ -47,6 +48,7 @@ class FileIngestMessage:
             chunk_config=data.get("chunkConfig", {}),
             page_limit=data.get("pageLimit", 30),
             ocr_disabled=data.get("ocrDisabled", True),
+            label_tags=data.get("labelTags", ""),
         )
 
 
@@ -72,6 +74,8 @@ class EmbedTaskMessage:
     effective_from: Optional[str]
     effective_to: Optional[str]
     create_time: int
+    tags: str = ""           # 继承展平标签，逗号分隔
+    chunk_type: str = ""     # 段落语义类型
     vector: Optional[list[float]] = None
 
     def to_dict(self) -> dict:
@@ -96,9 +100,11 @@ class EmbedTaskMessage:
             "effectiveFrom": self.effective_from,
             "effectiveTo": self.effective_to,
             "createTime": self.create_time,
+            "tags": self.tags,
+            "chunkType": self.chunk_type,
         }
         if self.vector is not None:
-            data["vector"] = self.vector
+            data["vector"] = {"index": 0, "embedding": self.vector}
         return data
 
 

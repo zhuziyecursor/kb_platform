@@ -53,10 +53,11 @@ class EmbeddingClient:
                 resp.raise_for_status()
                 data = resp.json()
 
-                vectors = data.get("data", [])
-                if not vectors:
+                raw_data = data.get("data", [])
+                if not raw_data:
                     raise ValueError(f"Empty response from embedding service: {data}")
 
+                vectors = [item["embedding"] for item in raw_data]
                 return vectors
 
             except requests.exceptions.RequestException as e:

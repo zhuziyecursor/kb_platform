@@ -70,6 +70,18 @@ public class EmbedTaskMessage {
     @JsonProperty("createTime")
     private Long createTime;
 
+    @JsonProperty("tags")
+    private String tags;
+
+    @JsonProperty("chunkType")
+    private String chunkType;
+
+    @JsonProperty("keywords")
+    private String keywords;
+
+    @JsonProperty("summary")
+    private String summary;
+
     @JsonProperty("vector")
     private VectorData vector;
 

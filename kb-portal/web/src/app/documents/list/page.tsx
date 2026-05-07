@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react';
 import {
   Table,
   Card,
@@ -35,7 +35,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
 import { listSpaces } from '@/api/knowledge-space';
-import { listDocs, deleteDoc, DocSummary } from '@/api/http-client';
+import { listDocs, deleteDoc, retryDoc, getDocStatus, DocSummary } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import FilePreview from '@/components/FilePreview';
 import AppLayout from '@/components/AppLayout';
@@ -47,7 +47,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 const { Text } = Typography;
 
-export default function DocumentListPage() {
+function DocumentListContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlSpaceId = searchParams.get('spaceId');
@@ -63,6 +63,8 @@ export default function DocumentListPage() {
   const [selectedDoc, setSelectedDoc] = useState<DocSummary | null>(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocSummary | null>(null);
+  const [retryingDocIds, setRetryingDocIds] = useState<Set<string>>(new Set());
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const { modal, message } = App.useApp();
 
   // 加载知识空间列表
@@ -89,6 +91,46 @@ export default function DocumentListPage() {
   useEffect(() => {
     fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab);
   }, [activeSpaceTab, fetchDocs]);
+
+  // 对 PENDING/PROCESSING 文档自动轮询状态，终态后停止
+  useEffect(() => {
+    const inProgressDocs = data.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING');
+    if (inProgressDocs.length === 0) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+    if (pollingRef.current) return; // 已在轮询，不重复创建
+
+    pollingRef.current = setInterval(async () => {
+      const updates = await Promise.allSettled(
+        inProgressDocs.map(doc => getDocStatus(doc.docId, doc.version))
+      );
+      let hasChange = false;
+      setData(prev => {
+        const next = prev.map(doc => {
+          const idx = inProgressDocs.findIndex(d => d.docId === doc.docId && d.version === doc.version);
+          if (idx === -1) return doc;
+          const result = updates[idx];
+          if (result.status === 'fulfilled' && result.value.status !== doc.status) {
+            hasChange = true;
+            return { ...doc, status: result.value.status };
+          }
+          return doc;
+        });
+        return hasChange ? next : prev;
+      });
+    }, 4000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [data]);
 
   // 切换知识空间 Tab 时重新加载
   const handleSpaceTabChange = (key: string) => {
@@ -136,8 +178,19 @@ export default function DocumentListPage() {
       modal.confirm({
         title: '确认重试',
         content: `确认重新触发文档「${doc.title}」的入库流程吗？`,
-        onOk() {
-          message.success(`已触发文档 ${doc.docId} 的重试流程`);
+        onOk: async () => {
+          setRetryingDocIds(prev => new Set(prev).add(doc.docId));
+          try {
+            await retryDoc(doc.docId, doc.version);
+            message.success(`已重新触发文档「${doc.title}」的入库流程`);
+            setData(prev => prev.map(d =>
+              d.docId === doc.docId ? { ...d, status: 'PROCESSING' } : d
+            ));
+          } catch {
+            message.error('重试失败，请稍后再试');
+          } finally {
+            setRetryingDocIds(prev => { const s = new Set(prev); s.delete(doc.docId); return s; });
+          }
         },
       });
     }
@@ -270,6 +323,17 @@ export default function DocumentListPage() {
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleMenuClick(record, 'view')}>
             查看
           </Button>
+          {record.status === 'FAILED' && (
+            <Button
+              type="link"
+              size="small"
+              icon={<ReloadOutlined />}
+              loading={retryingDocIds.has(record.docId)}
+              onClick={() => handleMenuClick(record, 'retry')}
+            >
+              重试
+            </Button>
+          )}
           <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
             删除
           </Button>
@@ -514,7 +578,22 @@ export default function DocumentListPage() {
             <Button
               size="small"
               icon={<ReloadOutlined />}
-              onClick={() => message.info('已触发批量重试')}
+              onClick={() => {
+                const failedDocs = data.filter(d => selectedRowKeys.includes(d.docId) && d.status === 'FAILED');
+                if (failedDocs.length === 0) { message.warning('所选文档中没有处于失败状态的文档'); return; }
+                modal.confirm({
+                  title: '批量重试',
+                  content: `确认对 ${failedDocs.length} 个失败文档重新触发入库流程吗？`,
+                  onOk: async () => {
+                    const ids = new Set(failedDocs.map(d => d.docId));
+                    setRetryingDocIds(prev => new Set([...prev, ...ids]));
+                    await Promise.allSettled(failedDocs.map(d => retryDoc(d.docId, d.version)));
+                    setData(prev => prev.map(d => ids.has(d.docId) ? { ...d, status: 'PROCESSING' } : d));
+                    setRetryingDocIds(prev => { const s = new Set(prev); ids.forEach(id => s.delete(id)); return s; });
+                    message.success(`已触发 ${failedDocs.length} 个文档的重试`);
+                  },
+                });
+              }}
             >
               批量重试
             </Button>
@@ -623,5 +702,13 @@ export default function DocumentListPage() {
         />
       )}
     </AppLayout>
+  );
+}
+
+export default function DocumentListPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24, textAlign: 'center' }}>加载中...</div>}>
+      <DocumentListContent />
+    </Suspense>
   );
 }

@@ -43,7 +43,7 @@ export const DOC_STATUS_CONFIG: Record<DocStatusValue, DocStatusConfig> = {
     color: '#1D4ED8',
     bg: 'rgba(29, 78, 216, 0.08)',
     border: 'rgba(29, 78, 216, 0.2)',
-    icon: <SyncOutlined style={{ fontSize: 11 }} />,
+    icon: <SyncOutlined spin style={{ fontSize: 11 }} />,
   },
   READY: {
     label: '已上线',

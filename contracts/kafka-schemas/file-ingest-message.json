@@ -117,10 +117,15 @@
         },
         "chunkMode": {
           "type": "string",
-          "enum": ["HEAD_FIRST", "TAIL_FIRST", "UNIFORM"],
+          "enum": ["HEAD_FIRST", "TAIL_FIRST", "UNIFORM", "SMART", "SMART_LLM"],
           "default": "HEAD_FIRST"
         }
       }
+    },
+    "labelTags": {
+      "type": "string",
+      "description": "文档级标签，逗号分隔，最多 3 个。写入时继承到分片级 tags 字段",
+      "example": "合规,金融,2026"
     },
     "pageLimit": {
       "type": "integer",

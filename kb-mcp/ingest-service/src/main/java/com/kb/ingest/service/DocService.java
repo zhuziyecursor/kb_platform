@@ -21,4 +21,6 @@ public interface DocService {
     UploadResponse uploadFile(String tenantId, String docId, Integer version, byte[] fileData, String filename, String contentType);
 
     void deleteDoc(String tenantId, String docId, Integer version);
+
+    IngestResponse retryDoc(String tenantId, String docId, Integer version);
 }

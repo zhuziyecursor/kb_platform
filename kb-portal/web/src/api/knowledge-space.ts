@@ -1,6 +1,7 @@
 import httpClient from './http-client';
 import type {
   KnowledgeSpace,
+  KnowledgeSpaceTreeNode,
   CreateSpaceRequest,
   UpdateSpaceRequest,
 } from '@/types';
@@ -11,6 +12,14 @@ import type {
 export async function listSpaces(): Promise<KnowledgeSpace[]> {
   const response = await httpClient.get<{ spaces: KnowledgeSpace[] }>('/kb/v1/spaces');
   return response.data.spaces;
+}
+
+/**
+ * 获取知识空间树形结构
+ */
+export async function getSpaceTree(): Promise<KnowledgeSpaceTreeNode[]> {
+  const response = await httpClient.get<KnowledgeSpaceTreeNode[]>('/kb/v1/spaces/tree');
+  return response.data;
 }
 
 /**

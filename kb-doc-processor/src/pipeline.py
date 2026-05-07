@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -20,7 +21,16 @@ from src.cleaner import CleanResult
 
 logger = logging.getLogger(__name__)
 
-EMBED_BATCH_SIZE = 32
+EMBED_BATCH_SIZE = 16
+
+CHUNK_TYPE_RULES = [
+    (r"定义|是指|指的是|指一种|意为|即", "definition"),
+    (r"步骤|流程|操作|点击|输入|执行|运行|构建|部署|安装|配置", "procedure"),
+    (r"如何|怎么做|怎样|怎么", "procedure"),
+    (r"第.*条|第.*章|规定|必须|禁止|不得|应当|应", "rule"),
+    (r"例如|示例|举例|比如|案例", "example"),
+    (r"免责|不承担|不保证|风险提示|注意", "disclaimer"),
+]
 
 
 class Pipeline:
@@ -111,6 +121,13 @@ class Pipeline:
 
         return all_vectors
 
+    @staticmethod
+    def _infer_chunk_type(text: str) -> str:
+        for pattern, ctype in CHUNK_TYPE_RULES:
+            if re.search(pattern, text):
+                return ctype
+        return ""
+
     def _save_results(
         self,
         msg: FileIngestMessage,
@@ -175,6 +192,8 @@ class Pipeline:
                     biz_domain=msg.biz_domain,
                     perm_group_id=1,  # PHASE2: 从 doc_acl 表计算 perm_group_id
                     acl_version=1,
+                    tags=msg.label_tags,  # 一期直接用文档级标签；PHASE2: 合并章节/分片标签展平
+                    chunk_type=Pipeline._infer_chunk_type(chunk.text),
                     status="PENDING",
                     retry_count=0,
                     max_retries=self._config.retry.max_retries,
@@ -224,6 +243,8 @@ class Pipeline:
                 effective_from=msg.effective_from,
                 effective_to=msg.effective_to,
                 create_time=now_ts,
+                tags=msg.label_tags,
+                chunk_type=Pipeline._infer_chunk_type(chunk.text),
                 vector=vector,
             )
             self._producer.send(

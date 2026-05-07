@@ -14,6 +14,7 @@ import {
   UserOutlined,
   BgColorsOutlined,
   CheckOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { key: 'home', icon: <FileTextOutlined />, label: '知识库', path: '/' },
   { key: 'spaces', icon: <FolderOutlined />, label: '知识空间', path: '/spaces/list' },
   { key: 'chat', icon: <RobotOutlined />, label: '知识问答', path: '/rag' },
+  { key: 'extensions', icon: <AppstoreOutlined />, label: '扩展管理', path: '/extensions' },
   { key: 'settings', icon: <SettingOutlined />, label: '设置', path: '/settings' },
 ];
 
@@ -43,6 +45,13 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { themeMode, setThemeMode, resolvedTheme } = useTheme();
+  const [username, setUsername] = useState('admin');
+  const [roleLabel, setRoleLabel] = useState('管理员');
+
+  useEffect(() => {
+    setUsername(sessionStorage.getItem('username') || 'admin');
+    setRoleLabel(sessionStorage.getItem('roleLabel') || '管理员');
+  }, []);
 
   // Auto-collapse on narrow screens
   useEffect(() => {
@@ -200,10 +209,10 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                 {!collapsed && (
                   <div style={{ overflow: 'hidden', flex: 1 }}>
                     <Text style={{ fontSize: 13, display: 'block', color: 'var(--color-foreground)', fontWeight: 500 }}>
-                      {(typeof window !== 'undefined' && sessionStorage.getItem('username')) || 'admin'}
+                      {username}
                     </Text>
                     <Text style={{ fontSize: 11, color: 'var(--color-secondary)' }}>
-                      {(typeof window !== 'undefined' && sessionStorage.getItem('roleLabel')) || '管理员'}
+                      {roleLabel}
                     </Text>
                   </div>
                 )}

@@ -9,6 +9,11 @@ public class SpaceNotEmptyException extends RuntimeException {
         this.spaceId = spaceId;
     }
 
+    public SpaceNotEmptyException(String spaceId, String message) {
+        super(message);
+        this.spaceId = spaceId;
+    }
+
     public String getSpaceId() {
         return spaceId;
     }

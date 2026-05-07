@@ -51,3 +51,22 @@ kb-portal/web/node_modules/
 kb-portal/web/.next/
 kb-portal/web/.env.local
 kb-portal/web/package-lock.json
+
+# Dev runtime files
+*.pid
+.dev.pid
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Temp files
+test.py
+files/
+
+# Model files (downloaded separately)
+*model.safetensors
+*tokenizer.json
+*sentencepiece.bpe.model
+*.h5
+*.pth
+*.bin

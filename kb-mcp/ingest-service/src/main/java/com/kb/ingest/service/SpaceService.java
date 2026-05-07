@@ -17,4 +17,6 @@ public interface SpaceService {
     SpaceResponse updateSpace(String tenantId, String spaceId, UpdateSpaceRequest request);
 
     void deleteSpace(String tenantId, String spaceId);
+
+    List<SpaceResponse.SpaceTreeNode> getSpaceTree(String tenantId);
 }

@@ -1,0 +1,68 @@
+server:
+  port: ${RAG_SERVICE_PORT:31005}
+
+spring:
+  application:
+    name: rag-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:25432/kb_knowledge}
+    username: ${DB_USERNAME:kb_rag}
+    password: ${DB_PASSWORD:kb_rag}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: kb_knowledge
+
+  data:
+    redis:
+      host: ${RAG_REDIS_HOST:localhost}
+      port: ${RAG_REDIS_PORT:26379}
+      password: ${RAG_REDIS_PASSWORD:kb_redis_dev_2026}
+
+app:
+  milvus:
+    host: ${MILVUS_HOST:localhost}
+    port: ${MILVUS_PORT:19530}
+    collection-name: ${MILVUS_COLLECTION:kb_documents}
+
+  embedding:
+    url: ${EMBEDDING_SERVICE_URL:http://193.134.211.121:31296}/embeddings
+    timeout-seconds: 30
+    model-name: BGE-zh-v1.5
+    dim: 1024
+    max-retries: 3
+
+  rerank:
+    url: ${RERANK_SERVICE_URL:http://localhost:31003}/rerank/v1/rerank
+    timeout-seconds: 30
+    max-retries: 3
+
+  llm:
+    url: ${LLM_GATEWAY_URL:http://localhost:31004}/llm/v1/chat/completions
+    timeout-seconds: 60
+    temperature: 0.3
+    max-tokens: 2048
+    model: ${LLM_MODEL:MiniMax-M2.7}
+    max-retries: 2
+
+  cache:
+    ttl-minutes: ${RAG_CACHE_TTL_MINUTES:10}
+
+  session:
+    ttl-seconds: ${RAG_SESSION_TTL_SECONDS:1800}
+    max-turns: ${RAG_MAX_SESSION_TURNS:10}
+
+  refusal:
+    confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.3}
+
+logging:
+  level:
+    com.kb.rag: DEBUG

@@ -34,4 +34,6 @@ public class CreateSpaceRequest {
 
     @Builder.Default
     private String visibility = "TEAM";
+
+    private String parentId;
 }

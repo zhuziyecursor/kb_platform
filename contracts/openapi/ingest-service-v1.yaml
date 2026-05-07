@@ -79,9 +79,33 @@ components:
         overlapRatio: { type: integer }
         chunkMode: { $ref: "#/components/schemas/ChunkMode" }
         visibility: { $ref: "#/components/schemas/SpaceVisibility" }
+        parentId: { type: string, nullable: true, description: "父节点ID，NULL表示根节点" }
+        nodePath: { type: string, description: "物化路径，如 /root_id/child_id/" }
+        depth: { type: integer, description: "层级深度，根节点为0" }
         docCount: { type: integer }
         createTime: { type: string, format: date-time }
         updateTime: { type: string, format: date-time }
+
+    KnowledgeSpaceTreeNode:
+      type: object
+      description: 树形空间节点，包含子节点
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        chunkSize: { type: integer }
+        overlapRatio: { type: integer }
+        chunkMode: { $ref: "#/components/schemas/ChunkMode" }
+        visibility: { $ref: "#/components/schemas/SpaceVisibility" }
+        parentId: { type: string, nullable: true }
+        depth: { type: integer }
+        docCount: { type: integer }
+        createTime: { type: string, format: date-time }
+        updateTime: { type: string, format: date-time }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/KnowledgeSpaceTreeNode" }
 
     DocStatus:
       type: string
@@ -332,6 +356,7 @@ paths:
                 overlapRatio: { type: integer, minimum: 0, maximum: 50, default: 10 }
                 chunkMode:   { $ref: "#/components/schemas/ChunkMode" }
                 visibility:  { $ref: "#/components/schemas/SpaceVisibility" }
+                parentId:    { type: string, description: "父空间ID，不传则创建为根节点" }
       responses:
         "200":
           description: 创建成功
@@ -339,6 +364,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/KnowledgeSpace"
+
+  /spaces/tree:
+    get:
+      summary: 获取知识空间树
+      description: 获取当前租户下所有知识空间的树形层级结构
+      operationId: getSpaceTree
+      security:
+        - oboToken: [kb:read]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/KnowledgeSpaceTreeNode" }
 
   /spaces/{spaceId}:
     get:

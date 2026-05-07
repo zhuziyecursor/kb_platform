@@ -151,6 +151,13 @@ export const getDocFile = (docId: string, version: number = 1): Promise<Blob> =>
 };
 
 /**
+ * Retry a failed document — resets status to PENDING and re-triggers ingestion
+ */
+export const retryDoc = (docId: string, version: number = 1): Promise<IngestResponse> => {
+  return httpClient.post<IngestResponse>(`/kb/v1/docs/${docId}/retry`, null, { params: { version } }).then(res => res.data);
+};
+
+/**
  * Delete a document (deletes from MinIO and database)
  */
 export const deleteDoc = (docId: string, version: number = 1): Promise<void> => {

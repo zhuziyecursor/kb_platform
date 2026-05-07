@@ -47,6 +47,10 @@ public class MilvusService {
         List<String> effectiveFroms = new ArrayList<>();
         List<String> effectiveTos = new ArrayList<>();
         List<Long> createTimes = new ArrayList<>();
+        List<String> tagsList = new ArrayList<>();
+        List<String> chunkTypeList = new ArrayList<>();
+        List<String> keywordsList = new ArrayList<>();
+        List<String> summaryList = new ArrayList<>();
 
         for (EmbedTaskMessage m : messages) {
             ids.add(System.currentTimeMillis() * 1000 + chunkSeqs.size());
@@ -68,6 +72,10 @@ public class MilvusService {
             effectiveFroms.add(m.getEffectiveFrom() != null ? m.getEffectiveFrom() : "");
             effectiveTos.add(m.getEffectiveTo() != null ? m.getEffectiveTo() : "");
             createTimes.add(m.getCreateTime() != null ? m.getCreateTime() : System.currentTimeMillis());
+            tagsList.add(m.getTags() != null ? m.getTags() : "");
+            chunkTypeList.add(m.getChunkType() != null ? m.getChunkType() : "");
+            keywordsList.add(m.getKeywords() != null ? m.getKeywords() : "");
+            summaryList.add(m.getSummary() != null ? m.getSummary() : "");
         }
 
         fields.add(new InsertParam.Field("id", ids));
@@ -89,6 +97,10 @@ public class MilvusService {
         fields.add(new InsertParam.Field("effective_from", effectiveFroms));
         fields.add(new InsertParam.Field("effective_to", effectiveTos));
         fields.add(new InsertParam.Field("create_time", createTimes));
+        fields.add(new InsertParam.Field("tags", tagsList));
+        fields.add(new InsertParam.Field("chunk_type", chunkTypeList));
+        fields.add(new InsertParam.Field("keywords", keywordsList));
+        fields.add(new InsertParam.Field("summary", summaryList));
 
         UpsertParam param = UpsertParam.newBuilder()
                 .withCollectionName(collectionName)

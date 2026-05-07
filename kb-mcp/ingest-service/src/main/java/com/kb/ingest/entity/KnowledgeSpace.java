@@ -47,6 +47,17 @@ public class KnowledgeSpace {
     @Builder.Default
     private String visibility = "TEAM";
 
+    @Column(name = "parent_id", length = 64)
+    private String parentId;
+
+    @Column(name = "node_path", length = 1024, nullable = false)
+    @Builder.Default
+    private String nodePath = "/";
+
+    @Column(name = "depth", nullable = false)
+    @Builder.Default
+    private Integer depth = 0;
+
     @Column(name = "create_time", nullable = false)
     @Builder.Default
     private LocalDateTime createTime = LocalDateTime.now();

@@ -30,6 +30,12 @@ public class SpaceController {
         return ResponseEntity.ok(Map.of("spaces", spaces));
     }
 
+    @GetMapping("/tree")
+    public ResponseEntity<List<SpaceResponse.SpaceTreeNode>> getSpaceTree() {
+        List<SpaceResponse.SpaceTreeNode> tree = spaceService.getSpaceTree(DEV_TENANT_ID);
+        return ResponseEntity.ok(tree);
+    }
+
     @GetMapping("/{spaceId}")
     public ResponseEntity<SpaceResponse> getSpace(@PathVariable String spaceId) {
         SpaceResponse space = spaceService.getSpace(DEV_TENANT_ID, spaceId);

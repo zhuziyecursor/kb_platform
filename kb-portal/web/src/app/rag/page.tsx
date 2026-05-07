@@ -6,7 +6,6 @@ import {
   Typography,
   Space,
   Input,
-  Button,
   Avatar,
   Spin,
   App,
@@ -38,6 +37,7 @@ import AppLayout from '@/components/AppLayout';
 import PageHeader from '@/components/PageHeader';
 import type { LUIAction } from '@/types';
 import { useLLMModels, LLM_PROVIDERS } from '@/hooks/useLLMModels';
+import { Button, Badge } from '@/components/ui';
 import dayjs from 'dayjs';
 
 const { Text, Paragraph } = Typography;
@@ -78,6 +78,11 @@ export default function RAGPage() {
   // 附件状态
   const [attachedFile, setAttachedFile] = useState<{ docId: string; fileName: string; fileSize: number } | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [username, setUsername] = useState('我');
+
+  useEffect(() => {
+    setUsername(sessionStorage.getItem('username') || '我');
+  }, []);
 
   // 真实的文件上传
   const handleFileUpload = async (file: File) => {
@@ -379,6 +384,7 @@ export default function RAGPage() {
                     <div
                       key={i}
                       onClick={() => handleSend(item.q)}
+                      className="hover-card"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -388,36 +394,15 @@ export default function RAGPage() {
                         border: '1px solid var(--color-border)',
                         borderRadius: 12,
                         cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLDivElement).style.borderColor = '#3B82F6';
-                        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(37,99,235,0.12)';
-                        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)';
-                        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
-                        (e.currentTarget as HTMLDivElement).style.transform = 'none';
                       }}
                     >
                       <span style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
                       <Text style={{ flex: 1, fontSize: 14, color: 'var(--color-foreground)', lineHeight: 1.5 }}>
                         {item.q}
                       </Text>
-                      <div style={{
-                        background: 'rgba(37, 99, 235, 0.06)',
-                        border: '1px solid rgba(37, 99, 235, 0.12)',
-                        borderRadius: 4,
-                        padding: '2px 8px',
-                        fontSize: 11,
-                        color: '#2563EB',
-                        fontWeight: 500,
-                        flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
-                      }}>
+                      <Badge variant="outline" size="sm">
                         {item.tag}
-                      </div>
+                      </Badge>
                     </div>
                   ))}
                 </div>
@@ -464,7 +449,7 @@ export default function RAGPage() {
                       flexDirection: isUser ? 'row-reverse' : 'row',
                     }}>
                       <Text strong style={{ fontSize: 13, color: 'var(--color-foreground)' }}>
-                        {isUser ? (typeof window !== 'undefined' ? sessionStorage.getItem('username') || '我' : '我') : '知识智库'}
+                        {isUser ? username : '知识智库'}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 11 }}>
                         {dayjs(msg.timestamp).format('HH:mm')}
@@ -548,20 +533,13 @@ export default function RAGPage() {
                                   </Text>
                                 </div>
                                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                  <div style={{
-                                    background: cite.score > 0.85 ? 'rgba(21,128,61,0.1)' : cite.score > 0.7 ? 'rgba(217,119,6,0.1)' : 'rgba(185,28,28,0.1)',
-                                    color: cite.score > 0.85 ? '#15803D' : cite.score > 0.7 ? '#B45309' : '#B91C1C',
-                                    borderRadius: 4,
-                                    padding: '1px 6px',
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                  }}>
+                                  <Badge variant={cite.score > 0.85 ? 'success' : cite.score > 0.7 ? 'warning' : 'destructive'} size="sm">
                                     {cite.score > 0.85 ? '高匹配' : cite.score > 0.7 ? '中匹配' : '低匹配'}
-                                  </div>
+                                  </Badge>
                                   <Tooltip title="复制原文">
                                     <Button
-                                      type="text"
-                                      size="small"
+                                      variant="ghost"
+                                      size="icon"
                                       icon={<CopyOutlined style={{ fontSize: 11 }} />}
                                       onClick={() => copyToClipboard(cite.text)}
                                       style={{ color: 'var(--color-secondary)' }}
@@ -685,21 +663,15 @@ export default function RAGPage() {
             flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
           }}>
             {/* 现代化输入框容器 */}
-            <div style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 24,
-              boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-              overflow: 'hidden',
-              transition: 'all 0.3s ease',
-            }}
-              onFocus={(e) => {
-                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 32px rgba(37,99,235,0.15)';
-                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-accent)';
-              }}
-              onBlur={(e) => {
-                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
-                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)';
+            <div
+              className="focus-ring"
+              style={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 24,
+                boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+                overflow: 'hidden',
+                transition: 'all var(--transition-base)',
               }}
             >
               {/* 顶部工具栏：模型选择 + 技能标签 */}
@@ -803,24 +775,30 @@ export default function RAGPage() {
                 <Space size={8}>
                   {/* 附件已上传，显示为标签 */}
                   {attachedFile ? (
-                    <Tag
-                      closable
-                      onClose={removeAttachment}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: 8,
-                        background: 'rgba(37,99,235,0.08)',
-                        border: '1px solid rgba(37,99,235,0.2)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
+                    <Badge
+                      variant="default"
+                      icon={<FileTextOutlined style={{ fontSize: 12 }} />}
+                      className="animate-fade-in"
                     >
-                      <FileTextOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
-                      <span style={{ fontSize: 12, color: 'var(--color-accent)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {attachedFile.fileName}
                       </span>
-                    </Tag>
+                      <button
+                        onClick={removeAttachment}
+                        style={{
+                          marginLeft: 6,
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--color-muted-foreground)',
+                          fontSize: 12,
+                          padding: 0,
+                          lineHeight: 1,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </Badge>
                   ) : (
                     <Upload
                       accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md"
@@ -831,8 +809,8 @@ export default function RAGPage() {
                       }}
                     >
                       <Button
-                        type="text"
-                        size="small"
+                        variant="ghost"
+                        size="icon"
                         icon={isUploadingFile ? <LoadingOutlined /> : <PaperClipOutlined />}
                         disabled={isUploadingFile}
                         style={{
@@ -849,22 +827,12 @@ export default function RAGPage() {
 
                 {/* 右侧发送按钮 */}
                 <Button
-                  type="primary"
+                  variant="primary"
+                  size="md"
                   icon={<SendOutlined />}
                   onClick={() => handleSend()}
                   loading={isLoading}
                   disabled={!input.trim() && !attachedFile}
-                  style={{
-                    height: 32,
-                    paddingLeft: 16,
-                    paddingRight: 16,
-                    borderRadius: 16,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    fontWeight: 500,
-                  }}
                 >
                   发送
                 </Button>
@@ -883,11 +851,11 @@ export default function RAGPage() {
               <Space size={4}>
                 {messages.length > 0 && (
                   <Button
-                    type="text"
-                    size="small"
+                    variant="ghost"
+                    size="xs"
                     icon={<MessageOutlined style={{ fontSize: 11 }} />}
                     onClick={handleClearChat}
-                    style={{ fontSize: 11, color: 'var(--color-secondary)', height: 22, padding: '0 4px' }}
+                    style={{ fontSize: 11, height: 22, padding: '0 4px' }}
                   >
                     清除对话
                   </Button>

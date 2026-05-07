@@ -117,6 +117,14 @@ public class DocController {
         }
     }
 
+    @PostMapping("/{docId}/retry")
+    public ResponseEntity<IngestResponse> retryDoc(
+            @PathVariable String docId,
+            @RequestParam(defaultValue = "1") Integer version) {
+        IngestResponse response = docService.retryDoc(DEV_TENANT_ID, docId, version);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{docId}")
     public ResponseEntity<Void> deleteDoc(
             @PathVariable String docId,

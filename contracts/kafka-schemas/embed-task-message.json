@@ -130,6 +130,18 @@
       "description": "创建时间 epoch（毫秒），写入 Milvus create_time 字段",
       "example": 1745760000000
     },
+    "tags": {
+      "type": "string",
+      "maxLength": 512,
+      "description": "继承展平标签，逗号分隔，最多 9 个（文档 3 + 章节 3 + 分片 3）",
+      "example": "合规,金融,2026,反洗钱,KYC,大额交易"
+    },
+    "chunkType": {
+      "type": "string",
+      "enum": ["definition", "procedure", "rule", "example", "disclaimer", ""],
+      "description": "段落语义类型，空字符串表示未分类",
+      "default": ""
+    },
     "vector": {
       "type": "array",
       "items": { "type": "number" },
@@ -138,7 +150,7 @@
       "description": "BGE-zh-v1.5 向量，dim=1024。由 kb-doc-processor 调用 embedding 服务生成，vector-service 直接写入 Milvus。"
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "traceId": "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890",

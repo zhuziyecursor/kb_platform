@@ -70,6 +70,8 @@ class EmbedTask(Base):
     biz_domain: Mapped[str] = mapped_column(String(64), nullable=False, default="COMPLIANCE")
     perm_group_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     acl_version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
+    tags: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    chunk_type: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
     milvus_pk: Mapped[Optional[int]] = mapped_column(BigInteger)
     milvus_version: Mapped[Optional[int]] = mapped_column(BigInteger)

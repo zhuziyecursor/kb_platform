@@ -215,9 +215,30 @@ export interface KnowledgeSpace {
   overlapRatio: number;
   chunkMode: ChunkMode;
   visibility: SpaceVisibility;
+  parentId?: string | null;
+  nodePath: string;
+  depth: number;
   docCount?: number;
   createTime: string;
   updateTime: string;
+}
+
+/** 知识空间树节点 */
+export interface KnowledgeSpaceTreeNode {
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  chunkSize: number;
+  overlapRatio: number;
+  chunkMode: ChunkMode;
+  visibility: SpaceVisibility;
+  parentId?: string | null;
+  depth: number;
+  docCount?: number;
+  createTime: string;
+  updateTime: string;
+  children: KnowledgeSpaceTreeNode[];
 }
 
 /** 创建知识空间请求 */
@@ -228,6 +249,7 @@ export interface CreateSpaceRequest {
   overlapRatio?: number;
   chunkMode?: ChunkMode;
   visibility?: SpaceVisibility;
+  parentId?: string;
 }
 
 /** 更新知识空间请求 */

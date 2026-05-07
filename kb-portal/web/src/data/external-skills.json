@@ -1,0 +1,62 @@
+[
+  {
+    "id": "skill_001",
+    "name": "写作-思考-认知工具箱",
+    "description": "专注于写作、思考与认知提升的工具集合，帮助用户构建更清晰的知识体系和工作流。",
+    "repoUrl": "https://github.com/lijigang/ljg-skills",
+    "installCommand": "npx skills add lijigang/ljg-skills",
+    "icon": "✍️",
+    "category": "创作工具",
+    "author": "lijigang"
+  },
+  {
+    "id": "skill_002",
+    "name": "内容创作2合1工厂",
+    "description": "整合内容创作与生产力的双合一工具工厂，提升创作效率与内容质量。",
+    "repoUrl": "https://github.com/alchaincyf/huashu-skills",
+    "installCommand": "npx skills add alchaincyf/huashu-skills",
+    "icon": "🏭",
+    "category": "创作工具",
+    "author": "alchaincyf"
+  },
+  {
+    "id": "skill_003",
+    "name": "横纵分析法深度研究",
+    "description": "基于横纵分析法的深度研究工具，支持多维度分析和系统性研究流程。",
+    "repoUrl": "https://github.com/KKKKhazix/khazix-skills",
+    "installCommand": "npx skills add KKKKhazix/khazix-skills --skill hv-analysis",
+    "icon": "🔍",
+    "category": "研究工具",
+    "author": "KKKKhazix"
+  },
+  {
+    "id": "skill_004",
+    "name": "隐形知识挖掘",
+    "description": "挖掘和整理隐性知识的工具，帮助将个人经验转化为可复用的知识资产。",
+    "repoUrl": "https://github.com/xiaohuailabs/tacit-mining",
+    "installCommand": "npx skills add xiaohuailabs/tacit-mining",
+    "icon": "💎",
+    "category": "知识管理",
+    "author": "xiaohuailabs"
+  },
+  {
+    "id": "skill_005",
+    "name": "独立开发十件套",
+    "description": "面向独立开发者的全面工具套件，涵盖开发、测试、部署全流程。",
+    "repoUrl": "https://github.com/ReScienceLab/opc-skills",
+    "installCommand": "npx skills add ReScienceLab/opc-skills",
+    "icon": "🛠️",
+    "category": "开发工具",
+    "author": "ReScienceLab"
+  },
+  {
+    "id": "skill_006",
+    "name": "工程化编码工作流",
+    "description": "标准化工程编码流程，提升代码质量和团队协作效率的工程化工作流。",
+    "repoUrl": "https://github.com/mattpocock/skills",
+    "installCommand": "npx skill@latest add mattpocock/skills",
+    "icon": "⚡",
+    "category": "开发工具",
+    "author": "mattpocock"
+  }
+]
