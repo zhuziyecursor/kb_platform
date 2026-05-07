@@ -4,8 +4,8 @@ import ThemeProvider from "@/components/ThemeProvider";
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: "企业AI知识库管理门户",
-  description: "企业AI知识库MVP实施平台",
+  title: "知识智库管理门户",
+  description: "知识智库MVP实施平台",
 };
 
 export default function RootLayout({

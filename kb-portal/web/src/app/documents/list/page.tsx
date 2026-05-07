@@ -13,10 +13,7 @@ import {
   Badge,
   Modal,
   App,
-  Tooltip,
   Descriptions,
-  Divider,
-  Form,
   Tabs,
   Segmented,
   Row,
@@ -29,59 +26,26 @@ import {
   ReloadOutlined,
   DeleteOutlined,
   EyeOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  SyncOutlined,
-  CloseCircleOutlined,
   FolderOutlined,
-  GlobalOutlined,
-  LockOutlined,
-  SafetyOutlined,
-  SecurityScanOutlined,
-  SafetyCertificateOutlined,
   AppstoreOutlined,
   UnorderedListOutlined,
   MoreOutlined,
   FileTextOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { KnowledgeDoc, DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
+import type { DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
 import { listSpaces } from '@/api/knowledge-space';
 import { listDocs, deleteDoc, DocSummary } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import FilePreview from '@/components/FilePreview';
 import AppLayout from '@/components/AppLayout';
+import PageHeader from '@/components/PageHeader';
+import { DocStatusBadge, DocTypeBadge, SecLevelBadge } from '@/components/StatusBadge';
 import type { LUIAction } from '@/types';
 import dayjs from 'dayjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-const { Title, Text } = Typography;
-
-// ============== 类型映射 ==============
-
-const DOC_TYPE_MAP: Record<DocType, { label: string; color: string }> = {
-  REGULATION: { label: '制度', color: 'blue' },
-  POLICY: { label: '政策', color: 'cyan' },
-  AUDIT: { label: '审计', color: 'orange' },
-  CONTRACT: { label: '合同', color: 'purple' },
-  MANUAL: { label: '手册', color: 'green' },
-};
-
-const STATUS_MAP: Record<DocStatus, { label: string; color: string; icon?: React.ReactNode }> = {
-  DRAFT: { label: '草稿', color: 'default' },
-  PENDING: { label: '等待中', color: 'gold', icon: <ClockCircleOutlined /> },
-  PROCESSING: { label: '处理中', color: 'processing', icon: <SyncOutlined spin /> },
-  READY: { label: '可检索', color: 'success', icon: <CheckCircleOutlined /> },
-  FAILED: { label: '失败', color: 'error', icon: <CloseCircleOutlined /> },
-};
-
-const SEC_LEVEL_MAP: Record<number, { label: string; color: string; icon: React.ReactNode }> = {
-  1: { label: '公开', color: 'green', icon: <GlobalOutlined /> },
-  2: { label: '内部', color: 'blue', icon: <LockOutlined /> },
-  3: { label: '机密', color: 'orange', icon: <SafetyOutlined /> },
-  4: { label: '秘密', color: 'red', icon: <SecurityScanOutlined /> },
-  5: { label: '绝密', color: 'purple', icon: <SafetyCertificateOutlined /> },
-};
+const { Text } = Typography;
 
 export default function DocumentListPage() {
   const router = useRouter();
@@ -223,39 +187,36 @@ export default function DocumentListPage() {
       dataIndex: 'docType',
       key: 'docType',
       width: 90,
-      render: (type: DocType) => (
-        <Tag color={DOC_TYPE_MAP[type].color}>{DOC_TYPE_MAP[type].label}</Tag>
-      ),
-      filters: Object.entries(DOC_TYPE_MAP).map(([value, { label }]) => ({ text: label, value })),
+      render: (type: DocType) => <DocTypeBadge docType={type} />,
+      filters: [
+        { text: '制度', value: 'REGULATION' },
+        { text: '政策', value: 'POLICY' },
+        { text: '审计', value: 'AUDIT' },
+        { text: '合同', value: 'CONTRACT' },
+        { text: '手册', value: 'MANUAL' },
+      ],
       onFilter: (value, record) => record.docType === value,
     },
     {
       title: '密级',
       dataIndex: 'secLevel',
       key: 'secLevel',
-      width: 90,
-      render: (level: SecLevel) => (
-        <Space size={4}>
-          {SEC_LEVEL_MAP[level].icon}
-          <Tag color={SEC_LEVEL_MAP[level].color}>{SEC_LEVEL_MAP[level].label}</Tag>
-        </Space>
-      ),
+      width: 80,
+      render: (level: SecLevel) => <SecLevelBadge level={level} />,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 110,
-      render: (status: DocStatus) => (
-        <Space>
-          {STATUS_MAP[status].icon}
-          <Tag color={STATUS_MAP[status].color}>{STATUS_MAP[status].label}</Tag>
-        </Space>
-      ),
-      filters: Object.entries(STATUS_MAP).map(([value, { label }]) => ({
-        text: label,
-        value,
-      })),
+      width: 100,
+      render: (status: DocStatus) => <DocStatusBadge status={status} />,
+      filters: [
+        { text: '草稿', value: 'DRAFT' },
+        { text: '等待中', value: 'PENDING' },
+        { text: '处理中', value: 'PROCESSING' },
+        { text: '已上线', value: 'READY' },
+        { text: '失败', value: 'FAILED' },
+      ],
       onFilter: (value, record) => record.status === value,
     },
     {
@@ -330,26 +291,54 @@ export default function DocumentListPage() {
     <AppLayout>
       <CommandBar onAction={handleLUIAction} />
 
-      <Card
-        title={
-          <Space>
-            <Title level={4} style={{ margin: 0 }}>文档管理</Title>
-            <Badge count={filteredData.length} style={{ backgroundColor: 'var(--color-accent)' }} />
-          </Space>
-        }
-        style={{ borderRadius: 'var(--radius-lg)' }}
-        extra={
-          <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              href="/documents/upload"
-            >
+      <PageHeader
+        breadcrumbs={[
+          { title: '知识库' },
+          { title: '文档管理' },
+        ]}
+        title="文档管理"
+        description="管理知识库中的所有文档，支持上传、查看、删除等操作"
+        actions={
+          <>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab)}>
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} href="/documents/upload">
               上传文档
             </Button>
-            <Button icon={<ReloadOutlined />} onClick={() => fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab)}>刷新</Button>
+          </>
+        }
+        extra={
+          <Space style={{ marginTop: 16 }} size={12} wrap>
+            <Input
+              placeholder="搜索文档名称或ID..."
+              prefix={<SearchOutlined />}
+              style={{ width: 260 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
+            <Select
+              value={statusFilter}
+              onChange={setStatusFilter}
+              style={{ width: 130 }}
+              options={[
+                { label: '全部状态', value: 'ALL' },
+                { label: '已上线', value: 'READY' },
+                { label: '处理中', value: 'PROCESSING' },
+                { label: '等待中', value: 'PENDING' },
+                { label: '失败', value: 'FAILED' },
+              ]}
+            />
+            <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+              共 {filteredData.length} 条记录
+            </Text>
           </Space>
         }
+      />
+
+      <Card
+        style={{ borderRadius: 'var(--radius-lg)' }}
       >
         {/* 知识空间 Tab */}
         <Tabs
@@ -386,51 +375,15 @@ export default function DocumentListPage() {
           style={{ marginBottom: 16 }}
         />
 
-        {/* 筛选栏 */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            marginBottom: 16,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Input
-              placeholder="搜索文档名称或ID..."
-              prefix={<SearchOutlined />}
-              style={{ width: 260 }}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              allowClear
-            />
-            <Select
-              value={statusFilter}
-              onChange={setStatusFilter}
-              style={{ width: 130 }}
-              options={[
-                { label: '全部状态', value: 'ALL' },
-                ...Object.entries(STATUS_MAP).map(([value, { label }]) => ({
-                  label,
-                  value,
-                })),
-              ]}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              共 {filteredData.length} 条记录
-            </Text>
-          </div>
-          <Segmented
-            value={viewMode}
-            onChange={(val) => setViewMode(val as 'list' | 'card')}
-            options={[
-              { label: '列表', value: 'list', icon: <UnorderedListOutlined /> },
-              { label: '卡片', value: 'card', icon: <AppstoreOutlined /> },
-            ]}
-          />
-        </div>
+        {/* 视图切换 */}
+        <Segmented
+          value={viewMode}
+          onChange={(val) => setViewMode(val as 'list' | 'card')}
+          options={[
+            { label: '列表', value: 'list', icon: <UnorderedListOutlined /> },
+            { label: '卡片', value: 'card', icon: <AppstoreOutlined /> },
+          ]}
+        />
 
         {/* 列表 / 卡片视图 */}
         {viewMode === 'list' ? (
@@ -453,9 +406,6 @@ export default function DocumentListPage() {
         ) : (
           <Row gutter={[16, 16]}>
             {filteredData.map((doc) => {
-              const typeInfo = DOC_TYPE_MAP[doc.docType as DocType] || { label: doc.docType, color: 'default' };
-              const statusInfo = STATUS_MAP[doc.status as DocStatus] || { label: doc.status, color: 'default' };
-              const secInfo = SEC_LEVEL_MAP[doc.secLevel] || { label: `${doc.secLevel}`, color: 'default', icon: null };
               const tags = (doc.labelTags || '').split(',').filter(Boolean);
 
               return (
@@ -469,11 +419,8 @@ export default function DocumentListPage() {
                   >
                     {/* 头部：类型 + 状态 */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <Tag color={typeInfo.color} style={{ margin: 0 }}>{typeInfo.label}</Tag>
-                      <Space size={4}>
-                        {statusInfo.icon}
-                        <Tag color={statusInfo.color} style={{ margin: 0, fontSize: 11 }}>{statusInfo.label}</Tag>
-                      </Space>
+                      <DocTypeBadge docType={doc.docType} />
+                      <DocStatusBadge status={doc.status as DocStatus} />
                     </div>
 
                     {/* 标题 */}
@@ -486,11 +433,10 @@ export default function DocumentListPage() {
 
                     {/* 元信息 */}
                     <div style={{ marginBottom: 8 }}>
-                      <Space size={4} wrap>
-                        {secInfo.icon}
-                        <Text type="secondary" style={{ fontSize: 11 }}>{secInfo.label}</Text>
-                        <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
-                        <Text type="secondary" style={{ fontSize: 11 }}>{doc.bizDomain}</Text>
+                      <Space size={6} wrap>
+                        <SecLevelBadge level={doc.secLevel} />
+                        <Text type="secondary" style={{ fontSize: 12 }}>·</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{doc.bizDomain}</Text>
                       </Space>
                     </div>
 
@@ -629,23 +575,14 @@ export default function DocumentListPage() {
                 <Text strong>{selectedDoc.title}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="类型">
-                <Tag color={DOC_TYPE_MAP[selectedDoc.docType as DocType].color}>
-                  {DOC_TYPE_MAP[selectedDoc.docType as DocType].label}
-                </Tag>
+                <DocTypeBadge docType={selectedDoc.docType} />
               </Descriptions.Item>
               <Descriptions.Item label="版本">v{selectedDoc.version}</Descriptions.Item>
               <Descriptions.Item label="密级">
-                <Space size={4}>
-                  {SEC_LEVEL_MAP[selectedDoc.secLevel]?.icon}
-                  <Tag color={SEC_LEVEL_MAP[selectedDoc.secLevel].color}>
-                    {SEC_LEVEL_MAP[selectedDoc.secLevel].label}
-                  </Tag>
-                </Space>
+                <SecLevelBadge level={selectedDoc.secLevel} />
               </Descriptions.Item>
               <Descriptions.Item label="状态">
-                <Tag color={STATUS_MAP[selectedDoc.status as DocStatus].color}>
-                  {STATUS_MAP[selectedDoc.status as DocStatus].label}
-                </Tag>
+                <DocStatusBadge status={selectedDoc.status as DocStatus} />
               </Descriptions.Item>
               <Descriptions.Item label="业务域">{selectedDoc.bizDomain}</Descriptions.Item>
               <Descriptions.Item label="适用地域">{selectedDoc.regionCode}</Descriptions.Item>

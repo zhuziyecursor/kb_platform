@@ -126,6 +126,8 @@ export interface ChatMessage {
   citations?: Citation[];
   traceId?: string;
   timestamp: number;
+  /** 拒答原因: NO_MATCH / NO_PERMISSION / LOW_CONFIDENCE */
+  reason?: string;
 }
 
 /** Chat session */
@@ -135,6 +137,29 @@ export interface ChatSession {
   messages: ChatMessage[];
   createdAt: number;
   updatedAt: number;
+}
+
+// ============== LLM Model Types ==============
+
+/** LLM 提供商 */
+export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'volcengine' | 'ali' | 'minimax';
+
+/** LLM 模型配置 */
+export interface LLMModelConfig {
+  id: string;
+  name: string;
+  provider: LLMProvider;
+  apiKey: string;
+  modelName: string;
+  isDefault?: boolean;
+}
+
+/** LLM 提供商元信息 */
+export interface LLMProviderInfo {
+  value: LLMProvider;
+  label: string;
+  icon: string;
+  defaultModel: string;
 }
 
 // ============== LUI / Agentic Types ==============

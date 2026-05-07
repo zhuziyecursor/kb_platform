@@ -8,12 +8,13 @@ import {
   Input,
   Button,
   Avatar,
-  List,
-  Tag,
   Spin,
   App,
-  Collapse,
   Tooltip,
+  Divider,
+  Select,
+  Upload,
+  Tag,
 } from 'antd';
 import {
   RobotOutlined,
@@ -21,20 +22,46 @@ import {
   SendOutlined,
   BookOutlined,
   CopyOutlined,
-  HistoryOutlined,
+  FileTextOutlined,
   ThunderboltOutlined,
+  CheckCircleFilled,
+  MessageOutlined,
+  AimOutlined,
+  SmileOutlined,
+  PaperClipOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import type { ChatMessage } from '@/types';
-import { ragChat } from '@/api/http-client';
+import { ragChat, initUpload, uploadFile, verifyUpload } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import AppLayout from '@/components/AppLayout';
+import PageHeader from '@/components/PageHeader';
 import type { LUIAction } from '@/types';
+import { useLLMModels, LLM_PROVIDERS } from '@/hooks/useLLMModels';
 import dayjs from 'dayjs';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const DEV_TENANT_ID = 'dev-tenant-001';
+
+const EXAMPLE_QUESTIONS = [
+  {
+    icon: '📋',
+    q: 'Hermes Agent 的安装方式有哪几种？',
+    tag: '操作指引',
+  },
+  {
+    icon: '🔍',
+    q: 'Claude Code 和 OpenClaw 有什么区别？',
+    tag: '产品对比',
+  },
+  {
+    icon: '⚙️',
+    q: '如何配置 MCP 工具连接？',
+    tag: '配置指南',
+  },
+];
 
 export default function RAGPage() {
   const { message } = App.useApp();
@@ -45,16 +72,80 @@ export default function RAGPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // LLM 模型选择
+  const { models, selectedModelId, setSelectedModelId } = useLLMModels();
+
+  // 附件状态
+  const [attachedFile, setAttachedFile] = useState<{ docId: string; fileName: string; fileSize: number } | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+
+  // 真实的文件上传
+  const handleFileUpload = async (file: File) => {
+    try {
+      setIsUploadingFile(true);
+
+      // 计算文件 hash
+      const fileBuffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // 1. 初始化上传
+      const initResp = await initUpload({
+        tenantId: 'dev-tenant-001',
+        filename: file.name,
+        fileSize: file.size,
+        fileHash: fileHash,
+        docType: 'OTHER',
+        bizDomain: 'COMPLIANCE',
+        regionCode: 'CN-NATIONAL',
+        secLevel: 1,
+        effectiveFrom: dayjs().format('YYYY-MM-DD'),
+        ownerUid: 'current-user',
+        deptId: 'D01',
+        knowledgeSpaceId: 'DEFAULT',
+        chunkConfig: {
+          useSpaceConfig: true,
+          chunkSize: 512,
+          overlapRatio: 10,
+          chunkMode: 'SMART',
+        },
+        overwriteExisting: false,
+      });
+
+      // 2. 上传文件
+      await uploadFile(initResp.docId, 1, file);
+
+      // 3. 验证上传
+      await verifyUpload(initResp.docId, 1);
+
+      // 保存附件信息
+      setAttachedFile({
+        docId: initResp.docId,
+        fileName: file.name,
+        fileSize: file.size,
+      });
+
+      message.success(`文件「${file.name}」上传成功`);
+    } catch (err: any) {
+      message.error(`文件上传失败: ${err.message}`);
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  // 移除附件
+  const removeAttachment = () => {
+    setAttachedFile(null);
+  };
+
   const handleLUIAction = useCallback((action: LUIAction) => {
     if (action.type === 'NAVIGATE' && action.payload.path === '/rag') {
-      message.success('已导航到知识问答页面');
+      message.success('已导航到知识问答');
     }
     if (action.type === 'CALL_SKILL') {
-      const skill = action.payload.skill as { name: string };
-      message.success(`已调用技能：${skill?.name || '未知'}`);
-      if (skill?.name === '知识问答') {
-        setTimeout(() => inputRef.current?.focus(), 300);
-      }
+      message.success('已调用知识问答技能');
+      setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, []);
 
@@ -62,25 +153,28 @@ export default function RAGPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim()) return;
+  const handleSend = useCallback(async (queryText?: string) => {
+    const text = queryText || input.trim();
+    if (!text) return;
+
+    if (!queryText) {
+      setInput('');
+    }
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input,
+      content: text,
       timestamp: Date.now(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    const currentQuery = input;
-    setInput('');
     setIsLoading(true);
 
     try {
       const response = await ragChat({
         tenantId: DEV_TENANT_ID,
-        query: currentQuery,
+        query: text,
         sessionId,
         lang: 'zh',
       });
@@ -90,9 +184,9 @@ export default function RAGPage() {
       }
 
       const refusalMessages: Record<string, string> = {
-        NO_MATCH: '知识库中暂时没有找到相关资料',
-        NO_PERMISSION: '您没有权限查看相关内容',
-        LOW_CONFIDENCE: '知识库中暂时没有找到相关资料',
+        NO_MATCH: '知识库中暂时没有找到相关资料，请尝试调整问题或补充更多关键词。',
+        NO_PERMISSION: '您没有权限查看相关内容，如有需要请联系管理员授权。',
+        LOW_CONFIDENCE: '知识库中暂时没有找到相关资料，请尝试调整问题表述。',
       };
 
       const displayContent = response.reason
@@ -112,6 +206,7 @@ export default function RAGPage() {
         })),
         traceId: response.traceId,
         timestamp: Date.now(),
+        reason: response.reason,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -119,7 +214,7 @@ export default function RAGPage() {
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `抱歉，服务暂时不可用：${err?.message || '未知错误'}`,
+        content: '服务暂时不可用，请稍后再试或联系管理员。',
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -134,325 +229,684 @@ export default function RAGPage() {
     });
   };
 
+  const handleClearChat = () => {
+    setMessages([]);
+    setSessionId(undefined);
+  };
+
   return (
-    <AppLayout contentStyle={{ padding: 0 }}>
+    <AppLayout contentStyle={{ padding: 0, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <CommandBar onAction={handleLUIAction} />
 
       {/* Header */}
       <div style={{
-        padding: '20px 32px 16px',
+        padding: '20px 40px 16px',
         borderBottom: '1px solid var(--color-border)',
-        flexShrink: 0,
+        flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
+        background: 'var(--color-surface)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
-        <Space align="center">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Brand Icon */}
           <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'linear-gradient(135deg, var(--color-accent) 0%, #3B82F6 100%)',
+            width: 40, height: 40, borderRadius: 12,
+            background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 50%, #60A5FA 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+            flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
           }}>
-            <RobotOutlined style={{ fontSize: 18, color: '#fff' }} />
+            <RobotOutlined style={{ fontSize: 20, color: '#fff' }} />
           </div>
           <div>
-            <Title level={4} style={{ margin: 0, fontSize: 16 }}>知识问答</Title>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>
+                知识智库
+              </Text>
+              <div style={{
+                background: 'rgba(37, 99, 235, 0.08)',
+                border: '1px solid rgba(37, 99, 235, 0.15)',
+                borderRadius: 4,
+                padding: '1px 6px',
+                fontSize: 11,
+                color: '#2563EB',
+                fontWeight: 500,
+              }}>
+                AI 驱动
+              </div>
+            </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
               基于知识库文档，返回带引用的可信答案
             </Text>
           </div>
-        </Space>
+        </div>
+
+        {/* Features */}
+        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+          {[
+            { icon: <CheckCircleFilled style={{ color: '#15803D' }} />, label: '精准检索' },
+            { icon: <BookOutlined style={{ color: '#1D4ED8' }} />, label: '多文档融合' },
+            { icon: <FileTextOutlined style={{ color: '#7C3AED' }} />, label: '原文溯源' },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 14 }}>{item.icon}</span>
+              <Text style={{ fontSize: 12, color: 'var(--color-secondary)', fontWeight: 500 }}>
+                {item.label}
+              </Text>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Chat Area */}
+      {/* Chat Body */}
       <div style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        padding: '0 32px 24px',
-        minHeight: 0,
-        overflow: 'auto',
+        overflow: 'hidden',
       }}>
-        {/* Centered Content Container */}
+        {/* Centered Content */}
         <div style={{
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: 900,
+          maxWidth: 840,
           margin: '0 auto',
           width: '100%',
+          padding: '0 40px',
           minHeight: 0,
+          overflow: 'hidden',
         }}>
-          {/* Messages Container */}
+          {/* Messages Area */}
           <div style={{
             flex: 1,
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            minHeight: 0,
+            paddingTop: 24,
           }} role="log">
 
-            {/* Empty State - DeepSeek Style */}
+            {/* Empty State */}
             {messages.length === 0 && !isLoading && (
               <div style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 24,
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingBottom: 40,
+                gap: 32,
               }}>
-                {/* Logo */}
-                <div style={{
-                  width: 72, height: 72, borderRadius: 20,
-                  background: 'linear-gradient(135deg, var(--color-accent) 0%, #3B82F6 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 8px 32px rgba(37, 99, 235, 0.3)',
-                }}>
-                  <RobotOutlined style={{ fontSize: 32, color: '#fff' }} />
-                </div>
-
-                {/* Welcome Text */}
-                <div style={{ textAlign: 'center', marginTop: 8 }}>
-                  <Text style={{ color: 'var(--color-foreground)', fontSize: 20, fontWeight: 500, display: 'block' }}>
+                {/* Brand Visual */}
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: 80, height: 80, borderRadius: 22,
+                    background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 12px 40px rgba(37, 99, 235, 0.35)',
+                    margin: '0 auto 20px',
+                  }}>
+                    <RobotOutlined style={{ fontSize: 36, color: '#fff' }} />
+                  </div>
+                  <Text style={{
+                    display: 'block',
+                    fontSize: 24,
+                    fontWeight: 600,
+                    color: 'var(--color-foreground)',
+                    letterSpacing: '-0.02em',
+                    marginBottom: 8,
+                  }}>
                     有什么可以帮助你的？
                   </Text>
+                  <Text type="secondary" style={{ fontSize: 14 }}>
+                    基于知识库文档，AI 智能分析并返回可信答案
+                  </Text>
+                </div>
+
+                {/* Example Questions */}
+                <div style={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  maxWidth: 560,
+                }}>
+                  <Text style={{ fontSize: 12, color: 'var(--color-secondary)', textAlign: 'center', marginBottom: 4 }}>
+                    试试这样问
+                  </Text>
+                  {EXAMPLE_QUESTIONS.map((item, i) => (
+                    <div
+                      key={i}
+                      onClick={() => handleSend(item.q)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '14px 20px',
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 12,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.borderColor = '#3B82F6';
+                        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(37,99,235,0.12)';
+                        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)';
+                        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
+                        (e.currentTarget as HTMLDivElement).style.transform = 'none';
+                      }}
+                    >
+                      <span style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
+                      <Text style={{ flex: 1, fontSize: 14, color: 'var(--color-foreground)', lineHeight: 1.5 }}>
+                        {item.q}
+                      </Text>
+                      <div style={{
+                        background: 'rgba(37, 99, 235, 0.06)',
+                        border: '1px solid rgba(37, 99, 235, 0.12)',
+                        borderRadius: 4,
+                        padding: '2px 8px',
+                        fontSize: 11,
+                        color: '#2563EB',
+                        fontWeight: 500,
+                        flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
+                      }}>
+                        {item.tag}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-          {/* Messages - Chat Style (only show when there are messages) */}
-          {messages.length > 0 && messages.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                gap: 16,
-                flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
-                marginBottom: 20,
-                paddingTop: messages.indexOf(msg) === 0 ? 8 : 0,
-              }}
-            >
-              {/* Avatar */}
-              <Avatar
-                size={36}
-                icon={msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                style={{
-                  background: msg.role === 'user' ? 'var(--color-accent)' : 'var(--color-muted)',
-                  color: msg.role === 'user' ? '#fff' : 'var(--color-accent)',
-                  flexShrink: 0,
-                  border: msg.role === 'user' ? 'none' : '1px solid var(--color-border)',
-                }}
-              />
+            {/* Chat Messages */}
+            {messages.map((msg) => {
+              const isUser = msg.role === 'user';
+              const showCitations = !isUser && msg.citations && msg.citations.length > 0;
 
-              {/* Content */}
-              <div style={{ maxWidth: '75%', minWidth: 0 }}>
-                {/* Name & Time */}
-                <div style={{
-                  marginBottom: 6,
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'center',
-                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                }}>
-                  <Text strong style={{ fontSize: 13, color: 'var(--color-foreground)' }}>
-                    {msg.role === 'user'
-                      ? (typeof window !== 'undefined' ? sessionStorage.getItem('username') || '我' : '我')
-                      : '知识库助手'}
-                  </Text>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {dayjs(msg.timestamp).format('HH:mm')}
-                  </Text>
-                </div>
+              return (
+                <div
+                  key={msg.id}
+                  style={{
+                    display: 'flex',
+                    gap: 12,
+                    flexDirection: isUser ? 'row-reverse' : 'row',
+                    marginBottom: 24,
+                  }}
+                >
+                  {/* Avatar */}
+                  <Avatar
+                    size={36}
+                    icon={isUser ? <UserOutlined /> : <RobotOutlined />}
+                    style={{
+                      background: isUser
+                        ? 'linear-gradient(135deg, #1E40AF, #3B82F6)'
+                        : 'var(--color-muted)',
+                      color: isUser ? '#fff' : 'var(--color-accent)',
+                      flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
+                      fontSize: 16,
+                    }}
+                  />
 
-                {/* Message Bubble */}
-                <div style={{
-                  padding: '14px 18px',
-                  background: msg.role === 'user'
-                    ? 'linear-gradient(135deg, var(--color-accent) 0%, #3B82F6 100%)'
-                    : 'var(--color-surface)',
-                  color: msg.role === 'user' ? '#fff' : 'var(--color-foreground)',
-                  borderRadius: msg.role === 'user' ? '18px 4px 18px 18px' : '4px 18px 18px 18px',
-                  lineHeight: 1.8,
-                  fontSize: 14,
-                  boxShadow: msg.role === 'user' ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.05)',
-                  border: msg.role === 'user' ? 'none' : '1px solid var(--color-border)',
-                }}>
-                  <pre style={{
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    fontFamily: 'inherit',
-                    margin: 0,
-                    fontSize: 'inherit',
-                    lineHeight: 'inherit',
-                  }}>
-                    {msg.content}
-                  </pre>
-                </div>
+                  {/* Content Column */}
+                  <div style={{ maxWidth: '76%', minWidth: 0 }}>
+                    {/* Meta row */}
+                    <div style={{
+                      display: 'flex',
+                      gap: 8,
+                      alignItems: 'center',
+                      marginBottom: 6,
+                      flexDirection: isUser ? 'row-reverse' : 'row',
+                    }}>
+                      <Text strong style={{ fontSize: 13, color: 'var(--color-foreground)' }}>
+                        {isUser ? (typeof window !== 'undefined' ? sessionStorage.getItem('username') || '我' : '我') : '知识智库'}
+                      </Text>
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {dayjs(msg.timestamp).format('HH:mm')}
+                      </Text>
+                    </div>
 
-                {/* Citations */}
-                {msg.citations && msg.citations.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <Collapse
-                      ghost
-                      size="small"
-                      style={{ background: 'transparent' }}
-                      items={[{
-                        key: '1',
-                        label: (
-                          <Space size={8}>
-                            <BookOutlined style={{ fontSize: 13, color: 'var(--color-accent)' }} />
-                            <Text style={{ fontSize: 13, color: 'var(--color-foreground)', fontWeight: 500 }}>
-                              {msg.citations.length} 篇引用来源
-                            </Text>
-                            {msg.traceId && (
-                              <Tag color="default" style={{ fontSize: 10, marginLeft: 4 }}>
-                                {msg.traceId.slice(0, 8)}
-                              </Tag>
-                            )}
-                          </Space>
-                        ),
-                        children: (
-                          <div style={{
-                            background: 'var(--color-muted)',
-                            borderRadius: 12,
-                            padding: '4px 0',
-                            marginTop: 4,
-                          }}>
-                            {msg.citations.map((cite, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  padding: '12px 16px',
-                                  borderBottom: index < msg.citations!.length - 1 ? '1px solid var(--color-border)' : 'none',
-                                }}
-                              >
-                                <Space size={6} style={{ marginBottom: 8, flexWrap: 'wrap' }}>
-                                  <Tag color="blue" style={{ borderRadius: 4, fontSize: 11 }}>#{index + 1}</Tag>
-                                  <Text strong style={{ fontSize: 13 }}>{cite.title}</Text>
-                                  <Text type="secondary" style={{ fontSize: 11 }}>
-                                    v{cite.version} · 第{cite.page}页
+                    {/* Message Bubble */}
+                    <div style={{
+                      padding: '14px 18px',
+                      background: isUser
+                        ? 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)'
+                        : 'var(--color-surface)',
+                      color: isUser ? '#fff' : 'var(--color-foreground)',
+                      borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+                      lineHeight: 1.8,
+                      fontSize: 14,
+                      boxShadow: isUser ? 'none' : '0 2px 8px rgba(0,0,0,0.06)',
+                      border: isUser ? 'none' : '1px solid var(--color-border)',
+                    }}>
+                      <pre style={{
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        fontFamily: 'inherit',
+                        margin: 0,
+                        fontSize: 'inherit',
+                        lineHeight: 'inherit',
+                      }}>
+                        {msg.content}
+                      </pre>
+                    </div>
+
+                    {/* Citations */}
+                    {showCitations && !msg.reason && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          marginBottom: 10,
+                        }}>
+                          <BookOutlined style={{ fontSize: 13, color: 'var(--color-accent)' }} />
+                          <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-foreground)' }}>
+                            参考文档
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            共 {msg.citations!.length} 篇
+                          </Text>
+                        </div>
+
+                        <div style={{
+                          background: 'var(--color-muted)',
+                          borderRadius: 14,
+                          padding: '4px 12px 12px',
+                          border: '1px solid var(--color-border)',
+                        }}>
+                          {msg.citations!.map((cite, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: 8,
+                                marginTop: idx === 0 ? 8 : 0,
+                                background: 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                marginBottom: idx < msg.citations!.length - 1 ? 8 : 0,
+                              }}
+                            >
+                              {/* Doc header */}
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: 8,
+                                flexWrap: 'wrap',
+                                gap: 6,
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <FileTextOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
+                                  <Text strong style={{ fontSize: 13, color: 'var(--color-foreground)' }}>
+                                    {cite.title || '无标题文档'}
                                   </Text>
-                                  <Tag color="green" style={{ borderRadius: 4, fontSize: 10 }}>
-                                    {(cite.score * 100).toFixed(0)}%
-                                  </Tag>
-                                  <Tooltip title="复制引用">
+                                </div>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <div style={{
+                                    background: cite.score > 0.85 ? 'rgba(21,128,61,0.1)' : cite.score > 0.7 ? 'rgba(217,119,6,0.1)' : 'rgba(185,28,28,0.1)',
+                                    color: cite.score > 0.85 ? '#15803D' : cite.score > 0.7 ? '#B45309' : '#B91C1C',
+                                    borderRadius: 4,
+                                    padding: '1px 6px',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}>
+                                    {cite.score > 0.85 ? '高匹配' : cite.score > 0.7 ? '中匹配' : '低匹配'}
+                                  </div>
+                                  <Tooltip title="复制原文">
                                     <Button
                                       type="text"
                                       size="small"
                                       icon={<CopyOutlined style={{ fontSize: 11 }} />}
                                       onClick={() => copyToClipboard(cite.text)}
-                                      style={{ marginLeft: 'auto' }}
+                                      style={{ color: 'var(--color-secondary)' }}
                                     />
                                   </Tooltip>
-                                </Space>
-                                <Paragraph
-                                  type="secondary"
-                                  style={{
-                                    margin: 0,
-                                    fontSize: 12,
-                                    padding: '8px 12px',
-                                    background: 'var(--color-surface)',
-                                    borderRadius: 6,
-                                    borderLeft: '3px solid var(--color-accent)',
-                                    lineHeight: 1.6,
-                                  }}
-                                >
-                                  {cite.text}
-                                </Paragraph>
+                                </div>
                               </div>
-                            ))}
-                          </div>
-                        ),
-                      }]}
-                    />
+
+                              {/* Doc meta */}
+                              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  v{cite.version}
+                                </Text>
+                                <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  第 {cite.page} 页
+                                </Text>
+                                {cite.chunkSeq !== undefined && (
+                                  <>
+                                    <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                      切片 #{cite.chunkSeq + 1}
+                                    </Text>
+                                  </>
+                                )}
+                                <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  相似度 {(cite.score * 100).toFixed(0)}%
+                                </Text>
+                              </div>
+
+                              {/* Quote */}
+                              <Paragraph
+                                style={{
+                                  margin: 0,
+                                  fontSize: 12,
+                                  color: 'var(--color-secondary)',
+                                  padding: '8px 10px',
+                                  background: 'var(--color-muted)',
+                                  borderRadius: 6,
+                                  borderLeft: '3px solid var(--color-accent)',
+                                  lineHeight: 1.7,
+                                  lineClamp: 3,
+                                }}
+                                ellipsis={{ rows: 3 }}
+                              >
+                                {cite.text}
+                              </Paragraph>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Error or Refusal */}
+                    {msg.reason && !isUser && (
+                      <div style={{
+                        marginTop: 10,
+                        padding: '10px 14px',
+                        background: msg.reason === 'NO_PERMISSION'
+                          ? 'rgba(185, 28, 28, 0.06)'
+                          : 'rgba(217, 119, 6, 0.06)',
+                        border: `1px solid ${msg.reason === 'NO_PERMISSION' ? 'rgba(185,28,28,0.2)' : 'rgba(217,119,6,0.2)'}`,
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}>
+                        <MessageOutlined style={{
+                          fontSize: 14,
+                          color: msg.reason === 'NO_PERMISSION' ? '#B91C1C' : '#B45309',
+                        }} />
+                        <Text style={{
+                          fontSize: 12,
+                          color: msg.reason === 'NO_PERMISSION' ? '#B91C1C' : '#B45309',
+                        }}>
+                          {msg.content}
+                        </Text>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              );
+            })}
+
+            {/* Loading */}
+            {isLoading && (
+              <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+                <Avatar icon={<RobotOutlined />} style={{
+                  background: 'var(--color-muted)',
+                  color: 'var(--color-accent)',
+                  flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
+                  fontSize: 16,
+                }} />
+                <div style={{
+                  padding: '14px 18px',
+                  background: 'var(--color-surface)',
+                  borderRadius: '4px 16px 16px 16px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  border: '1px solid var(--color-border)',
+                  maxWidth: 300,
+                }}>
+                  <Space size={12}>
+                    <Spin size="small" />
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      正在检索知识库...
+                    </Text>
+                  </Space>
+                </div>
               </div>
-            </div>
-          ))}
+            )}
 
-          {/* Loading */}
-          {isLoading && (
-            <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-              <Avatar icon={<RobotOutlined />} style={{ background: 'var(--color-muted)', color: 'var(--color-accent)', flexShrink: 0 }} />
-              <div style={{
-                padding: '14px 18px',
-                background: 'var(--color-surface)',
-                borderRadius: '4px 18px 18px 18px',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-                border: '1px solid var(--color-border)',
-              }}>
-                <Space size={12}>
-                  <Spin size="small" />
-                  <Text type="secondary" style={{ fontSize: 13 }}>正在检索知识库并生成答案...</Text>
-                </Space>
-              </div>
-            </div>
-          )}
+            <div ref={messagesEndRef} />
+          </div>
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div style={{
-          borderTop: '1px solid var(--color-border)',
-          paddingTop: 16,
-          flexShrink: 0,
-        }}>
+          {/* Input Area */}
           <div style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 16,
-            padding: '4px 4px 4px 16px',
-            display: 'flex',
-            alignItems: 'flex-end',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+            borderTop: '1px solid var(--color-border)',
+            paddingTop: 16,
+            paddingBottom: 24,
+            flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
           }}>
-            <TextArea
-              ref={inputRef as React.RefObject<any>}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
+            {/* 现代化输入框容器 */}
+            <div style={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 24,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+            }}
+              onFocus={(e) => {
+                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 32px rgba(37,99,235,0.15)';
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-accent)';
               }}
-              placeholder="输入你的问题..."
-              autoSize={{ minRows: 1, maxRows: 6 }}
-              style={{
-                border: 'none',
-                boxShadow: 'none',
-                resize: 'none',
-                fontSize: 14,
-                padding: '8px 0',
+              onBlur={(e) => {
+                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-border)';
               }}
-            />
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              onClick={handleSend}
-              loading={isLoading}
-              disabled={!input.trim()}
-              style={{
-                height: 36,
-                width: 36,
-                borderRadius: 12,
+            >
+              {/* 顶部工具栏：模型选择 + 技能标签 */}
+              <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            />
+                gap: 8,
+                padding: '12px 16px 0',
+                borderBottom: '1px solid var(--color-border)',
+                marginBottom: 8,
+              }}>
+                {/* 模型选择器 */}
+                <Select
+                  value={selectedModelId}
+                  onChange={setSelectedModelId}
+                  style={{ width: 160 }}
+                  size="small"
+                  dropdownMatchSelectWidth={200}
+                  bordered={false}
+                  suffixIcon={<RobotOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
+                >
+                  {models.map(model => {
+                    const provider = LLM_PROVIDERS.find(p => p.value === model.provider);
+                    return (
+                      <Select.Option key={model.id} value={model.id}>
+                        <Space size={6}>
+                          <span>{provider?.icon || '🤖'}</span>
+                          <span style={{ fontSize: 12 }}>{model.modelName}</span>
+                        </Space>
+                      </Select.Option>
+                    );
+                  })}
+                </Select>
+
+                <div style={{ flex: 1 }} />
+
+                {/* 技能选择标签（未来扩展预留） */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 12px',
+                  background: 'rgba(37,99,235,0.06)',
+                  borderRadius: 16,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.12)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.06)';
+                  }}
+                >
+                  <ThunderboltOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
+                  <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 500 }}>选择技能</span>
+                </div>
+              </div>
+
+              {/* 文本输入区域 */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                padding: '0 16px 12px',
+                gap: 8,
+              }}>
+                <TextArea
+                  ref={inputRef as React.RefObject<any>}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onPressEnter={(e) => {
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="输入你的问题，AI 将基于知识库回答..."
+                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  style={{
+                    border: 'none',
+                    boxShadow: 'none',
+                    resize: 'none',
+                    fontSize: 14,
+                    padding: '8px 0',
+                    lineHeight: 1.7,
+                    background: 'transparent',
+                  }}
+                />
+              </div>
+
+              {/* 底部工具栏：附件 + 发送 */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px 12px',
+                borderTop: '1px solid var(--color-border)',
+                background: 'var(--color-muted)',
+              }}>
+                {/* 左侧工具 */}
+                <Space size={8}>
+                  {/* 附件已上传，显示为标签 */}
+                  {attachedFile ? (
+                    <Tag
+                      closable
+                      onClose={removeAttachment}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 8,
+                        background: 'rgba(37,99,235,0.08)',
+                        border: '1px solid rgba(37,99,235,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <FileTextOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
+                      <span style={{ fontSize: 12, color: 'var(--color-accent)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {attachedFile.fileName}
+                      </span>
+                    </Tag>
+                  ) : (
+                    <Upload
+                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md"
+                      showUploadList={false}
+                      beforeUpload={(file) => {
+                        handleFileUpload(file);
+                        return false;
+                      }}
+                    >
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={isUploadingFile ? <LoadingOutlined /> : <PaperClipOutlined />}
+                        disabled={isUploadingFile}
+                        style={{
+                          color: 'var(--color-secondary)',
+                          height: 28,
+                          borderRadius: 8,
+                        }}
+                      >
+                        {isUploadingFile ? '上传中...' : '附件'}
+                      </Button>
+                    </Upload>
+                  )}
+                </Space>
+
+                {/* 右侧发送按钮 */}
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  onClick={() => handleSend()}
+                  loading={isLoading}
+                  disabled={!input.trim() && !attachedFile}
+                  style={{
+                    height: 32,
+                    paddingLeft: 16,
+                    paddingRight: 16,
+                    borderRadius: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                >
+                  发送
+                </Button>
+              </div>
+            </div>
+
+            {/* Footer hints */}
+            <div style={{
+              marginTop: 12,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}>
+              <Space size={4}>
+                {messages.length > 0 && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MessageOutlined style={{ fontSize: 11 }} />}
+                    onClick={handleClearChat}
+                    style={{ fontSize: 11, color: 'var(--color-secondary)', height: 22, padding: '0 4px' }}
+                  >
+                    清除对话
+                  </Button>
+                )}
+                {messages.length > 0 && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {Math.ceil(messages.length / 2)} 条对话
+                  </Text>
+                )}
+              </Space>
+
+              <Space size={4}>
+                <AimOutlined style={{ fontSize: 11, color: 'var(--color-accent)' }} />
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  回答基于知识库文档，支持原文溯源
+                </Text>
+              </Space>
+            </div>
           </div>
-          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Space size={4}>
-              <HistoryOutlined style={{ fontSize: 12, color: 'var(--color-secondary)' }} />
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                {messages.length > 0 ? `${Math.ceil(messages.length / 2)} 条对话` : '新对话'}
-              </Text>
-            </Space>
-            <Space size={4}>
-              <ThunderboltOutlined style={{ fontSize: 11, color: 'var(--color-accent)' }} />
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                回答基于知识库文档
-              </Text>
-            </Space>
-          </div>
-        </div>
         </div>
       </div>
     </AppLayout>

@@ -131,7 +131,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                 <Image src="/logo.png" alt="logo" width={28} height={28} style={{ borderRadius: 6, flexShrink: 0 }} />
                 <Title level={5} style={{ margin: 0, color: 'var(--color-foreground)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  企业AI知识库
+                  知识智库
                 </Title>
               </div>
             )}

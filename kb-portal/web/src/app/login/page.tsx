@@ -86,7 +86,7 @@ export default function LoginPage() {
       >
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <Title level={2} style={{ marginBottom: 8, color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-            企业AI知识库
+            知识智库
           </Title>
           <Text style={{ color: 'var(--color-secondary)', fontSize: 14 }}>KB Platform</Text>
         </div>

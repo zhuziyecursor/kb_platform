@@ -35,7 +35,7 @@ export default function HomePage() {
       {/* 顶部欢迎区 */}
       <div style={{ marginBottom: 'var(--space-12)' }}>
         <Title level={2} style={{ marginBottom: 'var(--space-2)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-          欢迎使用企业AI知识库
+          欢迎使用知识智库
         </Title>
         <Paragraph style={{ color: 'var(--color-secondary)', fontSize: 'var(--font-size-base)', marginBottom: 0 }}>
           文档上传后 5 分钟内可检索，返回带引用的可信答案

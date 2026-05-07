@@ -65,10 +65,11 @@ import {
 } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import AppLayout from '@/components/AppLayout';
+import PageHeader from '@/components/PageHeader';
 import type { LUIAction } from '@/types';
 import { useRouter } from 'next/navigation';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -476,23 +477,27 @@ export default function UploadPage() {
         {/* 智能指令条 */}
         <CommandBar onAction={handleLUIAction} />
 
-      <Card
-        title={
+      <PageHeader
+        breadcrumbs={[
+          { title: '知识库' },
+          { title: '文档管理', href: '/documents/list' },
+          { title: '上传文档' },
+        ]}
+        title="文档上传与入库"
+        description="上传文档到知识库，系统自动完成解析、切片、向量化入库，5分钟内可检索"
+        actions={
           <Space>
-            <Title level={4} style={{ margin: 0 }}>文档上传与入库</Title>
-            <Tag color="blue">MVP Pipeline Demo</Tag>
-          </Space>
-        }
-        style={{ borderRadius: 8 }}
-        extra={
-          <Space>
-            <Button onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}>上一步</Button>
-            <Button type="primary" onClick={() => setCurrentStep(Math.min(2, currentStep + 1))}>
+            <Button onClick={() => setCurrentStep(Math.max(0, currentStep - 1))} disabled={currentStep === 0}>
+              上一步
+            </Button>
+            <Button type="primary" onClick={() => setCurrentStep(Math.min(2, currentStep + 1))} disabled={currentStep === 2}>
               下一步
             </Button>
           </Space>
         }
-      >
+      />
+
+      <Card style={{ borderRadius: 'var(--radius-lg)' }}>
         {/* 步骤条 */}
         <Steps
           current={currentStep}
