@@ -21,6 +21,13 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# 加载环境变量（如果存在 .env 文件）
+if [ -f "$SCRIPT_DIR/kb-infra/.env" ]; then
+  set -a
+  source "$SCRIPT_DIR/kb-infra/.env"
+  set +a
+fi
+
 # -----------------------------------------------------------------------------
 # 服务定义: 名称 | 端口 | 工作目录
 # -----------------------------------------------------------------------------
@@ -51,7 +58,7 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 
 port_pid() {
   local port=$1
-  lsof -ti :$port 2>/dev/null | head -1
+  lsof -ti :$port 2>/dev/null
 }
 
 wait_for_port() {

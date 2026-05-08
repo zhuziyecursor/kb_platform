@@ -116,6 +116,8 @@ export interface Citation {
   isCurrent: boolean;
   score: number;
   text: string;
+  knowledgeSpaceId?: string;
+  spacePath?: string;
 }
 
 /** Chat message */
@@ -128,6 +130,8 @@ export interface ChatMessage {
   timestamp: number;
   /** 拒答原因: NO_MATCH / NO_PERMISSION / LOW_CONFIDENCE */
   reason?: string;
+  liked?: boolean;
+  favorited?: boolean;
 }
 
 /** Chat session */
@@ -215,6 +219,7 @@ export interface KnowledgeSpace {
   overlapRatio: number;
   chunkMode: ChunkMode;
   visibility: SpaceVisibility;
+  smartParseEnabled: boolean;
   parentId?: string | null;
   nodePath: string;
   depth: number;
@@ -233,6 +238,7 @@ export interface KnowledgeSpaceTreeNode {
   overlapRatio: number;
   chunkMode: ChunkMode;
   visibility: SpaceVisibility;
+  smartParseEnabled: boolean;
   parentId?: string | null;
   depth: number;
   docCount?: number;
@@ -249,7 +255,32 @@ export interface CreateSpaceRequest {
   overlapRatio?: number;
   chunkMode?: ChunkMode;
   visibility?: SpaceVisibility;
+  smartParseEnabled?: boolean;
   parentId?: string;
+}
+
+// ============== Stats Dashboard Types ==============
+
+/** 空间文档数统计 */
+export interface SpaceDocCount {
+  spaceId: string;
+  spaceName: string;
+  docCount: number;
+}
+
+/** 每日文档趋势 */
+export interface DailyDocTrend {
+  date: string;
+  count: number;
+}
+
+/** 统计数据概览 */
+export interface StatsOverview {
+  spaceDocCounts: SpaceDocCount[];
+  dailyTrend: DailyDocTrend[];
+  pendingCount: number;
+  failedCount: number;
+  totalVectorCount: number | null;
 }
 
 /** 更新知识空间请求 */
@@ -260,4 +291,5 @@ export interface UpdateSpaceRequest {
   overlapRatio?: number;
   chunkMode?: ChunkMode;
   visibility?: SpaceVisibility;
+  smartParseEnabled?: boolean;
 }

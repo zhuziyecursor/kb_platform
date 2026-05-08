@@ -12,6 +12,7 @@ import {
   Tooltip,
   Divider,
   Select,
+  TreeSelect,
   Upload,
   Tag,
 } from 'antd';
@@ -29,21 +30,40 @@ import {
   SmileOutlined,
   PaperClipOutlined,
   LoadingOutlined,
+  FolderOutlined,
+  LikeOutlined,
+  LikeFilled,
+  StarOutlined,
+  StarFilled,
 } from '@ant-design/icons';
-import type { ChatMessage } from '@/types';
-import { ragChat, initUpload, uploadFile, verifyUpload } from '@/api/http-client';
+import type { ChatMessage, KnowledgeSpaceTreeNode } from '@/types';
+import {
+  ragChat,
+  initUpload,
+  uploadFile,
+  verifyUpload,
+  listSessions,
+  createSession,
+  getSessionMessages,
+} from '@/api/http-client';
+import type { RagSessionSummary, RagMessageItem } from '@/api/http-client';
+import { getSpaceTree } from '@/api/knowledge-space';
 import CommandBar from '@/components/LUI/CommandBar';
 import AppLayout from '@/components/AppLayout';
 import PageHeader from '@/components/PageHeader';
+import RagSessionPanel from '@/components/RagSessionPanel';
 import type { LUIAction } from '@/types';
 import { useLLMModels, LLM_PROVIDERS } from '@/hooks/useLLMModels';
 import { Button, Badge } from '@/components/ui';
+import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
+import { cn } from '@/lib/utils';
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const DEV_TENANT_ID = 'dev-tenant-001';
+const DEV_USER_ID = 'current-user';
 
 const EXAMPLE_QUESTIONS = [
   {
@@ -63,12 +83,24 @@ const EXAMPLE_QUESTIONS = [
   },
 ];
 
+function buildSpaceTreeNodes(spaces: KnowledgeSpaceTreeNode[]): any[] {
+  return spaces
+    .filter((s) => s.smartParseEnabled)
+    .map((s) => ({
+      value: s.id,
+      title: s.name,
+      children: s.children && s.children.length > 0 ? buildSpaceTreeNodes(s.children) : undefined,
+    }));
+}
+
 export default function RAGPage() {
   const { message } = App.useApp();
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const [sessionRefresh, setSessionRefresh] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -80,8 +112,55 @@ export default function RAGPage() {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [username, setUsername] = useState('我');
 
+  // 检索范围
+  const [spaceTree, setSpaceTree] = useState<KnowledgeSpaceTreeNode[]>([]);
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>();
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
   useEffect(() => {
     setUsername(sessionStorage.getItem('username') || '我');
+    getSpaceTree().then(setSpaceTree).catch(() => {});
+  }, []);
+
+  // 加载会话消息
+  const loadSessionMessages = useCallback(async (sid: string) => {
+    try {
+      const msgs = await getSessionMessages(sid, DEV_TENANT_ID);
+      const mapped: ChatMessage[] = [];
+      for (const m of msgs) {
+        const parsedCitations = m.citations ? parseCitations(m.citations) : undefined;
+        mapped.push({
+          id: `msg-${m.id}`,
+          role: m.role,
+          content: m.content,
+          citations: parsedCitations,
+          traceId: m.traceId || undefined,
+          timestamp: m.createdAt,
+        });
+      }
+      setMessages(mapped);
+    } catch {
+      message.error('加载会话消息失败');
+    }
+  }, []);
+
+  const parseCitations = (raw: string): any[] => {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const handleSelectSession = useCallback(async (sid: string) => {
+    setSessionId(sid);
+    await loadSessionMessages(sid);
+  }, [loadSessionMessages]);
+
+  const handleNewSession = useCallback((sid: string) => {
+    setSessionId(sid);
+    setMessages([]);
   }, []);
 
   // 真实的文件上传
@@ -89,13 +168,11 @@ export default function RAGPage() {
     try {
       setIsUploadingFile(true);
 
-      // 计算文件 hash
       const fileBuffer = await file.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-      // 1. 初始化上传
       const initResp = await initUpload({
         tenantId: 'dev-tenant-001',
         filename: file.name,
@@ -118,13 +195,9 @@ export default function RAGPage() {
         overwriteExisting: false,
       });
 
-      // 2. 上传文件
       await uploadFile(initResp.docId, 1, file);
-
-      // 3. 验证上传
       await verifyUpload(initResp.docId, 1);
 
-      // 保存附件信息
       setAttachedFile({
         docId: initResp.docId,
         fileName: file.name,
@@ -139,7 +212,6 @@ export default function RAGPage() {
     }
   };
 
-  // 移除附件
   const removeAttachment = () => {
     setAttachedFile(null);
   };
@@ -162,6 +234,20 @@ export default function RAGPage() {
     const text = queryText || input.trim();
     if (!text) return;
 
+    let currentSessionId = sessionId;
+
+    if (!currentSessionId) {
+      try {
+        const res = await createSession(DEV_TENANT_ID, DEV_USER_ID);
+        currentSessionId = res.sessionId;
+        setSessionId(currentSessionId);
+        setSessionRefresh((n) => n + 1);
+      } catch {
+        message.error('创建会话失败');
+        return;
+      }
+    }
+
     if (!queryText) {
       setInput('');
     }
@@ -180,13 +266,10 @@ export default function RAGPage() {
       const response = await ragChat({
         tenantId: DEV_TENANT_ID,
         query: text,
-        sessionId,
+        sessionId: currentSessionId,
         lang: 'zh',
+        spaceId: selectedSpaceId,
       });
-
-      if (response.sessionId) {
-        setSessionId(response.sessionId);
-      }
 
       const refusalMessages: Record<string, string> = {
         NO_MATCH: '知识库中暂时没有找到相关资料，请尝试调整问题或补充更多关键词。',
@@ -208,6 +291,7 @@ export default function RAGPage() {
           regionCode: c.regionCode || '',
           effectiveFrom: c.effectiveFrom || '',
           effectiveTo: c.effectiveTo,
+          spacePath: c.spacePath || '',
         })),
         traceId: response.traceId,
         timestamp: Date.now(),
@@ -215,6 +299,7 @@ export default function RAGPage() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      setSessionRefresh((n) => n + 1);
     } catch (err: any) {
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
@@ -226,7 +311,23 @@ export default function RAGPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, sessionId]);
+  }, [input, sessionId, selectedSpaceId]);
+
+  const handleLike = useCallback((msgId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, liked: !m.liked } : m))
+    );
+  }, []);
+
+  const handleFavorite = useCallback((msgId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, favorited: !m.favorited } : m))
+    );
+    const target = messages.find((m) => m.id === msgId);
+    if (target) {
+      message.success(target.favorited ? '已取消收藏' : '已收藏');
+    }
+  }, [messages, message]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -234,52 +335,31 @@ export default function RAGPage() {
     });
   };
 
+  const navigateToDoc = (docId: string) => {
+    router.push(`/documents/${docId}`);
+  };
+
   const handleClearChat = () => {
     setMessages([]);
     setSessionId(undefined);
   };
+
+  const spaceTreeOptions = buildSpaceTreeNodes(spaceTree);
 
   return (
     <AppLayout contentStyle={{ padding: 0, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <CommandBar onAction={handleLUIAction} />
 
       {/* Header */}
-      <div style={{
-        padding: '20px 40px 16px',
-        borderBottom: '1px solid var(--color-border)',
-        flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
-        background: 'var(--color-surface)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Brand Icon */}
-          <div style={{
-            width: 40, height: 40, borderRadius: 12,
-            background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 50%, #60A5FA 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
-            flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
-          }}>
-            <RobotOutlined style={{ fontSize: 20, color: '#fff' }} />
+      <div className="chat-header">
+        <div className="chat-header__brand">
+          <div className="chat-header__icon">
+            <RobotOutlined style={{ fontSize: 18, color: '#fff' }} />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>
-                知识智库
-              </Text>
-              <div style={{
-                background: 'rgba(37, 99, 235, 0.08)',
-                border: '1px solid rgba(37, 99, 235, 0.15)',
-                borderRadius: 4,
-                padding: '1px 6px',
-                fontSize: 11,
-                color: '#2563EB',
-                fontWeight: 500,
-              }}>
-                AI 驱动
-              </div>
+              <span className="chat-header__title">知识智库</span>
+              <span className="chat-header__badge">AI 驱动</span>
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
               基于知识库文档，返回带引用的可信答案
@@ -287,592 +367,472 @@ export default function RAGPage() {
           </div>
         </div>
 
-        {/* Features */}
-        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+        <div className="chat-header__features">
           {[
             { icon: <CheckCircleFilled style={{ color: '#15803D' }} />, label: '精准检索' },
             { icon: <BookOutlined style={{ color: '#1D4ED8' }} />, label: '多文档融合' },
             { icon: <FileTextOutlined style={{ color: '#7C3AED' }} />, label: '原文溯源' },
           ].map((item, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div key={i} className="chat-header__feature-item">
               <span style={{ fontSize: 14 }}>{item.icon}</span>
-              <Text style={{ fontSize: 12, color: 'var(--color-secondary)', fontWeight: 500 }}>
-                {item.label}
-              </Text>
+              <span className="chat-header__feature-label">{item.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Chat Body */}
-      <div style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}>
-        {/* Centered Content */}
+      {/* Body with Session Panel + Chat */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Session Panel */}
+        <RagSessionPanel
+          activeSessionId={sessionId}
+          onSelectSession={handleSelectSession}
+          onNewSession={handleNewSession}
+          refreshTrigger={sessionRefresh}
+        />
+
+        {/* Chat Area */}
         <div style={{
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: 840,
-          margin: '0 auto',
-          width: '100%',
-          padding: '0 40px',
-          minHeight: 0,
           overflow: 'hidden',
         }}>
-          {/* Messages Area */}
           <div style={{
             flex: 1,
-            overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            paddingTop: 24,
-          }} role="log">
+            maxWidth: 840,
+            margin: '0 auto',
+            width: '100%',
+            padding: '0 40px',
+            minHeight: 0,
+            overflow: 'hidden',
+          }}>
+            {/* Messages Area */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              paddingTop: 24,
+            }} role="log">
 
-            {/* Empty State */}
-            {messages.length === 0 && !isLoading && (
-              <div style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingBottom: 40,
-                gap: 32,
-              }}>
-                {/* Brand Visual */}
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{
-                    width: 80, height: 80, borderRadius: 22,
-                    background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 12px 40px rgba(37, 99, 235, 0.35)',
-                    margin: '0 auto 20px',
-                  }}>
-                    <RobotOutlined style={{ fontSize: 36, color: '#fff' }} />
-                  </div>
-                  <Text style={{
-                    display: 'block',
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: 'var(--color-foreground)',
-                    letterSpacing: '-0.02em',
-                    marginBottom: 8,
-                  }}>
-                    有什么可以帮助你的？
-                  </Text>
-                  <Text type="secondary" style={{ fontSize: 14 }}>
-                    基于知识库文档，AI 智能分析并返回可信答案
-                  </Text>
-                </div>
-
-                {/* Example Questions */}
-                <div style={{
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                  maxWidth: 560,
-                }}>
-                  <Text style={{ fontSize: 12, color: 'var(--color-secondary)', textAlign: 'center', marginBottom: 4 }}>
-                    试试这样问
-                  </Text>
-                  {EXAMPLE_QUESTIONS.map((item, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleSend(item.q)}
-                      className="hover-card"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '14px 20px',
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
-                      <Text style={{ flex: 1, fontSize: 14, color: 'var(--color-foreground)', lineHeight: 1.5 }}>
-                        {item.q}
-                      </Text>
-                      <Badge variant="outline" size="sm">
-                        {item.tag}
-                      </Badge>
+              {/* Empty State */}
+              {messages.length === 0 && !isLoading && (
+                <div className="chat-empty">
+                  <div style={{ textAlign: 'center' }}>
+                    <div className="chat-empty__icon">
+                      <RobotOutlined style={{ fontSize: 28, color: '#fff' }} />
                     </div>
-                  ))}
+                    <span className="chat-empty__title">
+                      有什么可以帮助你的？
+                    </span>
+                    <p className="chat-empty__subtitle">
+                      基于知识库文档，AI 智能分析并返回可信答案
+                    </p>
+                  </div>
+
+                  <div className="chat-empty__examples">
+                    <p className="chat-empty__examples-label">
+                      试试这样问
+                    </p>
+                    {EXAMPLE_QUESTIONS.map((item, i) => (
+                      <div
+                        key={i}
+                        onClick={() => handleSend(item.q)}
+                        className="chat-example-card"
+                      >
+                        <span style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
+                        <Text style={{ flex: 1, fontSize: 14, color: 'var(--color-foreground)', lineHeight: 1.5 }}>
+                          {item.q}
+                        </Text>
+                        <Badge variant="outline" size="sm">
+                          {item.tag}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Chat Messages */}
-            {messages.map((msg) => {
-              const isUser = msg.role === 'user';
-              const showCitations = !isUser && msg.citations && msg.citations.length > 0;
+              {/* Chat Messages */}
+              {messages.map((msg, idx) => {
+                const isUser = msg.role === 'user';
+                const showCitations = !isUser && msg.citations && msg.citations.length > 0;
 
-              return (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: 'flex',
-                    gap: 12,
-                    flexDirection: isUser ? 'row-reverse' : 'row',
-                    marginBottom: 24,
-                  }}
-                >
-                  {/* Avatar */}
-                  <Avatar
-                    size={36}
-                    icon={isUser ? <UserOutlined /> : <RobotOutlined />}
-                    style={{
-                      background: isUser
-                        ? 'linear-gradient(135deg, #1E40AF, #3B82F6)'
-                        : 'var(--color-muted)',
-                      color: isUser ? '#fff' : 'var(--color-accent)',
-                      flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
-                      fontSize: 16,
-                    }}
+                return (
+                  <div
+                    key={msg.id}
+                    className={cn('chat-message', isUser && 'chat-message--user')}
+                    style={{ animationDelay: `${Math.min(idx * 60, 400)}ms` }}
+                  >
+                    <Avatar
+                      size={40}
+                      icon={isUser ? <UserOutlined /> : <RobotOutlined />}
+                      className={cn(
+                        'chat-message__avatar',
+                        isUser ? 'chat-message__avatar--user' : 'chat-message__avatar--assistant'
+                      )}
+                    />
+
+                    <div className="chat-message__content">
+                      <div className={cn('chat-message__meta', isUser && 'chat-message__meta--user')}>
+                        <span className="chat-message__author">{isUser ? username : '知识智库'}</span>
+                        <span className="chat-message__time">{dayjs(msg.timestamp).format('HH:mm')}</span>
+                      </div>
+
+                      <div className={cn(
+                        'chat-message__bubble',
+                        isUser ? 'chat-message__bubble--user' : 'chat-message__bubble--assistant'
+                      )}>
+                        <pre className="chat-message__text">{msg.content}</pre>
+                      </div>
+
+                      {/* Message Actions */}
+                      {!isUser && !msg.reason && (
+                        <div className="chat-message__actions">
+                          <Tooltip title="复制全文">
+                            <button
+                              className="chat-message__action-btn"
+                              onClick={() => copyToClipboard(msg.content)}
+                            >
+                              <CopyOutlined style={{ fontSize: 14 }} />
+                            </button>
+                          </Tooltip>
+                          <Tooltip title={msg.liked ? '取消点赞' : '点赞'}>
+                            <button
+                              className={cn('chat-message__action-btn', msg.liked && 'chat-message__action-btn--active-like')}
+                              onClick={() => handleLike(msg.id)}
+                            >
+                              {msg.liked
+                                ? <LikeFilled style={{ fontSize: 14 }} />
+                                : <LikeOutlined style={{ fontSize: 14 }} />}
+                            </button>
+                          </Tooltip>
+                          <Tooltip title={msg.favorited ? '取消收藏' : '收藏'}>
+                            <button
+                              className={cn('chat-message__action-btn', msg.favorited && 'chat-message__action-btn--active-fav')}
+                              onClick={() => handleFavorite(msg.id)}
+                            >
+                              {msg.favorited
+                                ? <StarFilled style={{ fontSize: 14 }} />
+                                : <StarOutlined style={{ fontSize: 14 }} />}
+                            </button>
+                          </Tooltip>
+                        </div>
+                      )}
+
+                      {/* Citations */}
+                      {showCitations && !msg.reason && (
+                        <div className="chat-citations">
+                          <div className="chat-citations__header">
+                            <BookOutlined className="chat-citations__icon" />
+                            <span className="chat-citations__title">参考文档</span>
+                            <span className="chat-citations__count">共 {msg.citations!.length} 篇</span>
+                          </div>
+
+                          <div className="chat-citations__container">
+                            {msg.citations!.map((cite, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() => navigateToDoc(cite.docId)}
+                                className="chat-citation-card"
+                              >
+                                {/* Doc header */}
+                                <div className="chat-citation-card__header">
+                                  <div className="chat-citation-card__doc-info">
+                                    <FileTextOutlined className="chat-citation-card__doc-icon" />
+                                    {/* Space path */}
+                                    {cite.spacePath && (
+                                      <span className="chat-citation-card__space-path">
+                                        <FolderOutlined style={{ marginRight: 4 }} />
+                                        {cite.spacePath}
+                                      </span>
+                                    )}
+                                    <Text strong className="chat-citation-card__doc-title" ellipsis>
+                                      {cite.title || '无标题文档'}
+                                    </Text>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <Badge variant={cite.score > 0.85 ? 'success' : cite.score > 0.7 ? 'warning' : 'destructive'} size="sm">
+                                      {cite.score > 0.85 ? '高匹配' : cite.score > 0.7 ? '中匹配' : '低匹配'}
+                                    </Badge>
+                                    <Tooltip title="复制原文">
+                                      <button
+                                        className="chat-message__action-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          copyToClipboard(cite.text);
+                                        }}
+                                      >
+                                        <CopyOutlined style={{ fontSize: 12 }} />
+                                      </button>
+                                    </Tooltip>
+                                  </div>
+                                </div>
+
+                                {/* Doc meta */}
+                                <div className="chat-citation-card__meta">
+                                  <span className="chat-citation-card__meta-item">v{cite.version}</span>
+                                  <span className="chat-citation-card__meta-divider">·</span>
+                                  <span className="chat-citation-card__meta-item">第 {cite.page} 页</span>
+                                  {cite.chunkSeq !== undefined && (
+                                    <>
+                                      <span className="chat-citation-card__meta-divider">·</span>
+                                      <span className="chat-citation-card__meta-item">第 {cite.chunkSeq + 1} 段</span>
+                                    </>
+                                  )}
+                                  <span className="chat-citation-card__meta-divider">·</span>
+                                  <span className="chat-citation-card__meta-item">相似度 {(cite.score * 100).toFixed(0)}%</span>
+                                  <span className="chat-citation-card__meta-item" style={{ color: 'var(--color-accent)' }}>· 点击查看文档</span>
+                                </div>
+
+                                {/* Quote */}
+                                <Paragraph
+                                  className="chat-citation-card__quote"
+                                  ellipsis={{ rows: 3 }}
+                                >
+                                  {cite.text}
+                                </Paragraph>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error or Refusal */}
+                      {msg.reason && !isUser && (
+                        <div className={cn('chat-status', msg.reason === 'NO_PERMISSION' ? 'chat-status--error' : 'chat-status--warning')}>
+                          <MessageOutlined className={cn('chat-status__icon', msg.reason === 'NO_PERMISSION' ? 'chat-status__icon--error' : 'chat-status__icon--warning')} />
+                          <span className={cn('chat-status__text', msg.reason === 'NO_PERMISSION' ? 'chat-status__text--error' : 'chat-status__text--warning')}>
+                            {msg.content}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Loading */}
+              {isLoading && (
+                <div className="chat-loading">
+                  <div className="chat-loading__avatar">
+                    <RobotOutlined />
+                  </div>
+                  <div className="chat-loading__bubble">
+                    <div className="chat-loading__dots">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <span className="chat-loading__text">正在检索知识库...</span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="chat-input-area">
+              <div
+                className={cn('chat-input__wrapper', 'focus-ring', isInputFocused && 'chat-input__wrapper--focused')}
+              >
+                {/* 顶部工具栏：检索范围 + 模型选择 */}
+                <div className="chat-input__toolbar">
+                  {/* 检索范围选择器 */}
+                  <TreeSelect
+                    value={selectedSpaceId}
+                    onChange={setSelectedSpaceId}
+                    placeholder="全部知识库"
+                    allowClear
+                    treeData={spaceTreeOptions}
+                    style={{ width: 180 }}
+                    size="small"
+                    bordered={false}
+                    treeDefaultExpandAll
+                    suffixIcon={<FolderOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
+                    dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
                   />
 
-                  {/* Content Column */}
-                  <div style={{ maxWidth: '76%', minWidth: 0 }}>
-                    {/* Meta row */}
-                    <div style={{
-                      display: 'flex',
-                      gap: 8,
-                      alignItems: 'center',
-                      marginBottom: 6,
-                      flexDirection: isUser ? 'row-reverse' : 'row',
-                    }}>
-                      <Text strong style={{ fontSize: 13, color: 'var(--color-foreground)' }}>
-                        {isUser ? username : '知识智库'}
-                      </Text>
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        {dayjs(msg.timestamp).format('HH:mm')}
-                      </Text>
-                    </div>
+                  <div style={{ flex: 1 }} />
 
-                    {/* Message Bubble */}
-                    <div style={{
-                      padding: '14px 18px',
-                      background: isUser
-                        ? 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)'
-                        : 'var(--color-surface)',
-                      color: isUser ? '#fff' : 'var(--color-foreground)',
-                      borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
-                      lineHeight: 1.8,
-                      fontSize: 14,
-                      boxShadow: isUser ? 'none' : '0 2px 8px rgba(0,0,0,0.06)',
-                      border: isUser ? 'none' : '1px solid var(--color-border)',
-                    }}>
-                      <pre style={{
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        fontFamily: 'inherit',
-                        margin: 0,
-                        fontSize: 'inherit',
-                        lineHeight: 'inherit',
-                      }}>
-                        {msg.content}
-                      </pre>
-                    </div>
+                  {/* 模型选择器 */}
+                  <Select
+                    value={selectedModelId}
+                    onChange={setSelectedModelId}
+                    style={{ width: 160 }}
+                    size="small"
+                    dropdownMatchSelectWidth={200}
+                    bordered={false}
+                    suffixIcon={<RobotOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
+                  >
+                    {models.map(model => {
+                      const provider = LLM_PROVIDERS.find(p => p.value === model.provider);
+                      return (
+                        <Select.Option key={model.id} value={model.id}>
+                          <Space size={6}>
+                            <span>{provider?.icon || '🤖'}</span>
+                            <span style={{ fontSize: 12 }}>{model.modelName}</span>
+                          </Space>
+                        </Select.Option>
+                      );
+                    })}
+                  </Select>
 
-                    {/* Citations */}
-                    {showCitations && !msg.reason && (
-                      <div style={{ marginTop: 14 }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          marginBottom: 10,
-                        }}>
-                          <BookOutlined style={{ fontSize: 13, color: 'var(--color-accent)' }} />
-                          <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-foreground)' }}>
-                            参考文档
-                          </Text>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            共 {msg.citations!.length} 篇
-                          </Text>
-                        </div>
-
-                        <div style={{
-                          background: 'var(--color-muted)',
-                          borderRadius: 14,
-                          padding: '4px 12px 12px',
-                          border: '1px solid var(--color-border)',
-                        }}>
-                          {msg.citations!.map((cite, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: 8,
-                                marginTop: idx === 0 ? 8 : 0,
-                                background: 'var(--color-surface)',
-                                border: '1px solid var(--color-border)',
-                                marginBottom: idx < msg.citations!.length - 1 ? 8 : 0,
-                              }}
-                            >
-                              {/* Doc header */}
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                marginBottom: 8,
-                                flexWrap: 'wrap',
-                                gap: 6,
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <FileTextOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
-                                  <Text strong style={{ fontSize: 13, color: 'var(--color-foreground)' }}>
-                                    {cite.title || '无标题文档'}
-                                  </Text>
-                                </div>
-                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                  <Badge variant={cite.score > 0.85 ? 'success' : cite.score > 0.7 ? 'warning' : 'destructive'} size="sm">
-                                    {cite.score > 0.85 ? '高匹配' : cite.score > 0.7 ? '中匹配' : '低匹配'}
-                                  </Badge>
-                                  <Tooltip title="复制原文">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      icon={<CopyOutlined style={{ fontSize: 11 }} />}
-                                      onClick={() => copyToClipboard(cite.text)}
-                                      style={{ color: 'var(--color-secondary)' }}
-                                    />
-                                  </Tooltip>
-                                </div>
-                              </div>
-
-                              {/* Doc meta */}
-                              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  v{cite.version}
-                                </Text>
-                                <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  第 {cite.page} 页
-                                </Text>
-                                {cite.chunkSeq !== undefined && (
-                                  <>
-                                    <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
-                                    <Text type="secondary" style={{ fontSize: 11 }}>
-                                      切片 #{cite.chunkSeq + 1}
-                                    </Text>
-                                  </>
-                                )}
-                                <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  相似度 {(cite.score * 100).toFixed(0)}%
-                                </Text>
-                              </div>
-
-                              {/* Quote */}
-                              <Paragraph
-                                style={{
-                                  margin: 0,
-                                  fontSize: 12,
-                                  color: 'var(--color-secondary)',
-                                  padding: '8px 10px',
-                                  background: 'var(--color-muted)',
-                                  borderRadius: 6,
-                                  borderLeft: '3px solid var(--color-accent)',
-                                  lineHeight: 1.7,
-                                  lineClamp: 3,
-                                }}
-                                ellipsis={{ rows: 3 }}
-                              >
-                                {cite.text}
-                              </Paragraph>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Error or Refusal */}
-                    {msg.reason && !isUser && (
-                      <div style={{
-                        marginTop: 10,
-                        padding: '10px 14px',
-                        background: msg.reason === 'NO_PERMISSION'
-                          ? 'rgba(185, 28, 28, 0.06)'
-                          : 'rgba(217, 119, 6, 0.06)',
-                        border: `1px solid ${msg.reason === 'NO_PERMISSION' ? 'rgba(185,28,28,0.2)' : 'rgba(217,119,6,0.2)'}`,
-                        borderRadius: 8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                      }}>
-                        <MessageOutlined style={{
-                          fontSize: 14,
-                          color: msg.reason === 'NO_PERMISSION' ? '#B91C1C' : '#B45309',
-                        }} />
-                        <Text style={{
-                          fontSize: 12,
-                          color: msg.reason === 'NO_PERMISSION' ? '#B91C1C' : '#B45309',
-                        }}>
-                          {msg.content}
-                        </Text>
-                      </div>
-                    )}
+                  {/* 技能选择标签（未来扩展预留） */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 12px',
+                    background: 'rgba(37,99,235,0.06)',
+                    borderRadius: 16,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.12)';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.06)';
+                    }}
+                  >
+                    <ThunderboltOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
+                    <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 500 }}>选择技能</span>
                   </div>
                 </div>
-              );
-            })}
 
-            {/* Loading */}
-            {isLoading && (
-              <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-                <Avatar icon={<RobotOutlined />} style={{
-                  background: 'var(--color-muted)',
-                  color: 'var(--color-accent)',
-                  flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
-                  fontSize: 16,
-                }} />
-                <div style={{
-                  padding: '14px 18px',
-                  background: 'var(--color-surface)',
-                  borderRadius: '4px 16px 16px 16px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                  border: '1px solid var(--color-border)',
-                  maxWidth: 300,
-                }}>
-                  <Space size={12}>
-                    <Spin size="small" />
-                    <Text type="secondary" style={{ fontSize: 13 }}>
-                      正在检索知识库...
-                    </Text>
+                {/* 文本输入区域 */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', padding: '0 16px 12px', gap: 8 }}>
+                  <TextArea
+                    ref={inputRef as React.RefObject<any>}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onPressEnter={(e) => {
+                      if (!e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    onFocus={() => setIsInputFocused(true)}
+                    onBlur={() => setIsInputFocused(false)}
+                    placeholder="输入你的问题，AI 将基于知识库回答..."
+                    autoSize={{ minRows: 1, maxRows: 6 }}
+                    style={{
+                      border: 'none',
+                      boxShadow: 'none',
+                      resize: 'none',
+                      fontSize: 14,
+                      padding: '8px 0',
+                      lineHeight: 1.7,
+                      background: 'transparent',
+                    }}
+                  />
+                </div>
+
+                {/* 底部工具栏：附件 + 发送 */}
+                <div className="chat-input__footer">
+                  <Space size={8}>
+                    {attachedFile ? (
+                      <Badge
+                        variant="default"
+                        icon={<FileTextOutlined style={{ fontSize: 12 }} />}
+                        className="animate-fade-in"
+                      >
+                        <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {attachedFile.fileName}
+                        </span>
+                        <button
+                          onClick={removeAttachment}
+                          style={{
+                            marginLeft: 6,
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--color-muted-foreground)',
+                            fontSize: 12,
+                            padding: 0,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ) : (
+                      <Upload
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md"
+                        showUploadList={false}
+                        beforeUpload={(file) => {
+                          handleFileUpload(file);
+                          return false;
+                        }}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          icon={isUploadingFile ? <LoadingOutlined /> : <PaperClipOutlined />}
+                          disabled={isUploadingFile}
+                          style={{
+                            color: 'var(--color-secondary)',
+                            height: 28,
+                            borderRadius: 8,
+                          }}
+                        >
+                          {isUploadingFile ? '上传中...' : '附件'}
+                        </Button>
+                      </Upload>
+                    )}
                   </Space>
-                </div>
-              </div>
-            )}
 
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input Area */}
-          <div style={{
-            borderTop: '1px solid var(--color-border)',
-            paddingTop: 16,
-            paddingBottom: 24,
-            flexShrink: 0 as unknown as React.CSSProperties['flexShrink'],
-          }}>
-            {/* 现代化输入框容器 */}
-            <div
-              className="focus-ring"
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 24,
-                boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-                overflow: 'hidden',
-                transition: 'all var(--transition-base)',
-              }}
-            >
-              {/* 顶部工具栏：模型选择 + 技能标签 */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '12px 16px 0',
-                borderBottom: '1px solid var(--color-border)',
-                marginBottom: 8,
-              }}>
-                {/* 模型选择器 */}
-                <Select
-                  value={selectedModelId}
-                  onChange={setSelectedModelId}
-                  style={{ width: 160 }}
-                  size="small"
-                  dropdownMatchSelectWidth={200}
-                  bordered={false}
-                  suffixIcon={<RobotOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
-                >
-                  {models.map(model => {
-                    const provider = LLM_PROVIDERS.find(p => p.value === model.provider);
-                    return (
-                      <Select.Option key={model.id} value={model.id}>
-                        <Space size={6}>
-                          <span>{provider?.icon || '🤖'}</span>
-                          <span style={{ fontSize: 12 }}>{model.modelName}</span>
-                        </Space>
-                      </Select.Option>
-                    );
-                  })}
-                </Select>
-
-                <div style={{ flex: 1 }} />
-
-                {/* 技能选择标签（未来扩展预留） */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 12px',
-                  background: 'rgba(37,99,235,0.06)',
-                  borderRadius: 16,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.12)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.06)';
-                  }}
-                >
-                  <ThunderboltOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
-                  <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 500 }}>选择技能</span>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    icon={<SendOutlined />}
+                    onClick={() => handleSend()}
+                    loading={isLoading}
+                    disabled={!input.trim() && !attachedFile}
+                  >
+                    发送
+                  </Button>
                 </div>
               </div>
 
-              {/* 文本输入区域 */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'flex-end',
-                padding: '0 16px 12px',
-                gap: 8,
-              }}>
-                <TextArea
-                  ref={inputRef as React.RefObject<any>}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onPressEnter={(e) => {
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="输入你的问题，AI 将基于知识库回答..."
-                  autoSize={{ minRows: 1, maxRows: 6 }}
-                  style={{
-                    border: 'none',
-                    boxShadow: 'none',
-                    resize: 'none',
-                    fontSize: 14,
-                    padding: '8px 0',
-                    lineHeight: 1.7,
-                    background: 'transparent',
-                  }}
-                />
-              </div>
-
-              {/* 底部工具栏：附件 + 发送 */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px 12px',
-                borderTop: '1px solid var(--color-border)',
-                background: 'var(--color-muted)',
-              }}>
-                {/* 左侧工具 */}
-                <Space size={8}>
-                  {/* 附件已上传，显示为标签 */}
-                  {attachedFile ? (
-                    <Badge
-                      variant="default"
-                      icon={<FileTextOutlined style={{ fontSize: 12 }} />}
-                      className="animate-fade-in"
+              {/* Footer hints */}
+              <div className="chat-input__hints">
+                <Space size={4}>
+                  {messages.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      icon={<MessageOutlined style={{ fontSize: 11 }} />}
+                      onClick={handleClearChat}
+                      style={{ fontSize: 11, height: 22, padding: '0 4px' }}
                     >
-                      <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {attachedFile.fileName}
-                      </span>
-                      <button
-                        onClick={removeAttachment}
-                        style={{
-                          marginLeft: 6,
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: 'var(--color-muted-foreground)',
-                          fontSize: 12,
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                      >
-                        ×
-                      </button>
-                    </Badge>
-                  ) : (
-                    <Upload
-                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md"
-                      showUploadList={false}
-                      beforeUpload={(file) => {
-                        handleFileUpload(file);
-                        return false;
-                      }}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        icon={isUploadingFile ? <LoadingOutlined /> : <PaperClipOutlined />}
-                        disabled={isUploadingFile}
-                        style={{
-                          color: 'var(--color-secondary)',
-                          height: 28,
-                          borderRadius: 8,
-                        }}
-                      >
-                        {isUploadingFile ? '上传中...' : '附件'}
-                      </Button>
-                    </Upload>
+                      清除对话
+                    </Button>
+                  )}
+                  {messages.length > 0 && (
+                    <span className="chat-input__hint-text">
+                      {Math.ceil(messages.length / 2)} 条对话
+                    </span>
+                  )}
+                  {selectedSpaceId && (
+                    <span className="chat-input__hint-text" style={{ color: 'var(--color-accent)' }}>
+                      已限定检索范围
+                    </span>
                   )}
                 </Space>
 
-                {/* 右侧发送按钮 */}
-                <Button
-                  variant="primary"
-                  size="md"
-                  icon={<SendOutlined />}
-                  onClick={() => handleSend()}
-                  loading={isLoading}
-                  disabled={!input.trim() && !attachedFile}
-                >
-                  发送
-                </Button>
+                <Space size={4}>
+                  <AimOutlined style={{ fontSize: 11, color: 'var(--color-accent)' }} />
+                  <span className="chat-input__hint-text">
+                    回答基于知识库文档，支持原文溯源
+                  </span>
+                </Space>
               </div>
-            </div>
-
-            {/* Footer hints */}
-            <div style={{
-              marginTop: 12,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 8,
-            }}>
-              <Space size={4}>
-                {messages.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    icon={<MessageOutlined style={{ fontSize: 11 }} />}
-                    onClick={handleClearChat}
-                    style={{ fontSize: 11, height: 22, padding: '0 4px' }}
-                  >
-                    清除对话
-                  </Button>
-                )}
-                {messages.length > 0 && (
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {Math.ceil(messages.length / 2)} 条对话
-                  </Text>
-                )}
-              </Space>
-
-              <Space size={4}>
-                <AimOutlined style={{ fontSize: 11, color: 'var(--color-accent)' }} />
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  回答基于知识库文档，支持原文溯源
-                </Text>
-              </Space>
             </div>
           </div>
         </div>
