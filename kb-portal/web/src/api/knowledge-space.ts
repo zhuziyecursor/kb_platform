@@ -4,6 +4,8 @@ import type {
   KnowledgeSpaceTreeNode,
   CreateSpaceRequest,
   UpdateSpaceRequest,
+  SpaceAclEntry,
+  SpaceAclResponse,
 } from '@/types';
 
 /**
@@ -62,4 +64,32 @@ export async function deleteSpace(spaceId: string): Promise<void> {
 export async function getSpaceDocs(spaceId: string): Promise<unknown[]> {
   const response = await httpClient.get<{ docs: unknown[] }>(`/kb/v1/spaces/${spaceId}/docs`);
   return response.data.docs;
+}
+
+// ============== Space ACL APIs ==============
+
+/**
+ * 获取所有知识空间的权限配置（用于权限绑定页面）
+ */
+export async function getAllSpaceAcl(): Promise<SpaceAclResponse[]> {
+  const response = await httpClient.get<SpaceAclResponse[]>('/kb/v1/space-acl');
+  return response.data;
+}
+
+/**
+ * 获取指定知识空间的权限配置
+ */
+export async function getSpaceAcl(spaceId: string): Promise<SpaceAclEntry[]> {
+  const response = await httpClient.get<SpaceAclEntry[]>(`/kb/v1/space-acl/${spaceId}`);
+  return response.data;
+}
+
+/**
+ * 更新知识空间权限配置（会级联更新该空间下所有文档的 doc_acl 表）
+ */
+export async function updateSpaceAcl(
+  spaceId: string,
+  permissions: SpaceAclEntry[]
+): Promise<void> {
+  await httpClient.put(`/kb/v1/space-acl/${spaceId}`, { permissions });
 }

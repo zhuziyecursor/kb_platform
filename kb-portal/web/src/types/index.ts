@@ -259,6 +259,34 @@ export interface CreateSpaceRequest {
   parentId?: string;
 }
 
+// ============== Space ACL Types ==============
+
+/** 空间权限条目 */
+export interface SpaceAclEntry {
+  accessorType: 'USER' | 'ROLE' | 'DEPT';
+  accessorId: string;
+  accessorName?: string;
+  permission: 'READ' | 'WRITE' | 'ADMIN';
+}
+
+/** 知识空间权限配置响应 */
+export interface SpaceAclResponse {
+  spaceId: string;
+  spaceName: string;
+  permissions: SpaceAclEntry[];
+}
+
+/** 角色-空间绑定视图（前端渲染用） */
+export interface RoleSpaceBinding {
+  roleCode: string;
+  roleName: string;
+  spaces: Array<{
+    spaceId: string;
+    spaceName: string;
+    permission: 'READ' | 'WRITE' | 'ADMIN';
+  }>;
+}
+
 // ============== Stats Dashboard Types ==============
 
 /** 空间文档数统计 */

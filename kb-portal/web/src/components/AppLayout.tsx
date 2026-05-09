@@ -12,9 +12,10 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
-  BgColorsOutlined,
-  CheckOutlined,
   AppstoreOutlined,
+  MoreOutlined,
+  QuestionCircleOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -25,11 +26,10 @@ const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
 
 const NAV_ITEMS = [
-  { key: 'home', icon: <FileTextOutlined />, label: '知识库', path: '/' },
+  { key: 'home', icon: <FileTextOutlined />, label: '工作台', path: '/' },
   { key: 'spaces', icon: <FolderOutlined />, label: '知识空间', path: '/spaces/list' },
   { key: 'chat', icon: <RobotOutlined />, label: '知识问答', path: '/rag' },
   { key: 'extensions', icon: <AppstoreOutlined />, label: '扩展管理', path: '/extensions' },
-  { key: 'settings', icon: <SettingOutlined />, label: '设置', path: '/settings' },
 ];
 
 const SIDEBAR_WIDTH = 200;
@@ -44,7 +44,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const { themeMode, setThemeMode, resolvedTheme } = useTheme();
+  const { themeMode } = useTheme();
   const [username, setUsername] = useState('admin');
   const [roleLabel, setRoleLabel] = useState('管理员');
 
@@ -75,20 +75,11 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
 
   const currentWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
 
-  const themeMenuItems: MenuProps['items'] = [
-    { key: 'theme-system', label: '随系统', icon: themeMode === 'system' ? <CheckOutlined /> : <span style={{ width: 14 }} /> },
-    { key: 'theme-light', label: '浅色', icon: themeMode === 'light' ? <CheckOutlined /> : <span style={{ width: 14 }} /> },
-    { key: 'theme-dark', label: '深色', icon: themeMode === 'dark' ? <CheckOutlined /> : <span style={{ width: 14 }} /> },
-  ];
-
   const userMenuItems: MenuProps['items'] = [
-    { key: 'profile', label: '个人中心', icon: <UserOutlined /> },
-    {
-      key: 'theme',
-      label: '主题',
-      icon: <BgColorsOutlined />,
-      children: themeMenuItems,
-    },
+    { key: 'settings', label: '系统设置', icon: <SettingOutlined /> },
+    { key: 'pipeline', label: '流水线配置', icon: <AppstoreOutlined /> },
+    { key: 'permissions', label: '权限管理', icon: <SafetyOutlined /> },
+    { key: 'help', label: '帮助与反馈', icon: <QuestionCircleOutlined /> },
     { type: 'divider' },
     { key: 'logout', label: '退出登录', danger: true, icon: <LogoutOutlined /> },
   ];
@@ -98,14 +89,17 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
       case 'logout':
         handleLogout();
         break;
-      case 'theme-system':
-        setThemeMode('system');
+      case 'settings':
+        router.push('/settings');
         break;
-      case 'theme-light':
-        setThemeMode('light');
+      case 'pipeline':
+        router.push('/settings/pipeline');
         break;
-      case 'theme-dark':
-        setThemeMode('dark');
+      case 'permissions':
+        router.push('/settings/permissions');
+        break;
+      case 'help':
+        router.push('/help');
         break;
     }
   };
@@ -121,13 +115,13 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
           left: 0,
           top: 0,
           zIndex: 100,
-          transition: 'width var(--transition-base)',
+          transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), background var(--transition-base)',
           overflow: 'hidden',
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* Brand Header */}
-          <div style={{
+          <div className="brand-glow" style={{
             padding: collapsed ? '12px 0' : '16px 16px',
             display: 'flex',
             alignItems: 'center',
@@ -152,6 +146,9 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
             />
           </div>
 
+          {/* Gradient Divider */}
+          <div className="sidebar-divider" />
+
           {/* Navigation */}
           <nav style={{ flex: 1, padding: collapsed ? '12px 0' : '12px 12px', overflow: 'auto' }}>
             {NAV_ITEMS.map((item) => {
@@ -165,7 +162,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
               const link = (
                 <Link key={item.key} href={item.path} style={{ display: 'block' }}>
                   <div className={className}>
-                    <span style={{ fontSize: 16, display: 'flex', alignItems: 'center' }}>{item.icon}</span>
+                    <span className="nav-icon" style={{ fontSize: 16, display: 'flex', alignItems: 'center' }}>{item.icon}</span>
                     {!collapsed && <span>{item.label}</span>}
                   </div>
                 </Link>
@@ -184,40 +181,59 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
 
           {/* User Footer */}
           <div style={{
-            padding: collapsed ? '12px 0' : '12px 12px',
+            padding: collapsed ? '8px 0' : '8px 12px',
             flexShrink: 0,
             background: 'var(--color-muted)',
             margin: 8,
             borderRadius: 'var(--radius-md)',
           }}>
-            <Dropdown menu={{ items: userMenuItems, onClick: handleMenuClick }} placement="topRight" trigger={['click']}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: collapsed ? 0 : 10,
-                cursor: 'pointer',
-                padding: collapsed ? 4 : '6px 8px',
-                borderRadius: 'var(--radius-sm)',
-                transition: 'background var(--transition-fast)',
-                width: collapsed ? undefined : '100%',
-              }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: collapsed ? 'center' : 'space-between',
+              gap: 8,
+            }}>
+              {/* Avatar - separate dropdown */}
+              <Dropdown menu={{ items: [{ key: 'logout', label: '退出登录', danger: true, icon: <LogoutOutlined /> }], onClick: handleMenuClick }} placement="topRight" trigger={['click']}>
                 <Avatar
                   size={collapsed ? 28 : 32}
                   icon={<UserOutlined />}
-                  style={{ background: 'var(--color-accent)', flexShrink: 0 }}
+                  style={{ background: 'var(--color-accent)', cursor: 'pointer', flexShrink: 0 }}
                 />
-                {!collapsed && (
+              </Dropdown>
+
+              {!collapsed && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', flex: 1 }}>
                   <div style={{ overflow: 'hidden', flex: 1 }}>
                     <Text style={{ fontSize: 13, display: 'block', color: 'var(--color-foreground)', fontWeight: 500 }}>
                       {username}
                     </Text>
-                    <Text style={{ fontSize: 11, color: 'var(--color-secondary)' }}>
-                      {roleLabel}
-                    </Text>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: 'var(--color-success)',
+                        boxShadow: '0 0 6px var(--color-success)',
+                        display: 'inline-block',
+                      }} />
+                      <Text style={{ fontSize: 11, color: 'var(--color-secondary)' }}>
+                        {roleLabel}
+                      </Text>
+                    </div>
                   </div>
-                )}
-              </div>
-            </Dropdown>
+                </div>
+              )}
+
+              {/* More button - dropdown menu */}
+              <Dropdown menu={{ items: userMenuItems, onClick: handleMenuClick }} placement="topRight" trigger={['click']}>
+                <Button
+                  type="text"
+                  icon={<MoreOutlined />}
+                  style={{ fontSize: 16, color: 'var(--color-secondary)', flexShrink: 0 }}
+                />
+              </Dropdown>
+            </div>
           </div>
         </div>
       </Sider>

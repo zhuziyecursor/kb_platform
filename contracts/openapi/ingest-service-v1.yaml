@@ -30,6 +30,59 @@ components:
         message: { type: string }
         traceId: { type: string, example: "tr-a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
 
+    SpaceAclEntry:
+      type: object
+      required: [accessorType, accessorId, permission]
+      description: 空间权限条目
+      properties:
+        accessorType:
+          type: string
+          enum: [USER, ROLE, DEPT]
+          description: |
+            - USER: 单个用户
+            - ROLE: 角色
+            - DEPT: 部门
+        accessorId:
+          type: string
+          description:  accessor_id（用户ID/角色代码/部门ID）
+        accessorName:
+          type: string
+          nullable: true
+          description: 显示名称（可选，后端可填充）
+        permission:
+          type: string
+          enum: [READ, WRITE, ADMIN]
+          default: READ
+          description: |
+            - READ: 可检索、可引用
+            - WRITE: 可上传、可编辑文档元数据
+            - ADMIN: 可管理空间配置、可删除空间
+
+    SpaceAclResponse:
+      type: object
+      required: [spaceId, spaceName, permissions]
+      description: 知识空间权限配置响应
+      properties:
+        spaceId:
+          type: string
+        spaceName:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpaceAclEntry"
+
+    UpdateSpaceAclRequest:
+      type: object
+      required: [permissions]
+      description: 更新空间 ACL 请求
+      properties:
+        permissions:
+          type: array
+          description: 新的 ACL 条目列表（全量替换）
+          items:
+            $ref: "#/components/schemas/SpaceAclEntry"
+
     ChunkMode:
       type: string
       enum: [HEAD_FIRST, TAIL_FIRST, UNIFORM]
@@ -79,6 +132,7 @@ components:
         overlapRatio: { type: integer }
         chunkMode: { $ref: "#/components/schemas/ChunkMode" }
         visibility: { $ref: "#/components/schemas/SpaceVisibility" }
+        smartParseEnabled: { type: boolean, default: false, description: "是否启用智能解析（规则引擎+LLM精修双层架构）" }
         parentId: { type: string, nullable: true, description: "父节点ID，NULL表示根节点" }
         nodePath: { type: string, description: "物化路径，如 /root_id/child_id/" }
         depth: { type: integer, description: "层级深度，根节点为0" }
@@ -98,6 +152,7 @@ components:
         overlapRatio: { type: integer }
         chunkMode: { $ref: "#/components/schemas/ChunkMode" }
         visibility: { $ref: "#/components/schemas/SpaceVisibility" }
+        smartParseEnabled: { type: boolean, default: false }
         parentId: { type: string, nullable: true }
         depth: { type: integer }
         docCount: { type: integer }
@@ -356,6 +411,7 @@ paths:
                 overlapRatio: { type: integer, minimum: 0, maximum: 50, default: 10 }
                 chunkMode:   { $ref: "#/components/schemas/ChunkMode" }
                 visibility:  { $ref: "#/components/schemas/SpaceVisibility" }
+                smartParseEnabled: { type: boolean, default: false, description: "是否启用智能解析（规则引擎+LLM精修双层架构）" }
                 parentId:    { type: string, description: "父空间ID，不传则创建为根节点" }
       responses:
         "200":
@@ -422,6 +478,7 @@ paths:
                 overlapRatio: { type: integer, minimum: 0, maximum: 50 }
                 chunkMode:   { $ref: "#/components/schemas/ChunkMode" }
                 visibility:  { $ref: "#/components/schemas/SpaceVisibility" }
+                smartParseEnabled: { type: boolean }
       responses:
         "200":
           description: 更新成功
@@ -445,6 +502,69 @@ paths:
           description: 删除成功
         "400":
           description: 空间非空，无法删除
+
+  /space-acl:
+    get:
+      summary: 获取所有知识空间的权限配置
+      description: 用于权限绑定页面，展示所有空间及其 ACL 条目
+      tags: [权限管理]
+      operationId: getAllSpaceAcl
+      security:
+        - oboToken: [kb:read]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SpaceAclResponse"
+
+  /space-acl/{spaceId}:
+    get:
+      summary: 获取指定知识空间的权限配置
+      tags: [权限管理]
+      operationId: getSpaceAcl
+      security:
+        - oboToken: [kb:read]
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SpaceAclEntry"
+    put:
+      summary: 更新知识空间权限配置
+      description: |
+        更新指定空间的 ACL 条目，会自动级联更新该空间下所有文档的 doc_acl 表。
+        ROLE/DEPT 条目会同步到 doc_acl，USER 条目通过用户-角色关系间接推导。
+      tags: [权限管理]
+      operationId: updateSpaceAcl
+      security:
+        - oboToken: [kb:admin]
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSpaceAclRequest"
+      responses:
+        "200":
+          description: 更新成功
 
   /spaces/{spaceId}/docs:
     get:
