@@ -53,7 +53,6 @@ import AppLayout from '@/components/AppLayout';
 import PageHeader from '@/components/PageHeader';
 import RagSessionPanel from '@/components/RagSessionPanel';
 import type { LUIAction } from '@/types';
-import { useLLMModels, LLM_PROVIDERS } from '@/hooks/useLLMModels';
 import { Button, Badge } from '@/components/ui';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
@@ -103,9 +102,6 @@ export default function RAGPage() {
   const [sessionRefresh, setSessionRefresh] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  // LLM 模型选择
-  const { models, selectedModelId, setSelectedModelId } = useLLMModels();
 
   // 附件状态
   const [attachedFile, setAttachedFile] = useState<{ docId: string; fileName: string; fileSize: number } | null>(null);
@@ -658,29 +654,6 @@ export default function RAGPage() {
                   />
 
                   <div style={{ flex: 1 }} />
-
-                  {/* 模型选择器 */}
-                  <Select
-                    value={selectedModelId}
-                    onChange={setSelectedModelId}
-                    style={{ width: 160 }}
-                    size="small"
-                    dropdownMatchSelectWidth={200}
-                    bordered={false}
-                    suffixIcon={<RobotOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
-                  >
-                    {models.map(model => {
-                      const provider = LLM_PROVIDERS.find(p => p.value === model.provider);
-                      return (
-                        <Select.Option key={model.id} value={model.id}>
-                          <Space size={6}>
-                            <span>{provider?.icon || '🤖'}</span>
-                            <span style={{ fontSize: 12 }}>{model.modelName}</span>
-                          </Space>
-                        </Select.Option>
-                      );
-                    })}
-                  </Select>
 
                   {/* 技能选择标签（未来扩展预留） */}
                   <div style={{
