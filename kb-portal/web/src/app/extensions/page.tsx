@@ -11,38 +11,54 @@ import {
   Modal,
   Form,
   Input,
-  Select,
   Switch,
   Popconfirm,
-  Upload,
   message as antdMessage,
   Alert,
   App as AntApp,
-  InputRef,
   Empty,
   Tooltip,
+  Badge,
+  Descriptions,
+  Divider,
 } from 'antd';
-import type { UploadProps } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
-  DownloadOutlined,
-  UploadOutlined,
   SearchOutlined,
-  BookOutlined,
+  FileTextOutlined,
   ApiOutlined,
   AppstoreOutlined,
   SettingOutlined,
-  CopyOutlined,
   CheckCircleOutlined,
-  GithubOutlined,
-  SwapOutlined,
+  StopOutlined,
+  SafetyOutlined,
+  DatabaseOutlined,
+  CloudServerOutlined,
+  FormOutlined,
+  LineChartOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import AppLayout from '@/components/AppLayout';
-import { useExtensions, type PromptConfig, type ExternalSkill, type CustomSkill, type MCPServer } from '@/hooks/useExtensions';
+import { useExtensions, type PromptConfig, type ExternalSkill } from '@/hooks/useExtensions';
 
 const { Title, Text, Paragraph } = Typography;
+
+// 审计业务分类配置
+const AUDIT_CATEGORIES = {
+  '审计报告类': { icon: <FileTextOutlined />, color: 'blue', desc: '审计报告生成、问题定性、审计意见出具' },
+  '法规查询类': { icon: <SafetyOutlined />, color: 'purple', desc: '法规检索、合规性检查、法规比对' },
+  '数据分析类': { icon: <LineChartOutlined />, color: 'green', desc: '异常交易识别、指标计算、趋势分析' },
+  '文档处理类': { icon: <FormOutlined />, color: 'orange', desc: '会议纪要提取、合同比对、附件解析' },
+};
+
+const PROMPT_CATEGORIES = {
+  '审计报告类': { icon: <FileTextOutlined />, color: 'blue' },
+  '法规查询类': { icon: <SafetyOutlined />, color: 'purple' },
+  '数据分析类': { icon: <LineChartOutlined />, color: 'green' },
+  '文档处理类': { icon: <FormOutlined />, color: 'orange' },
+};
 
 export default function ExtensionsPage() {
   const { message: antdMsg } = AntApp.useApp();
@@ -50,118 +66,66 @@ export default function ExtensionsPage() {
   const {
     prompts, addPrompt, updatePrompt, removePrompt, setDefaultPrompt, exportPrompts, importPrompts,
     externalSkills, addExternalSkill, updateExternalSkill, removeExternalSkill, exportExternalSkills, importExternalSkills,
-    customSkills, addCustomSkill, updateCustomSkill, removeCustomSkill, exportCustomSkills, importCustomSkills,
-    mcpServers, addMCPServer, updateMCPServer, removeMCPServer, testMCPServer, exportMCPServers, importMCPServers,
   } = useExtensions();
-
-  const isAdmin = true;
 
   // External Skills state
   const [searchText, setSearchText] = useState('');
-  const [activeCategory, setActiveCategory] = useState('全部');
   const [selectedSkill, setSelectedSkill] = useState<ExternalSkill | null>(null);
+  const [skillModalVisible, setSkillModalVisible] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<ExternalSkill | null>(null);
+  const [skillForm] = Form.useForm();
 
   // Prompts state
   const [promptSearchText, setPromptSearchText] = useState('');
-  const [promptActiveCategory, setPromptActiveCategory] = useState('全部');
   const [selectedPrompt, setSelectedPrompt] = useState<PromptConfig | null>(null);
   const [promptModalVisible, setPromptModalVisible] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<PromptConfig | null>(null);
   const [promptForm] = Form.useForm();
 
-  // Modals
-  const [externalSkillModalVisible, setExternalSkillModalVisible] = useState(false);
-  const [editingExternalSkill, setEditingExternalSkill] = useState<ExternalSkill | null>(null);
-  const [externalSkillForm] = Form.useForm();
-
-  const [customSkillModalVisible, setCustomSkillModalVisible] = useState(false);
-  const [editingCustomSkill, setEditingCustomSkill] = useState<CustomSkill | null>(null);
-  const [customSkillForm] = Form.useForm();
-
-  const [mcpServerModalVisible, setMCPServerModalVisible] = useState(false);
-  const [editingMCPServer, setEditingMCPServer] = useState<MCPServer | null>(null);
-  const [mcpServerForm] = Form.useForm();
-
-  // External Skills derived data
-  const categories = useMemo(() => {
-    const cats = ['全部', ...new Set(externalSkills.map(s => s.category || '未分类'))];
-    return cats;
-  }, [externalSkills]);
-
-  const filteredSkills = useMemo(() => {
-    return externalSkills.filter(skill => {
-      const matchSearch = !searchText ||
-        skill.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        skill.description.toLowerCase().includes(searchText.toLowerCase()) ||
-        skill.author?.toLowerCase().includes(searchText.toLowerCase());
-      const matchCategory = activeCategory === '全部' || skill.category === activeCategory;
-      return matchSearch && matchCategory;
-    });
-  }, [externalSkills, searchText, activeCategory]);
-
-  // Prompts derived data
-  const promptCategories = useMemo(() => {
-    const cats = ['全部', ...new Set(prompts.map(p => p.category || '未分类'))];
-    return cats;
-  }, [prompts]);
-
-  const filteredPrompts = useMemo(() => {
-    return prompts.filter(prompt => {
-      const matchSearch = !promptSearchText ||
-        prompt.name.toLowerCase().includes(promptSearchText.toLowerCase()) ||
-        prompt.description.toLowerCase().includes(promptSearchText.toLowerCase()) ||
-        prompt.author?.toLowerCase().includes(promptSearchText.toLowerCase());
-      const matchCategory = promptActiveCategory === '全部' || prompt.category === promptActiveCategory;
-      return matchSearch && matchCategory;
-    });
-  }, [prompts, promptSearchText, promptActiveCategory]);
-
-  const copyInstallCommand = (command: string) => {
-    navigator.clipboard.writeText(command);
-    antdMsg.success('安装命令已复制到剪贴板');
-  };
-
   // External Skills handlers
-  const openExternalSkillModal = (skill?: ExternalSkill) => {
-    setEditingExternalSkill(skill || null);
-    if (skill) {
-      externalSkillForm.setFieldsValue(skill);
-    } else {
-      externalSkillForm.resetFields();
-    }
-    setExternalSkillModalVisible(true);
+  const handleToggleSkill = (skill: ExternalSkill, checked: boolean) => {
+    updateExternalSkill(skill.id, { enabled: checked });
+    antdMsg.success(`Skill 已${checked ? '启用' : '禁用'}`);
   };
 
-  const handleSaveExternalSkill = async () => {
+  const openSkillModal = (skill?: ExternalSkill) => {
+    setEditingSkill(skill || null);
+    if (skill) {
+      skillForm.setFieldsValue(skill);
+    } else {
+      skillForm.resetFields();
+      skillForm.setFieldsValue({ enabled: true, category: '审计报告类' });
+    }
+    setSkillModalVisible(true);
+  };
+
+  const handleSaveSkill = async () => {
     try {
-      const values = await externalSkillForm.validateFields();
-      if (editingExternalSkill) {
-        updateExternalSkill(editingExternalSkill.id, values);
+      const values = await skillForm.validateFields();
+      if (editingSkill) {
+        updateExternalSkill(editingSkill.id, values);
         antdMsg.success('Skill 已更新');
       } else {
         addExternalSkill(values);
         antdMsg.success('Skill 已添加');
       }
-      setExternalSkillModalVisible(false);
+      setSkillModalVisible(false);
     } catch {}
   };
 
-  const handleImportExternalSkills: UploadProps['beforeUpload'] = (file) => {
-    importExternalSkills(file).then(success => {
-      if (success) antdMsg.success('导入成功');
-      else antdMsg.error('导入失败，请检查文件格式');
-    });
-    return false;
+  // Prompts handlers
+  const handleTogglePrompt = (prompt: PromptConfig, checked: boolean) => {
+    updatePrompt(prompt.id, { enabled: checked });
+    antdMsg.success(`提示词已${checked ? '启用' : '禁用'}`);
   };
 
-  // Prompts handlers
   const openPromptModal = (prompt?: PromptConfig) => {
     setEditingPrompt(prompt || null);
     if (prompt) {
       promptForm.setFieldsValue(prompt);
     } else {
       promptForm.resetFields();
-      promptForm.setFieldsValue({ type: 'general' });
+      promptForm.setFieldsValue({ type: 'rag', enabled: true, category: '审计报告类' });
     }
     setPromptModalVisible(true);
   };
@@ -180,337 +144,255 @@ export default function ExtensionsPage() {
     } catch {}
   };
 
-  // Custom Skills handlers
-  const openCustomSkillModal = (skill?: CustomSkill) => {
-    setEditingCustomSkill(skill || null);
-    if (skill) {
-      customSkillForm.setFieldsValue(skill);
-    } else {
-      customSkillForm.resetFields();
-      customSkillForm.setFieldsValue({ type: 'script', enabled: true, parameters: [] });
-    }
-    setCustomSkillModalVisible(true);
-  };
-
-  const handleSaveCustomSkill = async () => {
-    try {
-      const values = await customSkillForm.validateFields();
-      if (editingCustomSkill) {
-        updateCustomSkill(editingCustomSkill.id, values);
-        antdMsg.success('自定义 Skill 已更新');
-      } else {
-        addCustomSkill(values);
-        antdMsg.success('自定义 Skill 已添加');
-      }
-      setCustomSkillModalVisible(false);
-    } catch {}
-  };
-
-  // MCP Servers handlers
-  const openMCPServerModal = (server?: MCPServer) => {
-    setEditingMCPServer(server || null);
-    if (server) {
-      mcpServerForm.setFieldsValue(server);
-    } else {
-      mcpServerForm.resetFields();
-      mcpServerForm.setFieldsValue({ type: 'stdio', enabled: true, args: [], env: {} });
-    }
-    setMCPServerModalVisible(true);
-  };
-
-  const handleSaveMCPServer = async () => {
-    try {
-      const values = await mcpServerForm.validateFields();
-      if (editingMCPServer) {
-        updateMCPServer(editingMCPServer.id, values);
-        antdMsg.success('MCP Server 已更新');
-      } else {
-        addMCPServer(values);
-        antdMsg.success('MCP Server 已添加');
-      }
-      setMCPServerModalVisible(false);
-    } catch {}
-  };
-
-  const handleImportMCPServers: UploadProps['beforeUpload'] = (file) => {
-    importMCPServers(file).then(success => {
-      if (success) antdMsg.success('导入成功');
-      else antdMsg.error('导入失败，请检查文件格式');
+  // Filter and group External Skills
+  const groupedSkills = useMemo(() => {
+    const filtered = externalSkills.filter(skill => {
+      if (!searchText) return true;
+      return skill.name.toLowerCase().includes(searchText.toLowerCase()) ||
+             skill.description.toLowerCase().includes(searchText.toLowerCase());
     });
-    return false;
-  };
 
-  // Render functions
-  const renderPromptCard = (prompt: PromptConfig) => (
-    <Card
-      key={prompt.id}
-      hoverable
-      onClick={() => setSelectedPrompt(prompt)}
-      style={{
-        borderRadius: 12,
-        transition: 'all 0.3s ease',
-        height: '100%',
-      }}
-      styles={{ body: { padding: 20 } }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-        <div style={{
-          width: 56,
-          height: 56,
-          borderRadius: 12,
-          background: 'linear-gradient(135deg, #722ed1 0%, #eb2f96 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 28,
-          flexShrink: 0,
-        }}>
-          {prompt.icon || '💬'}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <Text strong style={{ fontSize: 16, color: 'var(--color-foreground)' }}>
-              {prompt.name}
-            </Text>
-          </div>
-          {prompt.category && (
-            <Tag color="purple" style={{ marginBottom: 8 }}>{prompt.category}</Tag>
-          )}
-          <Paragraph
-            ellipsis={{ rows: 2, expandable: false }}
-            style={{ margin: 0, color: 'var(--color-secondary)', fontSize: 13 }}
-          >
-            {prompt.description}
-          </Paragraph>
-        </div>
-      </div>
-      <div style={{
-        marginTop: 16,
-        paddingTop: 12,
-        borderTop: '1px solid var(--color-border)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            <GithubOutlined style={{ marginRight: 4 }} />
-            {prompt.author || 'Unknown'}
-          </Text>
-        </Space>
-        <Space size="small">
-          <Popconfirm
-            title="确定要删除这个提示词吗？"
-            onConfirm={() => removePrompt(prompt.id)}
-            okText="删除"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-          <Button type="link" size="small" icon={<BookOutlined />} onClick={(e) => { e.stopPropagation(); setSelectedPrompt(prompt); }}>
-            查看详情
-          </Button>
-        </Space>
-      </div>
-    </Card>
-  );
+    const grouped: Record<string, ExternalSkill[]> = {};
+    Object.keys(AUDIT_CATEGORIES).forEach(cat => {
+      grouped[cat] = filtered.filter(s => s.category === cat);
+    });
+    return grouped;
+  }, [externalSkills, searchText]);
+
+  const enabledSkillsCount = externalSkills.filter(s => s.enabled).length;
+
+  // Filter and group Prompts
+  const groupedPrompts = useMemo(() => {
+    const filtered = prompts.filter(prompt => {
+      if (!promptSearchText) return true;
+      return prompt.name.toLowerCase().includes(promptSearchText.toLowerCase()) ||
+             prompt.description.toLowerCase().includes(promptSearchText.toLowerCase());
+    });
+
+    const grouped: Record<string, PromptConfig[]> = {};
+    Object.keys(PROMPT_CATEGORIES).forEach(cat => {
+      grouped[cat] = filtered.filter(p => p.category === cat);
+    });
+    return grouped;
+  }, [prompts, promptSearchText]);
+
+  const enabledPromptsCount = prompts.filter(p => p.enabled).length;
 
   const renderSkillCard = (skill: ExternalSkill) => (
     <Card
       key={skill.id}
       hoverable
       onClick={() => setSelectedSkill(skill)}
-      style={{
-        borderRadius: 12,
-        transition: 'all 0.3s ease',
-        height: '100%',
-      }}
-      styles={{ body: { padding: 20 } }}
+      style={{ borderRadius: 12, transition: 'all 0.3s ease' }}
+      styles={{ body: { padding: 16 } }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div style={{
-          width: 56,
-          height: 56,
-          borderRadius: 12,
-          background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)',
+          width: 48,
+          height: 48,
+          borderRadius: 10,
+          background: skill.enabled
+            ? 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)'
+            : 'var(--color-muted)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: 28,
+          fontSize: 24,
           flexShrink: 0,
+          opacity: skill.enabled ? 1 : 0.5,
         }}>
           {skill.icon || '📦'}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <Text strong style={{ fontSize: 16, color: 'var(--color-foreground)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text strong style={{ fontSize: 14, color: skill.enabled ? 'var(--color-foreground)' : 'var(--color-secondary)' }}>
               {skill.name}
             </Text>
+            <Switch
+              size="small"
+              checked={skill.enabled}
+              onChange={(checked) => handleToggleSkill(skill, checked)}
+            />
           </div>
-          {skill.category && (
-            <Tag color="blue" style={{ marginBottom: 8 }}>{skill.category}</Tag>
-          )}
           <Paragraph
             ellipsis={{ rows: 2, expandable: false }}
-            style={{ margin: 0, color: 'var(--color-secondary)', fontSize: 13 }}
+            style={{ margin: 0, fontSize: 12, color: 'var(--color-secondary)' }}
           >
             {skill.description}
           </Paragraph>
         </div>
       </div>
-      <div style={{
-        marginTop: 16,
-        paddingTop: 12,
-        borderTop: '1px solid var(--color-border)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            <GithubOutlined style={{ marginRight: 4 }} />
-            {skill.author || 'Unknown'}
-          </Text>
-        </Space>
-        <Space size="small">
-          <Popconfirm
-            title="确定要删除这个 Skill 吗？"
-            onConfirm={() => removeExternalSkill(skill.id)}
-            okText="删除"
-            cancelText="取消"
+    </Card>
+  );
+
+  const renderPromptCard = (prompt: PromptConfig) => (
+    <Card
+      key={prompt.id}
+      hoverable
+      onClick={() => setSelectedPrompt(prompt)}
+      style={{ borderRadius: 12, transition: 'all 0.3s ease' }}
+      styles={{ body: { padding: 16 } }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{
+          width: 48,
+          height: 48,
+          borderRadius: 10,
+          background: prompt.enabled
+            ? 'linear-gradient(135deg, #722ed1 0%, #eb2f96 100%)'
+            : 'var(--color-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 24,
+          flexShrink: 0,
+          opacity: prompt.enabled ? 1 : 0.5,
+        }}>
+          {prompt.icon || '💬'}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text strong style={{ fontSize: 14, color: prompt.enabled ? 'var(--color-foreground)' : 'var(--color-secondary)' }}>
+              {prompt.name}
+            </Text>
+            <Switch
+              size="small"
+              checked={prompt.enabled}
+              onChange={(checked) => handleTogglePrompt(prompt, checked)}
+            />
+          </div>
+          <Paragraph
+            ellipsis={{ rows: 2, expandable: false }}
+            style={{ margin: 0, fontSize: 12, color: 'var(--color-secondary)' }}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-          <Button type="link" size="small" icon={<BookOutlined />} onClick={(e) => { e.stopPropagation(); setSelectedSkill(skill); }}>
-            查看详情
-          </Button>
-        </Space>
+            {prompt.description}
+          </Paragraph>
+        </div>
       </div>
     </Card>
   );
 
-  const renderPromptsTab = () => (
+  const renderExternalSkillsTab = () => (
     <div>
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Input
-            placeholder="搜索提示词..."
-            prefix={<SearchOutlined style={{ color: 'var(--color-secondary)' }} />}
-            value={promptSearchText}
-            onChange={e => setPromptSearchText(e.target.value)}
-            style={{ width: 300, borderRadius: 8 }}
-            allowClear
-          />
-          {isAdmin && (
-            <Space>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openPromptModal()}>添加提示词</Button>
-            </Space>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {promptCategories.map(cat => (
-            <Tag
-              key={cat}
-              color={promptActiveCategory === cat ? 'purple' : 'default'}
-              style={{ cursor: 'pointer', padding: '4px 12px', borderRadius: 16 }}
-              onClick={() => setPromptActiveCategory(cat)}
-            >
-              {cat}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Input
+              placeholder="搜索 Skills..."
+              prefix={<SearchOutlined style={{ color: 'var(--color-secondary)' }} />}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              style={{ width: 260, borderRadius: 8 }}
+              allowClear
+            />
+            <Tag color="blue">
+              <CheckCircleOutlined /> 已启用 {enabledSkillsCount}/{externalSkills.length}
             </Tag>
-          ))}
+          </div>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openSkillModal()}>
+            添加 Skill
+          </Button>
         </div>
       </div>
 
-      {filteredPrompts.length > 0 ? (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: 20,
-        }}>
-          {filteredPrompts.map(renderPromptCard)}
-        </div>
-      ) : (
+      {Object.entries(groupedSkills).map(([category, skills]) => {
+        if (skills.length === 0) return null;
+        const catConfig = AUDIT_CATEGORIES[category as keyof typeof AUDIT_CATEGORIES];
+        return (
+          <div key={category} style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 16, color: 'var(--color-primary)' }}>{catConfig.icon}</span>
+              <Text strong style={{ fontSize: 15 }}>{category}</Text>
+              <Tag color={catConfig.color} style={{ marginLeft: 8 }}>{skills.length} 个</Tag>
+              <Text type="secondary" style={{ fontSize: 12 }}>— {catConfig.desc}</Text>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: 12,
+            }}>
+              {skills.map(renderSkillCard)}
+            </div>
+          </div>
+        );
+      })}
+
+      {externalSkills.length === 0 && (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="暂无匹配的提示词"
+          description="暂无审计相关 Skills"
           style={{ marginTop: 60 }}
         />
       )}
 
       <Alert
         message="使用说明"
-        description="点击任意提示词卡片查看详情和安装命令。提示词可帮助提升 AI 编码助手的输出质量和工作效率。"
+        description="启用后的 Skills 可在知识问答页面直接使用。点击卡片可查看详情或编辑配置。"
         type="info"
         showIcon
         style={{ marginTop: 24 }}
-        icon={<SwapOutlined />}
       />
     </div>
   );
 
-  const renderExternalSkillsTab = () => (
+  const renderPromptsTab = () => (
     <div>
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Input
-            placeholder="搜索 Skills..."
-            prefix={<SearchOutlined style={{ color: 'var(--color-secondary)' }} />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ width: 300, borderRadius: 8 }}
-            allowClear
-          />
-          {isAdmin && (
-            <Space>
-              <Upload accept=".json" showUploadList={false} beforeUpload={handleImportExternalSkills}>
-                <Button icon={<UploadOutlined />}>导入</Button>
-              </Upload>
-              <Button icon={<DownloadOutlined />} onClick={exportExternalSkills}>导出</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openExternalSkillModal()}>添加 Skill</Button>
-            </Space>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {categories.map(cat => (
-            <Tag
-              key={cat}
-              color={activeCategory === cat ? 'primary' : 'default'}
-              style={{ cursor: 'pointer', padding: '4px 12px', borderRadius: 16 }}
-              onClick={() => setActiveCategory(cat)}
-            >
-              {cat}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Input
+              placeholder="搜索提示词..."
+              prefix={<SearchOutlined style={{ color: 'var(--color-secondary)' }} />}
+              value={promptSearchText}
+              onChange={e => setPromptSearchText(e.target.value)}
+              style={{ width: 260, borderRadius: 8 }}
+              allowClear
+            />
+            <Tag color="purple">
+              <CheckCircleOutlined /> 已启用 {enabledPromptsCount}/{prompts.length}
             </Tag>
-          ))}
+          </div>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openPromptModal()}>
+            添加提示词
+          </Button>
         </div>
       </div>
 
-      {filteredSkills.length > 0 ? (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: 20,
-        }}>
-          {filteredSkills.map(renderSkillCard)}
-        </div>
-      ) : (
+      {Object.entries(groupedPrompts).map(([category, categoryPrompts]) => {
+        if (categoryPrompts.length === 0) return null;
+        const catConfig = PROMPT_CATEGORIES[category as keyof typeof PROMPT_CATEGORIES];
+        return (
+          <div key={category} style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 16, color: '#722ed1' }}>{catConfig.icon}</span>
+              <Text strong style={{ fontSize: 15 }}>{category}</Text>
+              <Tag color={catConfig.color} style={{ marginLeft: 8 }}>{categoryPrompts.length} 个</Tag>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: 12,
+            }}>
+              {categoryPrompts.map(renderPromptCard)}
+            </div>
+          </div>
+        );
+      })}
+
+      {prompts.length === 0 && (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="暂无匹配的 Skills"
+          description="暂无审计相关提示词"
           style={{ marginTop: 60 }}
         />
       )}
 
       <Alert
-        message="安装说明"
-        description="点击任意 Skill 卡片查看详情和安装命令，使用终端执行安装命令即可完成安装。"
+        message="使用说明"
+        description="启用后的提示词可作为知识问答的系统提示词使用。点击卡片可查看详情或编辑配置。"
         type="info"
         showIcon
         style={{ marginTop: 24 }}
-        icon={<SwapOutlined />}
       />
     </div>
   );
@@ -528,133 +410,23 @@ export default function ExtensionsPage() {
         items={[
           {
             key: 'external-skills',
-            label: <span><ApiOutlined /> 外部 Skills</span>,
+            label: <span><ApiOutlined /> 审计 Skills <Badge count={enabledSkillsCount} style={{ marginLeft: 8 }} /></span>,
             children: renderExternalSkillsTab(),
           },
           {
             key: 'prompts',
-            label: <span><BookOutlined /> 提示词</span>,
+            label: <span><FileTextOutlined /> 审计提示词 <Badge count={enabledPromptsCount} style={{ marginLeft: 8 }} /></span>,
             children: renderPromptsTab(),
-          },
-          {
-            key: 'custom-skills',
-            label: <span><AppstoreOutlined /> 自定义 Skills</span>,
-            children: (
-              <Card>
-                <Text type="secondary">自定义 Skills 功能开发中...</Text>
-              </Card>
-            ),
-          },
-          {
-            key: 'mcp-servers',
-            label: <span><SettingOutlined /> MCP Servers</span>,
-            children: (
-              <Card>
-                <Text type="secondary">MCP Servers 功能开发中...</Text>
-              </Card>
-            ),
           },
         ]}
       />
 
+      {/* Skill Detail Modal */}
       <Modal
-        title={selectedPrompt ? selectedPrompt.name : ''}
-        open={!!selectedPrompt}
-        onCancel={() => setSelectedPrompt(null)}
-        footer={[
-          <Button key="close" onClick={() => setSelectedPrompt(null)}>关闭</Button>,
-          <Button
-            key="copy"
-            type="primary"
-            icon={<CopyOutlined />}
-            onClick={() => {
-              if (!selectedPrompt) return;
-              navigator.clipboard.writeText(selectedPrompt.content || selectedPrompt.description);
-              antdMsg.success('提示词已复制到剪贴板');
-            }}
-          >
-            复制提示词
-          </Button>,
-        ]}
-        width={600}
-      >
-        {selectedPrompt && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-              <div style={{
-                width: 64,
-                height: 64,
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, #722ed1 0%, #eb2f96 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 36,
-              }}>
-                {selectedPrompt.icon || '💬'}
-              </div>
-              <div>
-                <Title level={5} style={{ margin: 0 }}>{selectedPrompt.name}</Title>
-                <Space style={{ marginTop: 8 }}>
-                  {selectedPrompt.category && <Tag color="purple">{selectedPrompt.category}</Tag>}
-                  <Text type="secondary">
-                    <GithubOutlined style={{ marginRight: 4 }} />
-                    {selectedPrompt.author || 'Unknown'}
-                  </Text>
-                </Space>
-              </div>
-            </div>
-
-            <Card style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>描述</Text>
-              <Paragraph style={{ margin: 0 }}>{selectedPrompt.description}</Paragraph>
-            </Card>
-
-            {selectedPrompt.content && (
-              <Card style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>提示词内容</Text>
-                <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 13 }}>{selectedPrompt.content}</Paragraph>
-              </Card>
-            )}
-
-            <Card style={{ background: 'linear-gradient(135deg, #722ed1 0%, #eb2f96 100%)', border: 'none' }}>
-              <Text style={{ color: 'white', fontSize: 12, display: 'block', marginBottom: 8 }}>提示词内容</Text>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Text style={{ color: 'white', fontFamily: 'monospace', fontSize: 13, flex: 1, maxHeight: 200, overflow: 'auto' }}>
-                  {selectedPrompt.content || selectedPrompt.description}
-                </Text>
-                <Tooltip title="复制提示词">
-                  <Button
-                    type="text"
-                    icon={<CopyOutlined />}
-                    style={{ color: 'white' }}
-                    onClick={() => {
-                      navigator.clipboard.writeText(selectedPrompt.content || selectedPrompt.description);
-                      antdMsg.success('提示词已复制到剪贴板');
-                    }}
-                  />
-                </Tooltip>
-              </div>
-            </Card>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        title={selectedSkill ? selectedSkill.name : ''}
+        title={null}
         open={!!selectedSkill}
         onCancel={() => setSelectedSkill(null)}
-        footer={[
-          <Button key="close" onClick={() => setSelectedSkill(null)}>关闭</Button>,
-          <Button
-            key="copy"
-            type="primary"
-            icon={<CopyOutlined />}
-            onClick={() => selectedSkill && copyInstallCommand(selectedSkill.installCommand)}
-          >
-            复制安装命令
-          </Button>,
-        ]}
+        footer={null}
         width={600}
       >
         {selectedSkill && (
@@ -664,7 +436,9 @@ export default function ExtensionsPage() {
                 width: 64,
                 height: 64,
                 borderRadius: 16,
-                background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)',
+                background: selectedSkill.enabled
+                  ? 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)'
+                  : 'var(--color-muted)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -672,69 +446,217 @@ export default function ExtensionsPage() {
               }}>
                 {selectedSkill.icon || '📦'}
               </div>
-              <div>
+              <div style={{ flex: 1 }}>
                 <Title level={5} style={{ margin: 0 }}>{selectedSkill.name}</Title>
                 <Space style={{ marginTop: 8 }}>
                   {selectedSkill.category && <Tag color="blue">{selectedSkill.category}</Tag>}
-                  <Text type="secondary">
-                    <GithubOutlined style={{ marginRight: 4 }} />
-                    {selectedSkill.author || 'Unknown'}
-                  </Text>
+                  {selectedSkill.enabled
+                    ? <Tag color="success"><CheckCircleOutlined /> 已启用</Tag>
+                    : <Tag color="default"><StopOutlined /> 已禁用</Tag>
+                  }
                 </Space>
               </div>
+              <Button
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setSelectedSkill(null);
+                  openSkillModal(selectedSkill);
+                }}
+              >
+                编辑
+              </Button>
             </div>
 
-            <Card style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
+            <Card style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>描述</Text>
               <Paragraph style={{ margin: 0 }}>{selectedSkill.description}</Paragraph>
             </Card>
 
-            <Card style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>GitHub 仓库</Text>
-              <a href={selectedSkill.repoUrl} target="_blank" rel="noopener noreferrer">
-                <Text code>{selectedSkill.repoUrl}</Text>
-              </a>
-            </Card>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="GitHub 仓库">
+                <a href={selectedSkill.repoUrl} target="_blank" rel="noopener noreferrer">
+                  <Text code>{selectedSkill.repoUrl}</Text>
+                </a>
+              </Descriptions.Item>
+              <Descriptions.Item label="安装命令">
+                <Text code copyable>{selectedSkill.installCommand}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="作者">{selectedSkill.author || '未知'}</Descriptions.Item>
+            </Descriptions>
 
-            <Card style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)', border: 'none' }}>
-              <Text style={{ color: 'white', fontSize: 12, display: 'block', marginBottom: 8 }}>安装命令</Text>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Text style={{ color: 'white', fontFamily: 'monospace', fontSize: 14, flex: 1 }}>
-                  {selectedSkill.installCommand}
-                </Text>
-                <Tooltip title="复制">
-                  <Button
-                    type="text"
-                    icon={<CopyOutlined />}
-                    style={{ color: 'white' }}
-                    onClick={() => copyInstallCommand(selectedSkill.installCommand)}
-                  />
-                </Tooltip>
-              </div>
-            </Card>
+            <Divider />
+
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              提示：启用后此 Skill 可在知识问答页面直接使用。禁用则不在问答界面显示。
+            </Text>
           </div>
         )}
       </Modal>
 
-      <Modal title={editingPrompt ? '编辑提示词' : '添加提示词'} open={promptModalVisible} onOk={handleSavePrompt} onCancel={() => setPromptModalVisible(false)} okText="保存" cancelText="取消">
-        <Form form={promptForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input placeholder="请输入提示词名称" /></Form.Item>
-          <Form.Item name="description" label="描述"><Input.TextArea placeholder="请输入描述" rows={2} /></Form.Item>
-          <Form.Item name="content" label="提示词内容"><Input.TextArea placeholder="请输入完整的提示词内容" rows={8} /></Form.Item>
-          <Form.Item name="icon" label="图标 (emoji)"><Input placeholder="如：💬" /></Form.Item>
-          <Form.Item name="category" label="分类"><Input placeholder="如：开发工具" /></Form.Item>
+      {/* Prompt Detail Modal */}
+      <Modal
+        title={null}
+        open={!!selectedPrompt}
+        onCancel={() => setSelectedPrompt(null)}
+        footer={null}
+        width={700}
+      >
+        {selectedPrompt && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: 16,
+                background: selectedPrompt.enabled
+                  ? 'linear-gradient(135deg, #722ed1 0%, #eb2f96 100%)'
+                  : 'var(--color-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 36,
+              }}>
+                {selectedPrompt.icon || '💬'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <Title level={5} style={{ margin: 0 }}>{selectedPrompt.name}</Title>
+                <Space style={{ marginTop: 8 }}>
+                  {selectedPrompt.category && <Tag color="purple">{selectedPrompt.category}</Tag>}
+                  {selectedPrompt.enabled
+                    ? <Tag color="success"><CheckCircleOutlined /> 已启用</Tag>
+                    : <Tag color="default"><StopOutlined /> 已禁用</Tag>
+                  }
+                </Space>
+              </div>
+              <Button
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setSelectedPrompt(null);
+                  openPromptModal(selectedPrompt);
+                }}
+              >
+                编辑
+              </Button>
+            </div>
+
+            <Card style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>描述</Text>
+              <Paragraph style={{ margin: 0 }}>{selectedPrompt.description}</Paragraph>
+            </Card>
+
+            {selectedPrompt.content && (
+              <Card style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>提示词内容</Text>
+                <pre style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  maxHeight: 300,
+                  overflow: 'auto',
+                }}>
+                  {selectedPrompt.content}
+                </pre>
+              </Card>
+            )}
+
+            {selectedPrompt.tags && selectedPrompt.tags.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>标签</Text>
+                <Space wrap>
+                  {selectedPrompt.tags.map(tag => (
+                    <Tag key={tag} color="purple">{tag}</Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Add/Edit Skill Modal */}
+      <Modal
+        title={editingSkill ? '编辑 Skill' : '添加 Skill'}
+        open={skillModalVisible}
+        onOk={handleSaveSkill}
+        onCancel={() => setSkillModalVisible(false)}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form form={skillForm} layout="vertical">
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入 Skill 名称' }]}>
+            <Input placeholder="如：审计报告生成" />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea placeholder="简要描述 Skill 的功能和用途" rows={2} />
+          </Form.Item>
+          <Form.Item name="category" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
+            <Space wrap>
+              {Object.entries(AUDIT_CATEGORIES).map(([cat, config]) => (
+                <Tag key={cat} color={config.color} style={{ padding: '4px 12px', cursor: 'pointer' }}>
+                  {config.icon} {cat}
+                </Tag>
+              ))}
+            </Space>
+          </Form.Item>
+          <Form.Item name="icon" label="图标 (emoji)">
+            <Input placeholder="如：📋" />
+          </Form.Item>
+          <Form.Item name="author" label="作者">
+            <Input placeholder="如：AuditTools" />
+          </Form.Item>
+          <Form.Item name="repoUrl" label="GitHub 仓库" rules={[{ required: true, message: '请输入仓库地址' }]}>
+            <Input placeholder="https://github.com/xxx/xxx-skills" />
+          </Form.Item>
+          <Form.Item name="installCommand" label="安装命令" rules={[{ required: true, message: '请输入安装命令' }]}>
+            <Input placeholder="npx skills add xxx/xxx" />
+          </Form.Item>
+          <Form.Item name="enabled" label="启用状态" valuePropName="checked" initialValue={true}>
+            <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+          </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title={editingExternalSkill ? '编辑 Skill' : '添加 Skill'} open={externalSkillModalVisible} onOk={handleSaveExternalSkill} onCancel={() => setExternalSkillModalVisible(false)} okText="保存" cancelText="取消">
-        <Form form={externalSkillForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input placeholder="请输入 Skill 名称" /></Form.Item>
-          <Form.Item name="description" label="描述"><Input.TextArea placeholder="请输入描述" rows={3} /></Form.Item>
-          <Form.Item name="icon" label="图标 (emoji)"><Input placeholder="如：🛠️" /></Form.Item>
-          <Form.Item name="category" label="分类"><Input placeholder="如：开发工具" /></Form.Item>
-          <Form.Item name="author" label="作者"><Input placeholder="GitHub 用户名" /></Form.Item>
-          <Form.Item name="repoUrl" label="GitHub 仓库" rules={[{ required: true }]}><Input placeholder="https://github.com/xxx/xxx-skills" /></Form.Item>
-          <Form.Item name="installCommand" label="安装命令" rules={[{ required: true }]}><Input placeholder="npx skills add xxx/xxx-skills" /></Form.Item>
+      {/* Add/Edit Prompt Modal */}
+      <Modal
+        title={editingPrompt ? '编辑提示词' : '添加提示词'}
+        open={promptModalVisible}
+        onOk={handleSavePrompt}
+        onCancel={() => setPromptModalVisible(false)}
+        okText="保存"
+        cancelText="取消"
+        width={700}
+      >
+        <Form form={promptForm} layout="vertical">
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入提示词名称' }]}>
+            <Input placeholder="如：审计发现撰写" />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea placeholder="简要描述提示词的用途" rows={2} />
+          </Form.Item>
+          <Form.Item name="category" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
+            <Space wrap>
+              {Object.entries(PROMPT_CATEGORIES).map(([cat, config]) => (
+                <Tag key={cat} color={config.color} style={{ padding: '4px 12px', cursor: 'pointer' }}>
+                  {config.icon} {cat}
+                </Tag>
+              ))}
+            </Space>
+          </Form.Item>
+          <Form.Item name="icon" label="图标 (emoji)">
+            <Input placeholder="如：📝" />
+          </Form.Item>
+          <Form.Item name="tags" label="标签">
+            <Input placeholder="用逗号分隔，如：审计报告,问题描述,撰写" />
+          </Form.Item>
+          <Form.Item name="content" label="提示词内容">
+            <Input.TextArea placeholder="完整的提示词模板内容" rows={10} />
+          </Form.Item>
+          <Form.Item name="enabled" label="启用状态" valuePropName="checked" initialValue={true}>
+            <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+          </Form.Item>
         </Form>
       </Modal>
     </AppLayout>

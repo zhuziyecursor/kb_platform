@@ -14,6 +14,7 @@ export interface PromptConfig {
   variables?: string[];
   type: 'rag' | 'general';
   isDefault?: boolean;
+  enabled: boolean;  // 是否启用
   createdAt?: string;
   updatedAt?: string;
   icon?: string;
@@ -33,6 +34,7 @@ export interface ExternalSkill {
   icon?: string;       // emoji icon
   category?: string;   // 分类标签
   author?: string;     // 作者
+  enabled: boolean;   // 是否启用，可在知识问答中使用
 }
 
 export interface SkillParameter {
