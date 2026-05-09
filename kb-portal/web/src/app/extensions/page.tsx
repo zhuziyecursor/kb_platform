@@ -45,19 +45,19 @@ import { useExtensions, type PromptConfig, type ExternalSkill } from '@/hooks/us
 
 const { Title, Text, Paragraph } = Typography;
 
-// 审计业务分类配置
+// 审计业务分类配置 - 统一的蓝色系
 const AUDIT_CATEGORIES = {
-  '审计报告类': { icon: <FileTextOutlined />, color: 'blue', desc: '审计报告生成、问题定性、审计意见出具' },
-  '法规查询类': { icon: <SafetyOutlined />, color: 'purple', desc: '法规检索、合规性检查、法规比对' },
-  '数据分析类': { icon: <LineChartOutlined />, color: 'green', desc: '异常交易识别、指标计算、趋势分析' },
-  '文档处理类': { icon: <FormOutlined />, color: 'orange', desc: '会议纪要提取、合同比对、附件解析' },
+  '审计报告类': { icon: <FileTextOutlined />, color: 'blue', gradient: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', desc: '审计报告生成、问题定性、审计意见出具' },
+  '法规查询类': { icon: <SafetyOutlined />, color: 'cyan', gradient: 'linear-gradient(135deg, #13c2c2 0%, #08979c 100%)', desc: '法规检索、合规性检查、法规比对' },
+  '数据分析类': { icon: <LineChartOutlined />, color: 'green', gradient: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)', desc: '异常交易识别、指标计算、趋势分析' },
+  '文档处理类': { icon: <FormOutlined />, color: 'orange', gradient: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', desc: '会议纪要提取、合同比对、附件解析' },
 };
 
 const PROMPT_CATEGORIES = {
-  '审计报告类': { icon: <FileTextOutlined />, color: 'blue' },
-  '法规查询类': { icon: <SafetyOutlined />, color: 'purple' },
-  '数据分析类': { icon: <LineChartOutlined />, color: 'green' },
-  '文档处理类': { icon: <FormOutlined />, color: 'orange' },
+  '审计报告类': { icon: <FileTextOutlined />, color: 'blue', gradient: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)' },
+  '法规查询类': { icon: <SafetyOutlined />, color: 'cyan', gradient: 'linear-gradient(135deg, #13c2c2 0%, #08979c 100%)' },
+  '数据分析类': { icon: <LineChartOutlined />, color: 'green', gradient: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)' },
+  '文档处理类': { icon: <FormOutlined />, color: 'orange', gradient: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)' },
 };
 
 export default function ExtensionsPage() {
@@ -225,7 +225,9 @@ export default function ExtensionsPage() {
     </Card>
   );
 
-  const renderPromptCard = (prompt: PromptConfig) => (
+  const renderPromptCard = (prompt: PromptConfig) => {
+      const catConfig = PROMPT_CATEGORIES[prompt.category as keyof typeof PROMPT_CATEGORIES] || PROMPT_CATEGORIES['审计报告类'];
+      return (
     <Card
       key={prompt.id}
       hoverable
@@ -239,7 +241,7 @@ export default function ExtensionsPage() {
           height: 48,
           borderRadius: 10,
           background: prompt.enabled
-            ? 'linear-gradient(135deg, #722ed1 0%, #eb2f96 100%)'
+            ? catConfig.gradient
             : 'var(--color-muted)',
           display: 'flex',
           alignItems: 'center',
@@ -248,7 +250,7 @@ export default function ExtensionsPage() {
           flexShrink: 0,
           opacity: prompt.enabled ? 1 : 0.5,
         }}>
-          {prompt.icon || '💬'}
+          {prompt.icon || catConfig.icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -271,6 +273,7 @@ export default function ExtensionsPage() {
       </div>
     </Card>
   );
+};
 
   const renderExternalSkillsTab = () => (
     <div>
