@@ -26,5 +26,6 @@ public class MilvusSearchResult {
     private String effectiveTo;
     private String tags;
     private String chunkType;
+    private String parentRef;  // Parent-Children 关联：格式 "docId/version/parentSeq"
     private double vectorScore;
 }

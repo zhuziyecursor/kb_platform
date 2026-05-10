@@ -1,5 +1,16 @@
 [
   {
+    "id": "kb_skill_quick_ingest",
+    "name": "智能入库",
+    "description": "在知识问答中通过 /智能入库 快速上传文件，选择开启智能分析的知识空间后自动触发解析、切片、向量化流水线。",
+    "repoUrl": "local://kb-platform/quick-ingest",
+    "installCommand": "/智能入库",
+    "icon": "📥",
+    "category": "文档处理类",
+    "author": "KB Platform",
+    "enabled": true
+  },
+  {
     "id": "audit_skill_001",
     "name": "审计报告生成",
     "description": "根据审计发现自动生成标准格式的审计报告，支持问题定性依据引用和整改建议生成。",

@@ -24,6 +24,7 @@ public class SpaceResponse {
     private Integer overlapRatio;
     private String chunkMode;
     private String visibility;
+    private Boolean smartParseEnabled;
     private String parentId;
     private Integer depth;
     private Long docCount;
@@ -40,6 +41,7 @@ public class SpaceResponse {
                 .overlapRatio(space.getOverlapRatio())
                 .chunkMode(space.getChunkMode())
                 .visibility(space.getVisibility())
+                .smartParseEnabled(space.getSmartParseEnabled())
                 .parentId(space.getParentId())
                 .depth(space.getDepth())
                 .createTime(space.getCreateTime())
@@ -66,6 +68,7 @@ public class SpaceResponse {
         private Integer overlapRatio;
         private String chunkMode;
         private String visibility;
+        private Boolean smartParseEnabled;
         private String parentId;
         private Integer depth;
         private Long docCount;
@@ -84,6 +87,7 @@ public class SpaceResponse {
                     .overlapRatio(space.getOverlapRatio())
                     .chunkMode(space.getChunkMode())
                     .visibility(space.getVisibility())
+                    .smartParseEnabled(space.getSmartParseEnabled())
                     .parentId(space.getParentId())
                     .depth(space.getDepth())
                     .docCount(docCount)

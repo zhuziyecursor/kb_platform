@@ -31,6 +31,7 @@ import {
   UnorderedListOutlined,
   MoreOutlined,
   FileTextOutlined,
+  ClusterOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
@@ -38,6 +39,7 @@ import { listSpaces } from '@/api/knowledge-space';
 import { listDocs, deleteDoc, retryDoc, getDocStatus, DocSummary } from '@/api/http-client';
 import CommandBar from '@/components/LUI/CommandBar';
 import FilePreview from '@/components/FilePreview';
+import PipelineDetailModal from '@/components/PipelineDetailModal';
 import AppLayout from '@/components/AppLayout';
 import PageHeader from '@/components/PageHeader';
 import { DocStatusBadge, DocTypeBadge, SecLevelBadge } from '@/components/StatusBadge';
@@ -63,6 +65,8 @@ function DocumentListContent() {
   const [selectedDoc, setSelectedDoc] = useState<DocSummary | null>(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocSummary | null>(null);
+  const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
+  const [pipelineDoc, setPipelineDoc] = useState<DocSummary | null>(null);
   const [retryingDocIds, setRetryingDocIds] = useState<Set<string>>(new Set());
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const { modal, message } = App.useApp();
@@ -323,6 +327,17 @@ function DocumentListContent() {
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleMenuClick(record, 'view')}>
             查看
           </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<ClusterOutlined />}
+            onClick={() => {
+              setPipelineDoc(record);
+              setPipelineModalOpen(true);
+            }}
+          >
+            解析详情
+          </Button>
           {record.status === 'FAILED' && (
             <Button
               type="link"
@@ -531,11 +546,16 @@ function DocumentListContent() {
                           menu={{
                             items: [
                               { key: 'view', label: '查看详情', icon: <EyeOutlined /> },
+                              { key: 'pipeline', label: '解析详情', icon: <ClusterOutlined /> },
                               { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
                             ],
                             onClick: ({ key, domEvent }) => {
                               domEvent.stopPropagation();
                               if (key === 'view') router.push(`/documents/${doc.docId}`);
+                              if (key === 'pipeline') {
+                                setPipelineDoc(doc);
+                                setPipelineModalOpen(true);
+                              }
                               if (key === 'delete') handleDelete(doc);
                             },
                           }}
@@ -612,6 +632,19 @@ function DocumentListContent() {
         footer={[
           <Button key="close" onClick={() => setDetailModalOpen(false)}>
             关闭
+          </Button>,
+          <Button
+            key="pipeline"
+            icon={<ClusterOutlined />}
+            onClick={() => {
+              if (selectedDoc) {
+                setPipelineDoc(selectedDoc);
+                setPipelineModalOpen(true);
+                setDetailModalOpen(false);
+              }
+            }}
+          >
+            查看解析详情
           </Button>,
           <Button
             key="retry"
@@ -701,6 +734,13 @@ function DocumentListContent() {
           onClose={() => setPreviewModalOpen(false)}
         />
       )}
+
+      {/* 解析详情弹窗 */}
+      <PipelineDetailModal
+        doc={pipelineDoc}
+        open={pipelineModalOpen}
+        onClose={() => setPipelineModalOpen(false)}
+      />
     </AppLayout>
   );
 }

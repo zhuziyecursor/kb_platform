@@ -17,6 +17,9 @@ public class MinimaxRequest {
     @JsonProperty("max_tokens")
     private int maxTokens;
 
+    @JsonProperty("stream")
+    private Boolean stream;
+
     @Data
     @Builder
     @NoArgsConstructor

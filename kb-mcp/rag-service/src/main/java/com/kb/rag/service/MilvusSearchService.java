@@ -6,7 +6,10 @@ import io.milvus.grpc.SearchResults;
 import io.milvus.param.MetricType;
 import io.milvus.param.R;
 import io.milvus.param.collection.LoadCollectionParam;
+import io.milvus.param.dml.QueryParam;
 import io.milvus.param.dml.SearchParam;
+import io.milvus.grpc.QueryResults;
+import io.milvus.response.QueryResultsWrapper;
 import io.milvus.response.QueryResultsWrapper.RowRecord;
 import io.milvus.response.SearchResultsWrapper;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +21,10 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -34,7 +40,7 @@ public class MilvusSearchService {
             "doc_id", "version", "chunk_seq", "text", "title",
             "section_path", "page", "sec_level", "region_code", "biz_domain",
             "perm_group_id", "effective_from", "effective_to",
-            "tags", "chunk_type"
+            "tags", "chunk_type", "parent_ref"
     );
 
     private static final java.util.Map<String, Double> CHUNK_TYPE_BOOST = java.util.Map.of(
@@ -105,6 +111,7 @@ public class MilvusSearchService {
                     .effectiveTo(getStrField(row, "effective_to"))
                     .tags(getStrField(row, "tags"))
                     .chunkType(getStrField(row, "chunk_type"))
+                    .parentRef(getStrField(row, "parent_ref"))
                     .vectorScore(score)
                     .build();
             results.add(result);
@@ -181,6 +188,53 @@ public class MilvusSearchService {
         }
         log.debug("ACL post-filter: {} -> {} results", results.size(), filtered.size());
         return filtered;
+    }
+
+    /**
+     * Query Milvus by parent_ref to get Parent chunk texts.
+     * Used for Parent-Children architecture: after Rerank, lookup Parent texts
+     * to provide complete context for LLM generation.
+     *
+     * @param parentRefs Set of parent_ref values (format: "docId/version/parentSeq")
+     * @param tenantId Tenant ID for ACL filter
+     * @return Map of parent_ref -> Parent chunk text (empty if not found)
+     */
+    public Map<String, String> queryParentTexts(Set<String> parentRefs, String tenantId) {
+        if (parentRefs == null || parentRefs.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> result = new HashMap<>();
+
+        LoadCollectionParam loadParam = LoadCollectionParam.newBuilder()
+                .withCollectionName(collectionName)
+                .build();
+        milvusClient.loadCollection(loadParam);
+
+        for (String pref : parentRefs) {
+            try {
+                QueryParam queryParam = QueryParam.newBuilder()
+                        .withCollectionName(collectionName)
+                        .withExpr("tenant_id == '" + tenantId + "' AND parent_ref == '" + pref + "'")
+                        .withOutFields(List.of("parent_ref", "text"))
+                        .build();
+
+                R<QueryResults> response = milvusClient.query(queryParam);
+                if (response.getStatus() == 0 && response.getData() != null) {
+                    QueryResultsWrapper wrapper = new QueryResultsWrapper(response.getData());
+                    List<RowRecord> rows = wrapper.getRowRecords();
+                    if (!rows.isEmpty()) {
+                        RowRecord row = rows.get(0);
+                        result.put(pref, getStrField(row, "text"));
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to query parent_ref={}: {}", pref, e.getMessage());
+            }
+        }
+
+        log.debug("Parent lookup: {} refs -> {} texts found", parentRefs.size(), result.size());
+        return result;
     }
 
     public List<MilvusSearchResult> boostByChunkType(List<MilvusSearchResult> results) {

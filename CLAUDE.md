@@ -64,7 +64,8 @@ kb-infra/          # Docker Compose: PostgreSQL / Redis / MinIO / Kafka / Milvus
 cd kb-mcp/ingest-service && mvn clean package -DskipTests
 
 # 运行
-DB_HOST=localhost DB_PORT=25432 DB_NAME=knowledge \
+# localhost:25432 是 Docker 容器 kb-postgres 暴露到宿主机的端口
+DB_HOST=localhost DB_PORT=25432 DB_NAME=kb_knowledge \
 DB_USERNAME=kb_ingest DB_PASSWORD=kb_ingest \
 java -jar target/ingest-service-0.0.1-SNAPSHOT.jar
 ```
@@ -93,11 +94,11 @@ cd kb-portal/web && npm run build  # 生产构建
 
 ```bash
 # 进入 postgres 容器
-docker exec -it kb-postgres psql -U kb_admin -d knowledge
+docker exec -it kb-postgres psql -U kb_admin -d kb_knowledge
 
 # 创建服务用户（首次）
 CREATE USER kb_ingest WITH PASSWORD 'kb_ingest';
-GRANT CONNECT ON DATABASE knowledge TO kb_ingest;
+GRANT CONNECT ON DATABASE kb_knowledge TO kb_ingest;
 ```
 
 ### Docker Compose (kb-infra/)
@@ -149,3 +150,30 @@ cd kb-infra/docker-compose && docker compose up -d
 
 - **Java**：`@Phase2Feature` 注解 + 构造方法 `throw new UnsupportedOperationException("PHASE2_PLACEHOLDER: ...")`
 - **Python**：`__init__` 中 `raise NotImplementedError("PHASE2_PLACEHOLDER: ...")` + `# PHASE2:` 注释
+
+---
+
+## 调试协议
+
+1. 始终先读错误信息——在调查任何其他内容之前，记下确切的文件路径和行号。
+2. 在探索不相关的文件之前，先检查指定文件中指定的行。
+3. 在跳入代码修复之前，先检查日志（后端 stdout、浏览器控制台、网络面板）。
+4. 在进行任何编辑之前，提出一个根因假设。
+
+---
+
+## 构建与测试验证（强制）
+
+- 在任何代码变更之后，运行构建：`npm run build`（前端）或 `mvn compile`（后端）。
+- 后端变更之后，运行测试：`mvn test`。
+- 绝不在构建不通过的情况下声明工作完成。
+- 在运行依赖它们的任何操作之前，先安装依赖（`npm install`、`pip install -r requirements.txt`）。
+- 如果测试失败，在征求用户确认之前先修复它们。
+
+
+## Service Configuration
+- 后端服务：kb-doc-processor (Python)、ingest-service (Java)、vector-service (Java)
+- MinIO 端点/凭据必须在 application.yml 和实际部署之间保持一致
+- 前端（端口 3105）连接后端 API 时，后端必须配置 CORS
+- 在编辑任何配置文件（application.yml、.env、next.config）之后，重启相关服务
+- 在代码中引用数据库列之前，先验证这些列是否存在

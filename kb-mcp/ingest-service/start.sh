@@ -10,6 +10,7 @@ cd "$SCRIPT_DIR"
 PORT=8081
 PID_FILE="$SCRIPT_DIR/.dev.pid"
 LOG_FILE="$SCRIPT_DIR/.dev.log"
+LOG_WRAPPER="$SCRIPT_DIR/../../../scripts/run-with-log-limit.sh"
 
 # 检查是否已在运行
 if [ -f "$PID_FILE" ]; then
@@ -22,7 +23,7 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 echo "[ingest] 正在编译并启动..."
-mvn spring-boot:run > "$LOG_FILE" 2>&1 &
+"$LOG_WRAPPER" "$LOG_FILE" mvn spring-boot:run &
 PID=$!
 echo $PID > "$PID_FILE"
 

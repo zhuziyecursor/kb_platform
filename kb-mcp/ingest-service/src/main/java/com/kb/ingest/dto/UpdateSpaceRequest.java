@@ -29,4 +29,6 @@ public class UpdateSpaceRequest {
     private String chunkMode;
 
     private String visibility;
+
+    private Boolean smartParseEnabled;
 }

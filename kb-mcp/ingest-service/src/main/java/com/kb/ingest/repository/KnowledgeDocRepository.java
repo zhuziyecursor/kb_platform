@@ -35,4 +35,21 @@ public interface KnowledgeDocRepository extends JpaRepository<KnowledgeDoc, Long
     List<KnowledgeDoc> findByTenantIdOrderByCreateTimeDesc(String tenantId);
 
     List<KnowledgeDoc> findByTenantIdAndKnowledgeSpaceIdOrderByCreateTimeDesc(String tenantId, String spaceId);
+
+    long countByTenantIdAndStatus(String tenantId, String status);
+
+    @Query(value = "SELECT s.id as spaceId, s.name as spaceName, COALESCE(COUNT(d.id), 0) as docCount " +
+            "FROM kb_knowledge.knowledge_space s " +
+            "LEFT JOIN kb_knowledge.knowledge_doc d ON s.id = d.knowledge_space_id AND d.tenant_id = :tenantId " +
+            "WHERE s.tenant_id = :tenantId " +
+            "GROUP BY s.id, s.name " +
+            "ORDER BY docCount DESC", nativeQuery = true)
+    List<Object[]> countDocsPerSpace(@Param("tenantId") String tenantId);
+
+    @Query(value = "SELECT TO_CHAR(d.create_time, 'YYYY-MM-DD') as date, COUNT(*) as count " +
+            "FROM kb_knowledge.knowledge_doc d " +
+            "WHERE d.tenant_id = :tenantId AND d.create_time >= :sinceDate " +
+            "GROUP BY TO_CHAR(d.create_time, 'YYYY-MM-DD') " +
+            "ORDER BY date", nativeQuery = true)
+    List<Object[]> countDocsByDay(@Param("tenantId") String tenantId, @Param("sinceDate") java.time.LocalDateTime sinceDate);
 }

@@ -19,9 +19,10 @@ class RagServiceArchTest {
     }
 
     @Test
-    void noJpaRepositoryShouldHaveWriteMethods() {
+    void noExternalRepositoryShouldHaveWriteMethods() {
         ArchRule rule = noClasses()
                 .that().resideInAPackage("..repository..")
+                .and().haveNameNotMatching(".*(RagSession|RagMessage)Repository")
                 .should().dependOnClassesThat()
                 .haveSimpleName("Modifying");
 

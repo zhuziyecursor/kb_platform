@@ -9,13 +9,18 @@ import {
   CloudUploadOutlined,
   FolderOutlined,
   FileTextOutlined,
-  SettingOutlined,
+  WarningOutlined,
+  ClockCircleOutlined,
+  FileMarkdownOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import PageHeader from '@/components/PageHeader';
 import type { KnowledgeSpaceTreeNode } from '@/types';
 import { getSpaceTree } from '@/api/knowledge-space';
+import { getStatsOverview, StatsOverviewResponse } from '@/api/http-client';
 import SpaceTreeView from '@/components/SpaceTreeView';
 
 const { Text } = Typography;
@@ -43,6 +48,8 @@ export default function SpaceListPage() {
   const router = useRouter();
   const [treeData, setTreeData] = useState<KnowledgeSpaceTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [stats, setStats] = useState<StatsOverviewResponse | null>(null);
 
   const fetchTree = async () => {
     setLoading(true);
@@ -56,8 +63,21 @@ export default function SpaceListPage() {
     }
   };
 
+  const fetchStats = async () => {
+    setStatsLoading(true);
+    try {
+      const data = await getStatsOverview();
+      setStats(data);
+    } catch {
+      // stats is optional, don't block UI
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchTree();
+    fetchStats();
   }, []);
 
   const totalDocs = treeData.reduce((sum, node) => sum + countDocs(node), 0);
@@ -81,6 +101,12 @@ export default function SpaceListPage() {
               上传文档
             </Button>
             <Button
+              icon={<FileMarkdownOutlined />}
+              onClick={() => router.push('/spaces/import')}
+            >
+              从大纲导入
+            </Button>
+            <Button
               variant="primary"
               icon={<PlusOutlined />}
               onClick={() => router.push('/spaces/create')}
@@ -91,73 +117,76 @@ export default function SpaceListPage() {
         }
       />
 
-      {/* Stats Summary */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 16,
-        marginBottom: 24,
-      }}>
-        {[
-          {
-            label: '知识空间',
-            value: totalSpaces,
-            icon: <FolderOutlined />,
-            color: '#3B82F6',
-            bg: 'rgba(59,130,246,0.08)',
-            border: 'rgba(59,130,246,0.15)',
-          },
-          {
-            label: '文档总数',
-            value: totalDocs,
-            icon: <FileTextOutlined />,
-            color: '#15803D',
-            bg: 'rgba(21,128,61,0.08)',
-            border: 'rgba(21,128,61,0.15)',
-          },
-          {
-            label: '智能切片空间',
-            value: totalSpaces, // simplified
-            icon: <SettingOutlined />,
-            color: '#7C3AED',
-            bg: 'rgba(124,58,237,0.08)',
-            border: 'rgba(124,58,237,0.15)',
-          },
-        ].map((stat, i) => (
-          <Card
-            key={i}
-            size="small"
-            style={{
-              borderRadius: 12,
-              border: `1px solid ${stat.border}`,
-              background: stat.bg,
-            }}
-            styles={{ body: { padding: '16px 20px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: 10,
-                background: stat.color,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-                opacity: 0.9,
-              }}>
-                <span style={{ fontSize: 18, color: '#fff' }}>{stat.icon}</span>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>{stat.label}</Text>
-                <Text strong style={{ fontSize: 24, color: 'var(--color-foreground)', lineHeight: 1.2 }}>
-                  {stat.value}
-                </Text>
-              </div>
+      {/* Stats Overview Cards */}
+      <div className="stat-grid">
+        <div className="stat-card-v2 stat-card-v2--blue">
+          <div className="stat-card-v2__icon">
+            <FolderOutlined />
+          </div>
+          <div className="stat-card-v2__content">
+            <div className="stat-card-v2__label">知识空间</div>
+            <div className="stat-card-v2__number">{totalSpaces}</div>
+            <div className="stat-card-v2__trend stat-card-v2__trend--up">
+              <ArrowUpOutlined style={{ fontSize: 10 }} />
+              <span>活跃</span>
             </div>
-          </Card>
-        ))}
+          </div>
+        </div>
+
+        <div className="stat-card-v2 stat-card-v2--green">
+          <div className="stat-card-v2__icon">
+            <FileTextOutlined />
+          </div>
+          <div className="stat-card-v2__content">
+            <div className="stat-card-v2__label">文档总数</div>
+            <div className="stat-card-v2__number">{totalDocs}</div>
+            <div className="stat-card-v2__trend stat-card-v2__trend--up">
+              <ArrowUpOutlined style={{ fontSize: 10 }} />
+              <span>持续增长</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card-v2 stat-card-v2--amber">
+          <div className="stat-card-v2__icon">
+            <ClockCircleOutlined />
+          </div>
+          <div className="stat-card-v2__content">
+            <div className="stat-card-v2__label">待处理</div>
+            <div className="stat-card-v2__number">{stats?.pendingCount ?? 0}</div>
+            <div className="stat-card-v2__trend stat-card-v2__trend--neutral">
+              <span>队列中</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={`stat-card-v2 ${(stats?.failedCount ?? 0) > 0 ? 'stat-card-v2--red' : 'stat-card-v2--gray'}`}>
+          <div className="stat-card-v2__icon">
+            <WarningOutlined />
+          </div>
+          <div className="stat-card-v2__content">
+            <div className="stat-card-v2__label">处理失败</div>
+            <div className="stat-card-v2__number">{stats?.failedCount ?? 0}</div>
+            <div className={`stat-card-v2__trend ${(stats?.failedCount ?? 0) > 0 ? 'stat-card-v2__trend--down' : 'stat-card-v2__trend--up'}`}>
+              {(stats?.failedCount ?? 0) > 0 ? (
+                <>
+                  <ArrowDownOutlined style={{ fontSize: 10 }} />
+                  <span>需关注</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUpOutlined style={{ fontSize: 10 }} />
+                  <span>一切正常</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Space Tree */}
       {treeData.length === 0 && !loading ? (
-        <Card style={{ borderRadius: 12 }}>
+        <div className="space-section">
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description="暂无知识空间"
@@ -166,14 +195,15 @@ export default function SpaceListPage() {
               新建空间
             </Button>
           </Empty>
-        </Card>
+        </div>
       ) : (
-        <Card
-          style={{ borderRadius: 12, overflow: 'hidden' }}
-          loading={loading}
-        >
-          <SpaceTreeView treeData={treeData} onRefresh={fetchTree} />
-        </Card>
+        <div className="space-section">
+          <div className="space-section__header">
+            <Text strong style={{ fontSize: 14, color: 'var(--color-foreground)' }}>空间目录</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>共 {totalSpaces} 个空间，{totalDocs} 份文档</Text>
+          </div>
+          <SpaceTreeView treeData={treeData} onRefresh={fetchTree} loading={loading} />
+        </div>
       )}
     </AppLayout>
   );

@@ -19,4 +19,6 @@ public class ChatRequest {
     private String query;
 
     private Integer topK = 20;
+
+    private String spaceId;
 }

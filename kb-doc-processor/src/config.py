@@ -56,8 +56,8 @@ class ChunkDefaults(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    url: str = "http://192.168.30.47:31296/embeddings"
-    # url: str = "http://193.134.211.121:31296/embeddings"
+    # url: str = "http://192.168.30.47:31296/embeddings"
+    url: str = "http://193.134.211.121:31296/embeddings"
     timeout_seconds: int = 60
     max_retries: int = 3
     model_name: str = "BGE-zh-v1.5"

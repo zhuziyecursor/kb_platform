@@ -37,6 +37,8 @@ class LLMChunker(BaseChunker):
 
     def _assemble(self, paragraphs: list[str], boundaries: list[list[int]]) -> ChunkResult:
         chunks: list[ChunkInfo] = []
+        # 按 boundary 分组建立 parent-child 关系
+        # boundaries 格式: [[start, end], ...] 表示段落索引组
         for seq, (start, end) in enumerate(boundaries):
             if start < 0 or end >= len(paragraphs) or start > end:
                 continue
@@ -47,5 +49,6 @@ class LLMChunker(BaseChunker):
                 char_count=len(text),
                 token_count=max(1, int(len(text) / 1.5)),
                 section_path=None,
+                is_parent=True,  # LLM 精修的 chunk 作为 Parent
             ))
         return ChunkResult(chunks=chunks)

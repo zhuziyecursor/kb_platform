@@ -101,6 +101,11 @@ function saveToStorage<T>(key: string, data: T): void {
   }
 }
 
+function mergeDefaultsById<T extends { id: string }>(stored: T[], defaults: T[]): T[] {
+  const storedIds = new Set(stored.map((item) => item.id));
+  return [...defaults.filter((item) => !storedIds.has(item.id)), ...stored];
+}
+
 // ==================== Hook ====================
 
 export function useExtensions() {
@@ -125,7 +130,10 @@ export function useExtensions() {
     setPrompts(loadFromStorage(STORAGE_KEYS.prompts, defaultPrompts as PromptConfig[]));
     setPromptsLoaded(true);
 
-    setExternalSkills(loadFromStorage(STORAGE_KEYS.externalSkills, defaultExternalSkills as ExternalSkill[]));
+    const loadedExternalSkills = loadFromStorage(STORAGE_KEYS.externalSkills, defaultExternalSkills as ExternalSkill[]);
+    const mergedExternalSkills = mergeDefaultsById(loadedExternalSkills, defaultExternalSkills as ExternalSkill[]);
+    setExternalSkills(mergedExternalSkills);
+    saveToStorage(STORAGE_KEYS.externalSkills, mergedExternalSkills);
     setExternalSkillsLoaded(true);
 
     setCustomSkills(loadFromStorage(STORAGE_KEYS.customSkills, []));

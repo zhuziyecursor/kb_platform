@@ -64,6 +64,7 @@ public class SpaceServiceImpl implements SpaceService {
                 .overlapRatio(request.getOverlapRatio())
                 .chunkMode(request.getChunkMode())
                 .visibility(request.getVisibility())
+                .smartParseEnabled(request.getSmartParseEnabled())
                 .parentId(parentId)
                 .depth(depth)
                 .nodePath(nodePath)
@@ -95,6 +96,9 @@ public class SpaceServiceImpl implements SpaceService {
         }
         if (request.getVisibility() != null) {
             space.setVisibility(request.getVisibility());
+        }
+        if (request.getSmartParseEnabled() != null) {
+            space.setSmartParseEnabled(request.getSmartParseEnabled());
         }
 
         KnowledgeSpace updated = spaceRepository.save(space);

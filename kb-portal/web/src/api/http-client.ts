@@ -136,8 +136,8 @@ export const uploadFile = (docId: string, version: number, file: File): Promise<
 /**
  * List documents with optional space filter
  */
-export const listDocs = (spaceId?: string): Promise<DocListResponse> => {
-  return httpClient.get<DocListResponse>('/kb/v1/docs', { params: { spaceId } }).then(res => res.data);
+export const listDocs = (spaceId?: string, limit?: number): Promise<DocListResponse> => {
+  return httpClient.get<DocListResponse>('/kb/v1/docs', { params: { spaceId, limit } }).then(res => res.data);
 };
 
 /**
@@ -241,6 +241,7 @@ export interface RagChatRequest {
   lang?: 'zh' | 'en';
   query: string;
   topK?: number;
+  spaceId?: string;
 }
 
 export interface RagChatResponse {
@@ -264,13 +265,207 @@ export interface Citation {
   isCurrent: boolean;
   score: number;
   text: string;
+  knowledgeSpaceId?: string;
+  spacePath?: string;
 }
 
 /**
- * Send a RAG chat query to the retrieval pipeline
+ * Send a RAG chat query to the retrieval pipeline (blocking)
  */
 export const ragChat = (request: RagChatRequest): Promise<RagChatResponse> => {
   return httpClient.post<RagChatResponse>('/rag/v1/chat', request).then(res => res.data);
+};
+
+/**
+ * Streaming RAG chat: consumes SSE from /rag/v1/chat/stream
+ */
+export const ragChatStream = async (
+  request: RagChatRequest,
+  onToken: (token: string) => void,
+  onDone: (result: RagChatResponse) => void,
+  onError?: (message: string) => void
+): Promise<void> => {
+  const baseUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || '';
+  const response = await fetch(`${baseUrl}/rag/v1/chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok || !response.body) {
+    const errText = await response.text().catch(() => '请求失败');
+    onError?.(errText);
+    throw new Error(errText);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      let currentEvent = '';
+      let currentData = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          currentData = line.slice(6).trim();
+        } else if (line === '' && currentEvent && currentData) {
+          if (currentEvent === 'token') {
+            const parsed = JSON.parse(currentData);
+            onToken(parsed.token);
+          } else if (currentEvent === 'done') {
+            const parsed = JSON.parse(currentData);
+            onDone(parsed);
+            return;
+          } else if (currentEvent === 'error') {
+            const parsed = JSON.parse(currentData);
+            onError?.(parsed.message || '流式请求出错');
+            throw new Error(parsed.message || '流式请求出错');
+          }
+          currentEvent = '';
+          currentData = '';
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+};
+
+// ============== RAG Session APIs ==============
+
+export interface RagSessionSummary {
+  sessionId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RagMessageItem {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  citations: string | null;
+  traceId: string | null;
+  createdAt: number;
+}
+
+export const listSessions = (tenantId: string, userId: string): Promise<RagSessionSummary[]> => {
+  return httpClient.get<RagSessionSummary[]>('/rag/v1/sessions', {
+    params: { tenantId, userId },
+  }).then(res => res.data);
+};
+
+export const createSession = (tenantId: string, userId: string): Promise<{ sessionId: string }> => {
+  return httpClient.post<{ sessionId: string }>('/rag/v1/sessions', {
+    tenantId, userId,
+  }).then(res => res.data);
+};
+
+export const getSessionMessages = (sessionId: string, tenantId: string): Promise<RagMessageItem[]> => {
+  return httpClient.get<RagMessageItem[]>(`/rag/v1/sessions/${sessionId}/messages`, {
+    params: { tenantId },
+  }).then(res => res.data);
+};
+
+export const deleteSession = (sessionId: string, tenantId: string): Promise<void> => {
+  return httpClient.delete(`/rag/v1/sessions/${sessionId}`, {
+    params: { tenantId },
+  }).then(res => res.data);
+};
+
+// ============== RAG Pipeline Trace APIs ==============
+
+export interface RagPipelineStageTiming {
+  stage: string;
+  status: 'SUCCESS' | 'ERROR' | string;
+  durationMs: number;
+  errorMessage?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RagPipelineHitDoc {
+  docId?: string;
+  title?: string;
+  score?: number;
+  version?: number;
+  page?: number;
+  spacePath?: string;
+}
+
+export interface RagPromptBudgetStats {
+  enabled?: boolean;
+  inputBudgetTokens?: number;
+  estimatedPromptTokens?: number;
+  includedHistoryTurns?: number;
+  droppedHistoryTurns?: number;
+  includedCitations?: number;
+  droppedCitations?: number;
+  truncatedCitations?: number;
+}
+
+export interface RagPipelineTraceResponse {
+  traceId: string;
+  tenantId: string;
+  uid: string;
+  sessionId?: string;
+  queryText?: string;
+  rewrittenQuery?: string;
+  spaceId?: string;
+  lang: string;
+  cacheHit: boolean;
+  stream: boolean;
+  result: string;
+  refusalReason?: string;
+  totalMs: number;
+  firstTokenMs?: number;
+  stageTimings: RagPipelineStageTiming[];
+  recallCount: number;
+  aclFilteredCount: number;
+  rerankCount: number;
+  citationsCount: number;
+  hitDocs: RagPipelineHitDoc[];
+  promptBudget?: RagPromptBudgetStats;
+  errorMessage?: string;
+  createdAt: string;
+}
+
+export const getPipelineTrace = (traceId: string): Promise<RagPipelineTraceResponse> => {
+  return httpClient.get<RagPipelineTraceResponse>(`/rag/v1/traces/${traceId}`).then(res => res.data);
+};
+
+// ============== Stats API ==============
+
+export interface StatsOverviewResponse {
+  spaceDocCounts: Array<{
+    spaceId: string;
+    spaceName: string;
+    docCount: number;
+  }>;
+  dailyTrend: Array<{
+    date: string;
+    count: number;
+  }>;
+  pendingCount: number;
+  failedCount: number;
+  totalVectorCount: number | null;
+}
+
+/**
+ * Get dashboard stats overview including space distribution, daily trend, and alerts
+ */
+export const getStatsOverview = (): Promise<StatsOverviewResponse> => {
+  return httpClient.get<StatsOverviewResponse>('/kb/v1/stats/overview').then(res => res.data);
 };
 
 export default httpClient;

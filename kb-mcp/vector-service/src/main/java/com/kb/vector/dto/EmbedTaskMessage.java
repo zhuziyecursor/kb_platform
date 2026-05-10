@@ -82,6 +82,9 @@ public class EmbedTaskMessage {
     @JsonProperty("summary")
     private String summary;
 
+    @JsonProperty("parentRef")
+    private String parentRef;
+
     @JsonProperty("vector")
     private VectorData vector;
 

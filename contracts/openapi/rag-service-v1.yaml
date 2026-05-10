@@ -49,6 +49,8 @@ components:
         isCurrent:     { type: boolean, description: "文档是否为当前有效版本" }
         score:         { type: number, format: float, example: 0.78, description: "相关性分数" }
         text:          { type: string, description: "对应的原始文本片段" }
+        knowledgeSpaceId: { type: string, description: "所属知识空间 ID" }
+        spacePath:     { type: string, description: "知识空间路径，如 审计案例库/案例评优" }
 
     RefusalReason:
       type: string
@@ -96,6 +98,7 @@ paths:
                 lang:      { type: string, default: "zh", enum: [zh, en] }
                 query:     { type: string, example: "采购合同审批流程是什么？" }
                 topK:      { type: integer, default: 20, maximum: 50, description: "Milvus 召回数量" }
+                spaceId:   { type: string, description: "限定检索范围的知识空间 ID（含子树），不传则全库检索" }
       responses:
         "200":
           description: 成功返回答案（含拒答情况）
@@ -162,3 +165,100 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /sessions:
+    get:
+      summary: 获取会话列表
+      operationId: listSessions
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 会话列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sessionId: { type: string }
+                    title: { type: string }
+                    createdAt: { type: integer, format: int64 }
+                    updatedAt: { type: integer, format: int64 }
+    post:
+      summary: 创建新会话
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, userId]
+              properties:
+                tenantId: { type: string }
+                userId: { type: string }
+      responses:
+        "200":
+          description: 会话 ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId: { type: string }
+
+  /sessions/{sessionId}/messages:
+    get:
+      summary: 获取会话消息
+      operationId: getSessionMessages
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: tenantId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 消息列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    role: { type: string }
+                    content: { type: string }
+                    citations: { type: string, description: "JSON 字符串" }
+                    traceId: { type: string }
+                    createdAt: { type: integer, format: int64 }
+
+  /sessions/{sessionId}:
+    delete:
+      summary: 删除会话及其消息
+      operationId: deleteSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: tenantId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: 删除成功

@@ -29,6 +29,13 @@ const { Text, Paragraph } = Typography;
 // ============== 内置 Skill 定义 ==============
 const AVAILABLE_SKILLS: Skill[] = [
   {
+    id: 'skill-quick-ingest',
+    name: '智能入库',
+    description: '选择智能分析知识空间，上传文件并自动触发解析入库流水线',
+    icon: '📥',
+    category: 'upload',
+  },
+  {
     id: 'skill-upload',
     name: '文档上传',
     description: '打开文档上传界面，选择文件并配置元数据',
@@ -155,7 +162,7 @@ export default function CommandBar({
     if (trimmed.startsWith('/')) {
       const skillId = trimmed.slice(1).trim();
       const skill = AVAILABLE_SKILLS.find(
-        (s) => s.id === `skill-${skillId}` || s.name.includes(skillId)
+        (s) => s.id === `skill-${skillId}` || s.name.includes(skillId) || skillId.includes(s.name)
       );
       if (skill) {
         return {
@@ -212,8 +219,11 @@ export default function CommandBar({
     if (matched.action?.type === 'CALL_SKILL') {
       const skill = matched.action.payload.skill as Skill;
       setInput(`已调用技能: ${skill.name}`);
+      onAction?.(matched.action);
+      setIsOpen(false);
+      setSkillPanelOpen(false);
     }
-  }, [input, matchIntent]);
+  }, [input, matchIntent, onAction]);
 
   // Skill 点击触发
   const handleSkillClick = useCallback(

@@ -2,12 +2,23 @@ package com.kb.rag.controller;
 
 import com.kb.rag.dto.ChatRequest;
 import com.kb.rag.dto.ChatResponse;
+import com.kb.rag.dto.RagPipelineTraceResponse;
 import com.kb.rag.service.ChatService;
+import com.kb.rag.service.PipelineTraceService;
+import com.kb.rag.service.SessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @RestController
@@ -16,10 +27,102 @@ import org.springframework.web.bind.annotation.*;
 public class ChatController {
 
     private final ChatService chatService;
+    private final SessionService sessionService;
+    private final PipelineTraceService pipelineTraceService;
+    private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
 
     @PostMapping("/chat")
     public ResponseEntity<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
         ChatResponse response = chatService.chat(request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chatStream(@Valid @RequestBody ChatRequest request) {
+        SseEmitter emitter = new SseEmitter(120_000L);
+
+        sseExecutor.execute(() -> {
+            try {
+                chatService.chatStream(request,
+                        token -> {
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name("token")
+                                        .data(Map.of("token", token)));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        },
+                        result -> {
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name("done")
+                                        .data(result));
+                                emitter.complete();
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
+                            }
+                        },
+                        error -> {
+                            log.error("SSE stream error for query '{}': {}", request.getQuery(), error.getMessage());
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name("error")
+                                        .data(Map.of("message", "处理请求时出现错误，请稍后重试。")));
+                            } catch (IOException ignored) {
+                            }
+                            emitter.completeWithError(error);
+                        }
+                );
+            } catch (Exception e) {
+                log.error("SSE executor error: {}", e.getMessage());
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data(Map.of("message", "处理请求时出现错误，请稍后重试。")));
+                } catch (IOException ignored) {
+                }
+                emitter.completeWithError(e);
+            }
+        });
+
+        return emitter;
+    }
+
+    @GetMapping("/sessions")
+    public ResponseEntity<List<Map<String, Object>>> listSessions(
+            @RequestParam String tenantId,
+            @RequestParam String userId) {
+        return ResponseEntity.ok(sessionService.listSessions(tenantId, userId));
+    }
+
+    @PostMapping("/sessions")
+    public ResponseEntity<Map<String, String>> createSession(@RequestBody Map<String, String> body) {
+        String tenantId = body.get("tenantId");
+        String userId = body.get("userId");
+        String sessionId = sessionService.createSession(tenantId, userId);
+        return ResponseEntity.ok(Map.of("sessionId", sessionId));
+    }
+
+    @GetMapping("/sessions/{sessionId}/messages")
+    public ResponseEntity<List<Map<String, Object>>> getMessages(
+            @PathVariable String sessionId,
+            @RequestParam String tenantId) {
+        return ResponseEntity.ok(sessionService.getMessages(sessionId, tenantId));
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<Void> deleteSession(
+            @PathVariable String sessionId,
+            @RequestParam String tenantId) {
+        sessionService.deleteSession(sessionId, tenantId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/traces/{traceId}")
+    public ResponseEntity<RagPipelineTraceResponse> getPipelineTrace(@PathVariable String traceId) {
+        return pipelineTraceService.findByTraceId(traceId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

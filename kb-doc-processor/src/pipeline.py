@@ -175,8 +175,17 @@ class Pipeline:
             session.add(structured_record)
 
             now = datetime.now(timezone.utc)
+            current_parent_seq = None
             for chunk in chunks.chunks:
                 text_hash = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
+
+                # 确定 parent_ref
+                if chunk.is_parent:
+                    current_parent_seq = chunk.chunk_seq
+                    parent_ref = ""
+                else:
+                    parent_ref = f"{msg.doc_id}/{msg.version}/{current_parent_seq}" if current_parent_seq is not None else ""
+
                 embed_task = EmbedTask(
                     tenant_id=msg.tenant_id,
                     doc_id=msg.doc_id,
@@ -194,6 +203,8 @@ class Pipeline:
                     acl_version=1,
                     tags=msg.label_tags,  # 一期直接用文档级标签；PHASE2: 合并章节/分片标签展平
                     chunk_type=Pipeline._infer_chunk_type(chunk.text),
+                    parent_ref=parent_ref,
+                    is_parent=chunk.is_parent,
                     status="PENDING",
                     retry_count=0,
                     max_retries=self._config.retry.max_retries,
@@ -219,9 +230,19 @@ class Pipeline:
     ):
         now_ts = int(time.time() * 1000)
         title = parse_result.metadata.get("title", "")
+        current_parent_seq = None
+
         for i, chunk in enumerate(chunks.chunks):
             text_hash = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
             vector = vectors[i] if i < len(vectors) else None
+
+            # 确定 parent_ref
+            if chunk.is_parent:
+                current_parent_seq = chunk.chunk_seq
+                parent_ref = ""
+            else:
+                parent_ref = f"{msg.doc_id}/{msg.version}/{current_parent_seq}" if current_parent_seq is not None else ""
+
             embed_msg = EmbedTaskMessage(
                 trace_id=msg.trace_id,
                 tenant_id=msg.tenant_id,
@@ -246,6 +267,7 @@ class Pipeline:
                 tags=msg.label_tags,
                 chunk_type=Pipeline._infer_chunk_type(chunk.text),
                 vector=vector,
+                parent_ref=parent_ref,
             )
             self._producer.send(
                 topic=self._config.kafka.embed_task_topic,

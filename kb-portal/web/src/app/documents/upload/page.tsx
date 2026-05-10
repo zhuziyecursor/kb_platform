@@ -397,8 +397,10 @@ export default function UploadPage() {
       };
       const commitResp = await commitDoc(initResp.docId, version, commitReq);
 
-      // 5. 调用 ingest 触发异步处理
-      await ingestDoc(initResp.docId, version);
+      // 5. 根据 commit 返回状态判断是否需要触发 ingest
+      if (commitResp.status === 'PENDING') {
+        await ingestDoc(initResp.docId, version);
+      }
 
       // 进入状态轮询
       startStatusPolling(initResp.docId, version, file.size);

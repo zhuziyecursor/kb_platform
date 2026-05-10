@@ -49,6 +49,7 @@ public class MilvusService {
         List<Long> createTimes = new ArrayList<>();
         List<String> tagsList = new ArrayList<>();
         List<String> chunkTypeList = new ArrayList<>();
+        List<String> parentRefs = new ArrayList<>();
         List<String> keywordsList = new ArrayList<>();
         List<String> summaryList = new ArrayList<>();
 
@@ -76,6 +77,7 @@ public class MilvusService {
             chunkTypeList.add(m.getChunkType() != null ? m.getChunkType() : "");
             keywordsList.add(m.getKeywords() != null ? m.getKeywords() : "");
             summaryList.add(m.getSummary() != null ? m.getSummary() : "");
+            parentRefs.add(m.getParentRef() != null ? m.getParentRef() : "");
         }
 
         fields.add(new InsertParam.Field("id", ids));
@@ -83,6 +85,7 @@ public class MilvusService {
         fields.add(new InsertParam.Field("tenant_id", tenantIds));
         fields.add(new InsertParam.Field("version", versions));
         fields.add(new InsertParam.Field("chunk_seq", chunkSeqs));
+        fields.add(new InsertParam.Field("parent_ref", parentRefs));
         fields.add(new InsertParam.Field("vector", vectors));
         fields.add(new InsertParam.Field("text", texts));
         fields.add(new InsertParam.Field("title", titles));

@@ -1,6 +1,6 @@
 # 企业AI知识库 MVP 数据库数据推演详细分析报告
 
-> 文档版本：V2.0 基于《企业AI知识库MVP实施手册》
+> 文档版本：V2.0 基于《企业AI知识库MVP实施手册》(见 [implementation-handbook.md](./implementation-handbook.md))
 > 分析维度：逐字段解释 → 表间交互 → 数据扭转 → 存储/查询实现
 
 ---

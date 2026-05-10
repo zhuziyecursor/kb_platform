@@ -56,5 +56,10 @@ GRANT SELECT ON kb_knowledge.doc_acl TO kb_rag;
 GRANT SELECT ON kb_knowledge.knowledge_version TO kb_rag;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA kb_knowledge TO kb_rag;
 
+-- kb_rag 对 kb_audit schema 的权限（RAG Pipeline 可观测性）
+GRANT USAGE ON SCHEMA kb_audit TO kb_rag;
+GRANT SELECT, INSERT ON kb_audit.rag_pipeline_trace TO kb_rag;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA kb_audit TO kb_rag;
+
 -- 创建其他服务用户（占位，待后续实现）
 -- CREATE USER kb_user_svc WITH PASSWORD 'kb_user_svc';

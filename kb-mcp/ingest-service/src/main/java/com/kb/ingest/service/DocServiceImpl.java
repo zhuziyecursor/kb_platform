@@ -3,9 +3,11 @@ package com.kb.ingest.service;
 import com.kb.ingest.dto.*;
 import com.kb.ingest.entity.DocAcl;
 import com.kb.ingest.entity.KnowledgeDoc;
+import com.kb.ingest.entity.KnowledgeSpace;
 import com.kb.ingest.entity.KnowledgeVersion;
 import com.kb.ingest.repository.DocAclRepository;
 import com.kb.ingest.repository.KnowledgeDocRepository;
+import com.kb.ingest.repository.KnowledgeSpaceRepository;
 import com.kb.ingest.repository.KnowledgeVersionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class DocServiceImpl implements DocService {
     private final KnowledgeDocRepository docRepository;
     private final KnowledgeVersionRepository versionRepository;
     private final DocAclRepository aclRepository;
+    private final KnowledgeSpaceRepository spaceRepository;
     private final MinioService minioService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
@@ -169,9 +172,7 @@ public class DocServiceImpl implements DocService {
 
         // 更新文档状态为 PENDING
         docRepository.updateStatus(tenantId, docId, version, "PENDING");
-
         log.info("commit: docId={}, version={}, status=PENDING", docId, version);
-
         return CommitResponse.builder()
                 .docId(docId)
                 .version(version)

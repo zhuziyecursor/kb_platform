@@ -22,4 +22,8 @@ public class CitationDto {
     private boolean isCurrent;
     private double score;
     private String text;
+    private String parentText;  // Parent chunk 完整文本（用于生成上下文）
+    private String parentRef;     // Parent-Children 关联：格式 "docId/version/parentSeq"
+    private String knowledgeSpaceId;
+    private String spacePath;
 }

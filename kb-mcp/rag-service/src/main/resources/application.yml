@@ -34,7 +34,8 @@ app:
     collection-name: ${MILVUS_COLLECTION:kb_documents}
 
   embedding:
-    url: ${EMBEDDING_SERVICE_URL:http://193.134.211.121:31296}/embeddings
+    # url: ${EMBEDDING_SERVICE_URL:http://193.134.211.121:31296}/embeddings
+    url: ${EMBEDDING_SERVICE_URL:http://192.168.30.47:31296}/embeddings
     timeout-seconds: 30
     model-name: BGE-zh-v1.5
     dim: 1024
@@ -52,6 +53,18 @@ app:
     max-tokens: 2048
     model: ${LLM_MODEL:MiniMax-M2.7}
     max-retries: 2
+    prompt-budget:
+      enabled: ${RAG_PROMPT_BUDGET_ENABLED:true}
+      context-window-tokens: ${RAG_CONTEXT_WINDOW_TOKENS:8192}
+      safety-margin-tokens: ${RAG_PROMPT_SAFETY_MARGIN_TOKENS:512}
+      input-budget-ratio: ${RAG_PROMPT_INPUT_BUDGET_RATIO:0.75}
+      history-budget-ratio: ${RAG_PROMPT_HISTORY_BUDGET_RATIO:0.15}
+      max-history-turns: ${RAG_PROMPT_MAX_HISTORY_TURNS:6}
+      max-citations: ${RAG_PROMPT_MAX_CITATIONS:8}
+      max-tokens-per-citation: ${RAG_PROMPT_MAX_TOKENS_PER_CITATION:900}
+      min-tokens-per-citation: ${RAG_PROMPT_MIN_TOKENS_PER_CITATION:120}
+      message-overhead-tokens: ${RAG_PROMPT_MESSAGE_OVERHEAD_TOKENS:8}
+      citation-header-overhead-tokens: ${RAG_PROMPT_CITATION_HEADER_OVERHEAD_TOKENS:40}
 
   cache:
     ttl-minutes: ${RAG_CACHE_TTL_MINUTES:10}
@@ -66,3 +79,13 @@ app:
 logging:
   level:
     com.kb.rag: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

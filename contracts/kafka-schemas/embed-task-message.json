@@ -148,6 +148,11 @@
       "minItems": 1024,
       "maxItems": 1024,
       "description": "BGE-zh-v1.5 向量，dim=1024。由 kb-doc-processor 调用 embedding 服务生成，vector-service 直接写入 Milvus。"
+    },
+    "parentRef": {
+      "type": "string",
+      "description": "Parent chunk 引用，格式: docId/version/parentSeq。无 Parent 时为空字符串。单层 chunk 也为空字符串。",
+      "example": ""
     }
   },
   "additionalProperties": true,

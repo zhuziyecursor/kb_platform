@@ -72,6 +72,8 @@ class EmbedTask(Base):
     acl_version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     tags: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     chunk_type: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    parent_ref: Mapped[str] = mapped_column(String(128), nullable=False, default="")  # Parent-Children 关联
+    is_parent: Mapped[bool] = mapped_column(default=False)  # 是否为 Parent chunk
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
     milvus_pk: Mapped[Optional[int]] = mapped_column(BigInteger)
     milvus_version: Mapped[Optional[int]] = mapped_column(BigInteger)

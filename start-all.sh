@@ -20,6 +20,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
+LOG_WRAPPER="$SCRIPT_DIR/scripts/run-with-log-limit.sh"
 
 # 加载环境变量（如果存在 .env 文件）
 if [ -f "$SCRIPT_DIR/kb-infra/.env" ]; then
@@ -27,6 +28,13 @@ if [ -f "$SCRIPT_DIR/kb-infra/.env" ]; then
   source "$SCRIPT_DIR/kb-infra/.env"
   set +a
 fi
+
+# 应用服务运行在宿主机进程中，数据库统一连接 Docker PostgreSQL 暴露到宿主机的端口。
+# 避免外部 shell 残留 DB_URL/DB_HOST 指向本机原生 PostgreSQL 或其它数据库。
+export DB_HOST="localhost"
+export DB_PORT="${POSTGRES_PORT:-25432}"
+export DB_NAME="${POSTGRES_DB:-kb_knowledge}"
+export DB_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
 # -----------------------------------------------------------------------------
 # 服务定义: 名称 | 端口 | 工作目录
@@ -55,6 +63,12 @@ log_ok()   { echo -e "${GREEN}[ OK ]${NC}  $*"; }
 log_skip() { echo -e "${YELLOW}[SKIP]${NC}  $*"; }
 log_fail() { echo -e "${RED}[FAIL]${NC}  $*"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+
+launch_with_log_limit() {
+  local log_file=$1
+  shift
+  nohup "$LOG_WRAPPER" "$log_file" "$@" >/dev/null 2>&1 &
+}
 
 port_pid() {
   local port=$1
@@ -135,7 +149,7 @@ start_ingest() {
 
   log_info "[ingest] 启动 ingest-service (端口 $port)..."
   cd "$work_dir"
-  nohup mvn spring-boot:run > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" mvn spring-boot:run
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 
@@ -164,7 +178,7 @@ start_vector() {
 
   log_info "[vector] 启动 vector-service (端口 $port)..."
   cd "$work_dir"
-  nohup mvn spring-boot:run > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" mvn spring-boot:run
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 
@@ -203,7 +217,7 @@ start_doc_processor() {
   fi
 
   cd "$work_dir"
-  nohup .venv/bin/python -m src.main > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" .venv/bin/python -m src.main
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 
@@ -243,7 +257,7 @@ start_rerank() {
   fi
 
   cd "$work_dir"
-  nohup .venv/bin/python -m src.main > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" .venv/bin/python -m src.main
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 
@@ -272,7 +286,7 @@ start_llm_gateway() {
 
   log_info "[llm-gateway] 启动 llm-gateway (端口 $port)..."
   cd "$work_dir"
-  nohup mvn spring-boot:run > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" mvn spring-boot:run
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 
@@ -301,7 +315,7 @@ start_rag() {
 
   log_info "[rag] 启动 rag-service (端口 $port)..."
   cd "$work_dir"
-  nohup mvn spring-boot:run > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" mvn spring-boot:run
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 
@@ -330,7 +344,7 @@ start_portal() {
 
   log_info "[portal] 启动 kb-portal 前端 (端口 $port)..."
   cd "$work_dir"
-  nohup npm run dev > "$log_file" 2>&1 &
+  launch_with_log_limit "$log_file" npm run dev
   echo $! > "$pid_file"
   cd "$SCRIPT_DIR"
 

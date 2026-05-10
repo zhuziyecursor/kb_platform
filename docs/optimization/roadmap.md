@@ -6,7 +6,7 @@
 
 ## P0 — 知识空间层级化
 
-**详见：** [knowledge-space-hierarchy-design.md](./knowledge-space-hierarchy-design.md)
+**详见：** [space-hierarchy.md](../features/space-hierarchy.md)
 
 当前知识空间为单层平铺结构，改造为自引用树形结构，支持多层级分类，并在页面以 Tree 形式展示。这是其他优化的前提基础。
 

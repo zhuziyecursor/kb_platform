@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -31,6 +32,13 @@ public class EmbedTaskConsumer {
     )
     @Transactional
     public void consume(List<EmbedTaskMessage> messages, Acknowledgment ack) {
+        int originalSize = messages.size();
+        messages = messages.stream().filter(Objects::nonNull).toList();
+        if (messages.size() != originalSize) {
+            log.warn("Skipped {} null embed-task messages after deserialization failure",
+                    originalSize - messages.size());
+        }
+
         if (messages.isEmpty()) {
             ack.acknowledge();
             return;

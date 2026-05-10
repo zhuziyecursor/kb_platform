@@ -97,3 +97,11 @@ httpClient.interceptors.request.use((config) => {
 - 源码中不含 Milvus 端口 `:19530`
 - 源码中不含 `localStorage.*token`（不允许 localStorage 存 token）
 - 源码中不含硬编码的微服务端口
+
+
+## Frontend Development Rules
+- 本项目使用 React 18 + antd v5。绝不使用静态 `Modal.confirm`——它在 React 18 中已经失效。始终使用 `App.useApp()` hook 来处理上下文 Modal。
+- 不要将 Modal.confirm 嵌套在 Dropdown 菜单中；这会阻止 Modal 正常渲染。
+- 处理文件上传时，始终保留 UploadFile 对象上的 `originFileObj` 属性。
+- 前端开发服务器运行在 3105 端口。前端变更后，使用项目的启动脚本重启。
+- 在声明完成之前，始终验证页面能否在其预期的路由上正常渲染。

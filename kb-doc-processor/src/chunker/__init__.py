@@ -12,6 +12,8 @@ class ChunkInfo:
     token_count: int
     section_path: str | None = None
     page: int | None = None
+    parent_ref: str | None = None  # 格式: "doc_id/version/parent_seq"，无 Parent 时为 None
+    is_parent: bool = False       # 是否为 Parent chunk
 
 
 @dataclass

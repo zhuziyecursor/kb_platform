@@ -47,6 +47,10 @@ public class KnowledgeSpace {
     @Builder.Default
     private String visibility = "TEAM";
 
+    @Column(name = "smart_parse_enabled", nullable = false)
+    @Builder.Default
+    private Boolean smartParseEnabled = false;
+
     @Column(name = "parent_id", length = 64)
     private String parentId;
 

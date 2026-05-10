@@ -84,6 +84,16 @@ def get_schema() -> CollectionSchema:
             description="切片序号，从 0 开始",
         ),
 
+        # ── Parent-Children 关联 ─────────────────────────────────────────────────
+        # parent_ref 格式: "doc_id/version/parent_seq"
+        # 空字符串表示单层 chunk（无 Parent）
+        FieldSchema(
+            name="parent_ref",
+            dtype=DataType.VARCHAR,
+            max_length=128,
+            description="Parent chunk 引用，格式: doc_id/version/parent_seq。无 Parent 时为空字符串",
+        ),
+
         # ── 向量 ─────────────────────────────────────────────────────────────────
         FieldSchema(
             name="vector",
@@ -247,6 +257,7 @@ def get_scalar_index_fields() -> list:
         "perm_group_id",   # perm_group_id in [...]
         "region_code",     # 地域隔离
         "effective_to",    # 有效期过滤
+        "parent_ref",      # Parent-Children 回捞时按 parent_ref 批量查询
     ]
 
 

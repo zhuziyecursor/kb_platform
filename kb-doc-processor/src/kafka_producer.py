@@ -77,6 +77,7 @@ class EmbedTaskMessage:
     tags: str = ""           # 继承展平标签，逗号分隔
     chunk_type: str = ""     # 段落语义类型
     vector: Optional[list[float]] = None
+    parent_ref: str = ""     # Parent chunk 引用，格式: "docId/version/parentSeq"，无 Parent 时为空
 
     def to_dict(self) -> dict:
         data = {
@@ -102,6 +103,7 @@ class EmbedTaskMessage:
             "createTime": self.create_time,
             "tags": self.tags,
             "chunkType": self.chunk_type,
+            "parentRef": self.parent_ref,
         }
         if self.vector is not None:
             data["vector"] = {"index": 0, "embedding": self.vector}
