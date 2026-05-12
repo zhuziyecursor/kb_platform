@@ -1,5 +1,6 @@
 package com.kb.ingest.controller;
 
+import com.kb.ingest.config.DevContextProperties;
 import com.kb.ingest.dto.StatsOverviewResponse;
 import com.kb.ingest.service.StatsService;
 import lombok.RequiredArgsConstructor;
@@ -16,12 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class StatsController {
 
     private final StatsService statsService;
-
-    private static final String DEV_TENANT_ID = "dev-tenant-001";
+    private final DevContextProperties devContext;
 
     @GetMapping("/overview")
     public ResponseEntity<StatsOverviewResponse> getOverview() {
-        StatsOverviewResponse response = statsService.getOverview(DEV_TENANT_ID);
+        StatsOverviewResponse response = statsService.getOverview(devContext.getTenantId());
         return ResponseEntity.ok(response);
     }
 }

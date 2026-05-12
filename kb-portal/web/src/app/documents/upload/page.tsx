@@ -406,7 +406,11 @@ export default function UploadPage() {
       startStatusPolling(initResp.docId, version, file.size);
 
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      const serverMsg = err.response?.data?.message;
+      const serverCode = err.response?.data?.code;
+      const detail = serverMsg ? `[${serverCode}] ${serverMsg}` : err.message;
+      console.error('上传失败详情:', err.response?.data || err);
+      message.error(`上传失败: ${detail}`);
       setIsProcessing(false);
 
       // 标记失败

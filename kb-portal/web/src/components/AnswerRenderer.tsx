@@ -64,12 +64,12 @@ function parseAnswer(raw: string): ParsedAnswer {
  * Render a single line of markdown-like text into JSX.
  * Handles: ### headings, **bold**, `code`, [N] citations.
  */
-function renderLine(line: string, lineIdx: number): React.ReactNode {
+function renderLine(line: string, lineIdx: number, onCitationClick?: (citationIndex: number) => void): React.ReactNode {
   // H3 heading
   if (line.startsWith('### ')) {
     return (
       <h3 key={lineIdx} className="answer-h3">
-        {renderInline(line.slice(4))}
+        {renderInline(line.slice(4), onCitationClick)}
       </h3>
     );
   }
@@ -77,7 +77,7 @@ function renderLine(line: string, lineIdx: number): React.ReactNode {
   if (line.startsWith('## ')) {
     return (
       <h2 key={lineIdx} className="answer-h2">
-        {renderInline(line.slice(3))}
+        {renderInline(line.slice(3), onCitationClick)}
       </h2>
     );
   }
@@ -85,22 +85,23 @@ function renderLine(line: string, lineIdx: number): React.ReactNode {
   if (/^\*\*.+\*\*$/.test(line.trim())) {
     return (
       <p key={lineIdx} className="answer-bold-label">
-        {renderInline(line.trim())}
+        {renderInline(line.trim(), onCitationClick)}
       </p>
     );
   }
 
   return (
     <p key={lineIdx} className="answer-p">
-      {renderInline(line)}
+      {renderInline(line, onCitationClick)}
     </p>
   );
 }
 
 /**
  * Render inline markdown: **bold**, `code`, [N] citations.
+ * Citation numbers are rendered as clickable superscripts when onCitationClick is provided.
  */
-function renderInline(text: string): React.ReactNode {
+function renderInline(text: string, onCitationClick?: (citationIndex: number) => void): React.ReactNode {
   const parts: React.ReactNode[] = [];
   // Pattern matches: **bold**, `code`, [N]
   const regex = /(\*\*(.+?)\*\*)|(`(.+?)`)|(\[(\d+)\])/g;
@@ -125,8 +126,16 @@ function renderInline(text: string): React.ReactNode {
       );
     } else if (match[5]) {
       // [N] citation
+      const citeIndex = parseInt(match[6], 10);
       parts.push(
-        <sup key={`cite-${match.index}`} className="answer-cite">[{match[6]}]</sup>
+        <sup
+          key={`cite-${match.index}`}
+          className={onCitationClick ? 'answer-cite answer-cite--clickable' : 'answer-cite'}
+          onClick={onCitationClick ? () => onCitationClick(citeIndex - 1) : undefined}
+          title={onCitationClick ? '点击跳转到原文' : undefined}
+        >
+          [{match[6]}]
+        </sup>
       );
     }
 
@@ -144,10 +153,11 @@ function renderInline(text: string): React.ReactNode {
 interface AnswerRendererProps {
   content: string;
   onFollowUpClick?: (question: string) => void;
+  onCitationClick?: (citationIndex: number) => void;
   className?: string;
 }
 
-export default function AnswerRenderer({ content, onFollowUpClick, className }: AnswerRendererProps) {
+export default function AnswerRenderer({ content, onFollowUpClick, onCitationClick, className }: AnswerRendererProps) {
   const parsed = useMemo(() => parseAnswer(content), [content]);
 
   const mainLines = useMemo(() => {
@@ -189,7 +199,7 @@ export default function AnswerRenderer({ content, onFollowUpClick, className }: 
         continue;
       }
 
-      elements.push(renderLine(line, i));
+      elements.push(renderLine(line, i, onCitationClick));
     }
 
     return elements;

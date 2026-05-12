@@ -62,6 +62,8 @@ CREATE TABLE kb_knowledge.embed_task (
     perm_group_id   BIGINT,
     acl_version     BIGINT      NOT NULL DEFAULT 1,
     status          VARCHAR(16) NOT NULL DEFAULT 'PENDING',  -- PENDING/PROCESSING/DONE/FAILED
+    keywords        VARCHAR(512) NOT NULL DEFAULT '',         -- 关键词，空格分隔，由 MetadataExtractor 自动提取
+    summary         VARCHAR(256) NOT NULL DEFAULT '',          -- 单句摘要，≤200字符，由 MetadataExtractor 自动提取
     milvus_pk       BIGINT,      -- Milvus 返回的主键，用于更新
     milvus_version  BIGINT,      -- Milvus 中该记录的版本
     retry_count     INT         NOT NULL DEFAULT 0,

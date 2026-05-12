@@ -4,7 +4,7 @@ import re
 import logging
 from typing import Optional
 
-from src.chunker import BaseChunker, ChunkInfo, ChunkResult
+from src.chunker import BaseChunker, ChunkInfo, ChunkResult, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,6 @@ _SECTION_PATTERNS = [
     re.compile(r'^Part\s+\d+', re.IGNORECASE),
     re.compile(r'^(概述|前言|引言|总则|分则|附则|附录)\s*$'),
 ]
-
-# Parent-Children 分块参数
-PARENT_MAX_SIZE = 1500  # Parent 最大字符数，超过则在段落边界进一步拆分
-CHILD_SIZE = 400        # Child chunk 大小（检索单元）
-CHILD_OVERLAP = 50      # Child 重叠字符数
 
 
 def _is_heading(line: str) -> bool:
@@ -49,11 +44,21 @@ class SemanticChunker(BaseChunker):
     3. Parent 存储完整上下文，用于生成
     """
 
-    def __init__(self, chunk_size: int = 1024, overlap_ratio: int = 10):
+    def __init__(
+        self,
+        chunk_size: int = 1024,
+        overlap_ratio: int = 10,
+        parent_max_size: int = 1500,
+        child_size: int = 400,
+        child_overlap: int = 50,
+    ):
         if chunk_size < 100 or chunk_size > 2000:
             raise ValueError(f"chunk_size must be in [100, 2000], got {chunk_size}")
         self._chunk_size = chunk_size
         self._overlap = int(chunk_size * overlap_ratio / 100)
+        self._parent_max_size = parent_max_size
+        self._child_size = child_size
+        self._child_overlap = child_overlap
 
     def chunk(self, text: str, metadata: dict | None = None) -> ChunkResult:
         paragraphs = self._split_paragraphs(text)
@@ -128,60 +133,53 @@ class SemanticChunker(BaseChunker):
         3. Parent 和 Children 通过 parent_ref 关联
         """
         chunks: list[ChunkInfo] = []
-        parent_seq = 0
-        child_seq = 0
+        next_seq = 0
 
         for section in sections:
             section_text = '\n\n'.join(section['paragraphs'])
 
-            # 创建 Parent chunk
-            parent_chunk = ChunkInfo(
-                chunk_seq=parent_seq,
-                text=section_text,
-                char_count=len(section_text),
-                token_count=max(1, int(len(section_text) / 1.5)),
-                section_path=section['section_path'],
-                is_parent=True,
-            )
-            # parent_ref 稍后填充（需要 doc_id/version）
-
             # Parent 超过限制时按段落拆分
-            if len(section_text) > PARENT_MAX_SIZE:
-                # 拆分 Parent 为多个子 Parent
-                sub_parents = self._split_long_section(section['paragraphs'], section['section_path'], parent_seq)
+            if len(section_text) > self._parent_max_size:
+                sub_parents = self._split_long_section(section['paragraphs'], section['section_path'], next_seq)
                 for sp in sub_parents:
+                    sp.chunk_seq = next_seq
                     chunks.append(sp)
-                    parent_seq += 1
-                    # 从这个子 Parent 切 Children
-                    children = self._extract_children_from_parent(sp, parent_seq - 1, child_seq)
+                    parent_seq = next_seq
+                    next_seq += 1
+                    children = self._extract_children_from_parent(sp, parent_seq, next_seq)
                     chunks.extend(children)
-                    child_seq += len(children)
+                    next_seq += len(children)
             else:
+                parent_chunk = ChunkInfo(
+                    chunk_seq=next_seq,
+                    text=section_text,
+                    char_count=len(section_text),
+                    token_count=estimate_tokens(section_text),
+                    section_path=section['section_path'],
+                    is_parent=True,
+                )
                 chunks.append(parent_chunk)
-                parent_seq += 1
-                # 从 Parent 提取 Children
-                children = self._extract_children_from_parent(parent_chunk, parent_seq - 1, child_seq)
+                parent_seq = next_seq
+                next_seq += 1
+                children = self._extract_children_from_parent(parent_chunk, parent_seq, next_seq)
                 chunks.extend(children)
-                child_seq += len(children)
+                next_seq += len(children)
 
         return chunks
 
     def _extract_children_from_parent(self, parent: ChunkInfo, parent_seq: int, start_child_seq: int) -> list[ChunkInfo]:
         """从 Parent chunk 按滑动窗口切出 Children"""
-        if parent.is_parent:
-            text = parent.text
-        else:
-            text = parent.text
+        text = parent.text
 
         children: list[ChunkInfo] = []
-        stride = CHILD_SIZE - CHILD_OVERLAP
+        stride = self._child_size - self._child_overlap
         if stride <= 0:
-            stride = CHILD_SIZE
+            stride = self._child_size
 
         offset = 0
         child_seq = start_child_seq
         while offset < len(text):
-            end = min(offset + CHILD_SIZE, len(text))
+            end = min(offset + self._child_size, len(text))
             child_text = text[offset:end]
             if len(child_text.strip()) < 50:  # 太短的片段跳过
                 offset += stride
@@ -191,7 +189,7 @@ class SemanticChunker(BaseChunker):
                 chunk_seq=child_seq,
                 text=child_text,
                 char_count=len(child_text),
-                token_count=max(1, int(len(child_text) / 1.5)),
+                token_count=estimate_tokens(child_text),
                 section_path=parent.section_path,
                 is_parent=False,
             )
@@ -212,7 +210,7 @@ class SemanticChunker(BaseChunker):
 
         for para in paragraphs:
             para_len = len(para)
-            if buf_len + para_len + 2 <= PARENT_MAX_SIZE:
+            if buf_len + para_len + 2 <= self._parent_max_size:
                 if buf:
                     buf += '\n\n' + para
                     buf_len += 2 + para_len
@@ -225,7 +223,7 @@ class SemanticChunker(BaseChunker):
                         chunk_seq=seq,
                         text=buf,
                         char_count=buf_len,
-                        token_count=max(1, int(buf_len / 1.5)),
+                        token_count=estimate_tokens(buf),
                         section_path=section_path,
                         is_parent=True,
                     ))
@@ -234,13 +232,13 @@ class SemanticChunker(BaseChunker):
                     buf_len = para_len
                 else:
                     # 单段落就超过限制，按固定长度切
-                    for i in range(0, para_len, PARENT_MAX_SIZE):
-                        piece = para[i:i + PARENT_MAX_SIZE]
+                    for i in range(0, para_len, self._parent_max_size):
+                        piece = para[i:i + self._parent_max_size]
                         results.append(ChunkInfo(
                             chunk_seq=seq,
                             text=piece,
                             char_count=len(piece),
-                            token_count=max(1, int(len(piece) / 1.5)),
+                            token_count=estimate_tokens(piece),
                             section_path=section_path,
                             is_parent=True,
                         ))
@@ -251,7 +249,7 @@ class SemanticChunker(BaseChunker):
                 chunk_seq=seq,
                 text=buf,
                 char_count=buf_len,
-                token_count=max(1, int(buf_len / 1.5)),
+                token_count=estimate_tokens(buf),
                 section_path=section_path,
                 is_parent=True,
             ))

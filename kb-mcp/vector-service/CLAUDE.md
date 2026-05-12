@@ -2,9 +2,9 @@
 
 ## 服务职责
 
-消费 `embed-task` Kafka 消息 → 调用 embedding-service 向量化 → Milvus upsert → 更新文档状态为 READY。
+消费 `embed-task` Kafka 消息 → 使用消息中携带的 embedding 向量 → Milvus upsert → 更新文档状态为 READY。
 
-**不做文件解析，不处理文本，只负责向量化和写入 Milvus。**
+**不做文件解析，不处理文本，不在当前实现中生成文档 embedding，只负责写入 Milvus 和状态回写。**
 
 ## 本服务拥有的表（更新权限）
 
@@ -25,7 +25,7 @@ DB 用户：`kb_vector`
 - 禁止调用 kb-doc-processor（方向错误）
 - 禁止解析文件或处理原始文本
 - 禁止对 `knowledge_version` 执行 INSERT（只能 UPDATE）
-- 禁止自行生成 embedding（必须调用 embedding-service）
+- 禁止自行重新生成文档 embedding；当前文档向量由 kb-doc-processor 写入 embed-task 消息
 
 ## Kafka 消费规则
 

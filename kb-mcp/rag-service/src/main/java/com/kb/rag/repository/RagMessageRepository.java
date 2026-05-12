@@ -13,6 +13,8 @@ public interface RagMessageRepository extends JpaRepository<RagMessage, Long> {
 
     List<RagMessage> findBySessionIdOrderByCreatedAtAsc(String sessionId);
 
+    List<RagMessage> findByTraceIdOrderByCreatedAtAsc(String traceId);
+
     @Modifying
     @Query("DELETE FROM RagMessage m WHERE m.sessionId = :sessionId")
     int deleteBySessionId(String sessionId);

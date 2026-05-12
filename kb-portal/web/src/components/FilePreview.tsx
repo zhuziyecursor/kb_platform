@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Spin, App, Button, Space } from 'antd';
 import { DownloadOutlined, ExpandOutlined, FileTextOutlined } from '@ant-design/icons';
-import { getDocFile } from '@/api/http-client';
+import { getDocFile, getDocPreview } from '@/api/http-client';
 
 interface FilePreviewProps {
   docId: string;
@@ -11,6 +11,10 @@ interface FilePreviewProps {
   filename: string;
   open: boolean;
   onClose: () => void;
+  /** 初始页码（PDF 定位用） */
+  initialPage?: number;
+  /** 高亮文本（PDF 搜索高亮用） */
+  highlightText?: string;
 }
 
 type PreviewType = 'image' | 'pdf' | 'markdown' | 'text' | 'unsupported' | 'loading' | 'error';
@@ -36,54 +40,106 @@ const getPreviewType = (filename: string): PreviewType => {
   return 'unsupported';
 };
 
+/**
+ * 为 PDF URL 追加页码定位和高亮搜索参数。
+ * Chrome/Edge 支持 #page=N 和 #search=text；Firefox 支持 #page=N。
+ */
+const buildPdfUrl = (baseUrl: string, page?: number, highlight?: string): string => {
+  const parts: string[] = [];
+  if (page && page > 0) {
+    parts.push(`page=${page}`);
+  }
+  if (highlight && highlight.trim()) {
+    // 取前 30 个字符避免 URL 过长，去除换行和多余空格
+    const clean = highlight.trim().slice(0, 30).replace(/\s+/g, ' ');
+    parts.push(`search=${encodeURIComponent(clean)}`);
+  }
+  if (parts.length === 0) return baseUrl;
+  return `${baseUrl}#${parts.join('&')}`;
+};
+
 const FilePreview: React.FC<FilePreviewProps> = ({
   docId,
   version = 1,
   filename,
   open,
   onClose,
+  initialPage,
+  highlightText,
 }) => {
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<PreviewType>('loading');
   const [fullscreen, setFullscreen] = useState(false);
+  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (!open || !docId) return;
 
+    cancelledRef.current = false;
+
     const loadFile = async () => {
       setLoading(true);
       setPreviewType('loading');
+      setBlobUrl(null);
+      setPresignedUrl(null);
 
       try {
-        const blob = await getDocFile(docId, version);
-        const url = URL.createObjectURL(blob);
-        setBlobUrl(url);
-        setPreviewType(getPreviewType(filename));
+        const previewResp = await getDocPreview(docId, version, initialPage, highlightText);
+        if (cancelledRef.current) return;
+
+        if (previewResp.previewUrl) {
+          setPresignedUrl(previewResp.previewUrl);
+          setPreviewType((previewResp.previewType as PreviewType) || getPreviewType(filename) || 'unsupported');
+
+          // blob 下载仅用于下载按钮，失败不影响预览
+          try {
+            const blob = await getDocFile(docId, version);
+            if (!cancelledRef.current) {
+              setBlobUrl(URL.createObjectURL(blob));
+            }
+          } catch (downloadErr) {
+            console.warn('Blob download failed, download will use presigned URL:', downloadErr);
+          }
+        } else {
+          // 无 presigned URL，降级为 blob 预览
+          const blob = await getDocFile(docId, version);
+          if (cancelledRef.current) return;
+          setBlobUrl(URL.createObjectURL(blob));
+          setPreviewType(getPreviewType(filename));
+        }
       } catch (err) {
+        if (cancelledRef.current) return;
         console.error('Failed to load file:', err);
         message.error('加载文件失败');
         setPreviewType('error');
       } finally {
-        setLoading(false);
+        if (!cancelledRef.current) {
+          setLoading(false);
+        }
       }
     };
 
     loadFile();
 
     return () => {
+      cancelledRef.current = true;
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [open, docId, version, filename]);
+  }, [open, docId, version, filename, initialPage, highlightText]);
 
   const handleDownload = () => {
-    if (!blobUrl) return;
+    // 优先使用 blobUrl，降级为 presignedUrl
+    const downloadUrl = blobUrl || presignedUrl;
+    if (!downloadUrl) return;
     const a = document.createElement('a');
-    a.href = blobUrl;
+    a.href = downloadUrl;
     a.download = filename;
+    a.target = '_blank';
     a.click();
   };
 
@@ -118,7 +174,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       );
     }
 
-    if (previewType === 'image' && blobUrl) {
+    if (previewType === 'image' && presignedUrl) {
       return (
         <div style={{
           display: 'flex',
@@ -129,7 +185,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
           padding: 16,
         }}>
           <img
-            src={blobUrl}
+            src={presignedUrl}
             alt={filename}
             style={{
               maxWidth: '100%',
@@ -142,10 +198,11 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       );
     }
 
-    if (previewType === 'pdf' && blobUrl) {
+    if (previewType === 'pdf' && presignedUrl) {
+      const pdfUrl = buildPdfUrl(presignedUrl, initialPage, highlightText);
       return (
         <iframe
-          src={blobUrl}
+          src={pdfUrl}
           title={filename}
           style={{
             width: '100%',
@@ -158,32 +215,26 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       );
     }
 
-    if (previewType === 'markdown' && blobUrl) {
+    if (previewType === 'markdown' && presignedUrl) {
       return (
         <iframe
-          srcDoc={`<!DOCTYPE html><html><head>
-            <meta charset="utf-8">
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                     padding: 20px; max-width: 900px; margin: 0 auto; line-height: 1.6; }
-              pre { background: #f5f5f5; padding: 16px; border-radius: 8px; overflow-x: auto; }
-              code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
-            </style>
-          </head><body><pre id="content"></pre></body></html>`}
+          src={presignedUrl}
+          title={filename}
           style={{
             width: '100%',
             height: fullscreen ? '90vh' : '60vh',
             border: 'none',
             borderRadius: 8,
+            background: 'var(--color-surface)',
           }}
         />
       );
     }
 
-    if (previewType === 'text' && blobUrl) {
+    if (previewType === 'text' && presignedUrl) {
       return (
         <iframe
-          src={blobUrl}
+          src={presignedUrl}
           title={filename}
           style={{
             width: '100%',
@@ -198,8 +249,26 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       );
     }
 
+    // 降级：有 blobUrl 但没有 presignedUrl 时，用 blobUrl 渲染
+    if (blobUrl && !presignedUrl) {
+      return (
+        <iframe
+          src={blobUrl}
+          title={filename}
+          style={{
+            width: '100%',
+            height: fullscreen ? '90vh' : '60vh',
+            border: 'none',
+            borderRadius: 8,
+          }}
+        />
+      );
+    }
+
     return null;
   };
+
+  const showDownload = !!(blobUrl || presignedUrl);
 
   return (
     <Modal
@@ -207,7 +276,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{filename}</span>
           <Space>
-            {blobUrl && previewType !== 'error' && (
+            {showDownload && previewType !== 'error' && (
               <>
                 <Button
                   size="small"

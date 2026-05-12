@@ -57,11 +57,13 @@ class TestFixedLengthChunker:
             assert chunk.chunk_seq == i
 
     def test_token_count_estimate(self):
+        from src.chunker import estimate_tokens
         chunker = FixedLengthChunker(chunk_size=CHUNK, overlap_ratio=10, mode="HEAD_FIRST")
         text = "测试中文文本" * 20
         result = chunker.chunk(text)
         for chunk in result.chunks:
-            assert chunk.token_count == max(1, int(chunk.char_count / 1.5))
+            assert chunk.token_count == estimate_tokens(chunk.text)
+            assert chunk.token_count > 0
 
     def test_invalid_chunk_size(self):
         with pytest.raises(ValueError):

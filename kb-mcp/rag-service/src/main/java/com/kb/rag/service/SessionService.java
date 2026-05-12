@@ -131,7 +131,7 @@ public class SessionService {
     }
 
     @Transactional
-    public void appendTurnWithCitations(String sessionId, SessionData session, String query,
+    public Long appendTurnWithCitations(String sessionId, SessionData session, String query,
                                          String answer, List<CitationDto> citations, String traceId) {
         RagMessage userMsg = RagMessage.builder()
                 .sessionId(sessionId)
@@ -158,7 +158,7 @@ public class SessionService {
                 .citations(citationsJson)
                 .traceId(traceId)
                 .build();
-        messageRepository.save(assistantMsg);
+        RagMessage saved = messageRepository.save(assistantMsg);
 
         if (session.turns().isEmpty()) {
             String title = query.length() > 30 ? query.substring(0, 30) + "..." : query;
@@ -177,6 +177,8 @@ public class SessionService {
                 turns, session.createdAt(), System.currentTimeMillis()
         );
         saveToRedis(sessionId, updated);
+
+        return saved.getId();
     }
 
     @Transactional(readOnly = true)

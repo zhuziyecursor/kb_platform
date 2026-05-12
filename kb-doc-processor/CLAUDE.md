@@ -5,7 +5,7 @@
 消费 `file-ingest` Kafka 消息 → Parser → Cleaner → Chunker → 发布 `embed-task` 消息。
 同时提供 HTTP API（`/api/v1/parse, /clean, /chunk, /process`）供调试和直接调用使用。
 
-**只做文本处理（解析/清洗/切片），不做向量化，不写 Milvus。**
+**负责文本处理（解析/清洗/切片）和当前实现中的文档 chunk embedding，不写 Milvus。**
 
 ## 本服务拥有的表
 
@@ -19,7 +19,7 @@ DB 用户：`kb_processor`（Python 通过 psycopg2/SQLAlchemy 连接）
 
 ## 禁止的操作
 
-- 禁止调用 `embedding-service`（向量化不在本服务职责内）
+- 允许通过 `EmbeddingClient` 调用 embedding-service 生成文档 chunk 向量；禁止写 Milvus
 - 禁止写入 Milvus（导入 `pymilvus` 会被 import 守护测试检测到）
 - 禁止修改 `knowledge_doc` 或 `knowledge_version` 的状态
 - 禁止修改 `embed_task.status` / `embed_task.milvus_pk`（这是 vector-service 的职责）
@@ -63,7 +63,7 @@ DB 用户：`kb_processor`（Python 通过 psycopg2/SQLAlchemy 连接）
 
 接口定义详见：`contracts/openapi/doc-processor-v1.yaml`
 
-**注意：这 4 个接口无对外鉴权要求（内部服务调用），但必须校验 MVP 文件大小限制（≤5MB，≤30页）。**
+**注意：这 4 个接口无对外鉴权要求（内部服务调用），但必须校验配置中的文件大小和页数限制。**
 
 ## Import 守护测试
 

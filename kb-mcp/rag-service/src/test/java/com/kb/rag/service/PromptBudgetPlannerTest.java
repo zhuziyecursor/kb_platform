@@ -55,6 +55,57 @@ class PromptBudgetPlannerTest {
     }
 
     @Test
+    void deduplicatesCitationsByDocVersionAndChunkSeqKeepingHighestScore() {
+        PromptBudgetProperties properties = new PromptBudgetProperties();
+        properties.setMaxCitations(5);
+        PromptBudgetPlanner planner = new PromptBudgetPlanner(properties, tokenEstimator);
+
+        CitationDto lowerScoreDuplicate = citation("doc-1", "低分重复引用", 0.4);
+        lowerScoreDuplicate.setVersion(1);
+        lowerScoreDuplicate.setChunkSeq(7);
+        CitationDto higherScoreDuplicate = citation("doc-1", "高分重复引用", 0.9);
+        higherScoreDuplicate.setVersion(1);
+        higherScoreDuplicate.setChunkSeq(7);
+        CitationDto unique = citation("doc-2", "唯一引用", 0.8);
+        unique.setVersion(1);
+        unique.setChunkSeq(2);
+
+        PromptBudgetPlanner.PromptPlan plan = planner.plan(
+                "system",
+                "请说明采购审批",
+                List.of(lowerScoreDuplicate, higherScoreDuplicate, unique),
+                List.of(),
+                512
+        );
+
+        assertThat(plan.citations()).hasSize(2);
+        assertThat(plan.citations()).extracting(c -> c.citation().getDocId())
+                .containsExactly("doc-1", "doc-2");
+        assertThat(plan.citations().get(0).text()).isEqualTo("高分重复引用");
+        assertThat(plan.stats().droppedCitations()).isEqualTo(1);
+    }
+
+    @Test
+    void usesParentTextBeforeChildText() {
+        PromptBudgetProperties properties = new PromptBudgetProperties();
+        PromptBudgetPlanner planner = new PromptBudgetPlanner(properties, tokenEstimator);
+
+        CitationDto citation = citation("doc-1", "parent full text", 0.9);
+        citation.setText("child short text");
+
+        PromptBudgetPlanner.PromptPlan plan = planner.plan(
+                "system",
+                "请说明采购审批",
+                List.of(citation),
+                List.of(),
+                512
+        );
+
+        assertThat(plan.citations()).hasSize(1);
+        assertThat(plan.citations().get(0).text()).isEqualTo("parent full text");
+    }
+
+    @Test
     void capsInputBudgetByConfiguredRatio() {
         PromptBudgetProperties properties = new PromptBudgetProperties();
         properties.setContextWindowTokens(4000);

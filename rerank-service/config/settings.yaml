@@ -1,10 +1,16 @@
 kb_rerank_service:
   # BGE-Reranker 模型配置
   reranker:
-    model_name: "BAAI/bge-reranker-v2-m3"
-    max_length: 512
-    batch_size: 20
+    model_name: "${KB_RERANK_MODEL_NAME:BAAI/bge-reranker-v2-m3}"
+    max_length: ${KB_RERANK_MAX_LENGTH:512}
+    batch_size: ${KB_RERANK_BATCH_SIZE:20}
     # 本地模型路径（跳过 HuggingFace 下载）
-    local_model_path: "/Users/apple/project/kb-platform/rerank-service/models/bge-reranker-v2-m3"
+    local_model_path: "${KB_RERANK_MODEL_PATH:/Users/apple/project/kb-platform/rerank-service/models/bge-reranker-v2-m3}"
 
-  # 服务端口（由 main.py 读取环境变量 RERANK_SERVICE_PORT 或使用默认值）
+  # 服务配置
+  server:
+    port: ${KB_RERANK_SERVICE_PORT:31003}
+
+  # CORS 配置
+  cors:
+    allowed_origins: "${KB_CORS_ALLOWED_ORIGINS:http://localhost:3105,http://localhost:3106}"

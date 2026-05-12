@@ -75,7 +75,7 @@ services:
 | knowledge_structured | 结构化层数据 | 必须 |
 | knowledge_version | 文档版本状态机 | 必须 |
 | doc_acl | 文档 ACL | 必须 |
-| embed_task | 嵌入任务队列 (补充) | MVP必需 |
+| embed_task | 嵌入任务队列 (补充)，含 keywords/summary 元数据 | MVP必需 |
 | doc_perm_group | 文档-权限组关联 (补充) | 建议 |
 
 ### kb_audit (审计)

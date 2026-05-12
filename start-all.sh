@@ -36,6 +36,27 @@ export DB_PORT="${POSTGRES_PORT:-25432}"
 export DB_NAME="${POSTGRES_DB:-kb_knowledge}"
 export DB_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
+# KB_ 前缀环境变量（统一配置规范）
+export KB_DB_HOST="${DB_HOST}"
+export KB_DB_PORT="${DB_PORT}"
+export KB_DB_NAME="${DB_NAME}"
+export KB_DB_USERNAME="${POSTGRES_USER:-kb_admin}"
+export KB_DB_PASSWORD="${POSTGRES_PASSWORD:-kb_postgres_dev}"
+export KB_MINIO_ENDPOINT="${MINIO_API_PORT:-29000}"
+export KB_MINIO_ACCESS_KEY="${MINIO_ROOT_USER:-kb_minio_admin}"
+export KB_MINIO_SECRET_KEY="${MINIO_ROOT_PASSWORD:-kb_minio_admin_dev}"
+export KB_MINIO_BUCKET="kb-raw"
+export KB_KAFKA_BOOTSTRAP_SERVERS="localhost:${KAFKA_PORT:-29092}"
+export KB_REDIS_HOST="localhost"
+export KB_REDIS_PORT="${REDIS_PORT:-26379}"
+export KB_REDIS_PASSWORD="${REDIS_PASSWORD:-kb_redis_dev}"
+export KB_MILVUS_HOST="localhost"
+export KB_MILVUS_PORT="19530"
+export KB_EMBEDDING_SERVICE_URL="http://192.168.30.47:31296"
+export KB_RERANK_SERVICE_URL="http://localhost:31003"
+export KB_LLM_GATEWAY_URL="http://localhost:31004"
+export KB_JWT_ISSUER_URI="http://localhost:8080/auth"
+
 # -----------------------------------------------------------------------------
 # 服务定义: 名称 | 端口 | 工作目录
 # -----------------------------------------------------------------------------

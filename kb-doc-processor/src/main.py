@@ -31,6 +31,11 @@ def _create_kafka_consumer(config, pipeline: Pipeline) -> KafkaConsumer:
             "group.id": config.kafka.consumer_group,
             "auto.offset.reset": config.kafka.auto_offset_reset,
             "enable.auto.commit": config.kafka.enable_auto_commit,
+            "session.timeout.ms": config.kafka.session_timeout_ms,
+            "heartbeat.interval.ms": config.kafka.heartbeat_interval_ms,
+            "max.poll.interval.ms": config.kafka.max_poll_interval_ms,
+            "socket.timeout.ms": config.kafka.socket_timeout_ms,
+            "metadata.max.age.ms": config.kafka.metadata_max_age_ms,
         },
         topic=config.kafka.file_ingest_topic,
         handler=pipeline.process_message,
@@ -55,13 +60,14 @@ def main():
     app = FastAPI(title="kb-doc-processor", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3105", "http://localhost:3106"],
+        allow_origins=config.cors.allowed_origins.split(","),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
     from src.api import router
     app.include_router(router)
+    app.state.kafka_consumer = consumer
 
     def shutdown():
         logger.info("Shutting down...")
@@ -71,7 +77,7 @@ def main():
     signal.signal(signal.SIGINT, lambda s, f: (shutdown(), sys.exit(0)))
     signal.signal(signal.SIGTERM, lambda s, f: (shutdown(), sys.exit(0)))
 
-    uvicorn.run(app, host="0.0.0.0", port=31001, log_level="info")
+    uvicorn.run(app, host=config.server.host, port=config.server.port, log_level="info")
 
 
 if __name__ == "__main__":

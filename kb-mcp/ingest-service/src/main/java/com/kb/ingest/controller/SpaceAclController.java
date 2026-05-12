@@ -1,5 +1,6 @@
 package com.kb.ingest.controller;
 
+import com.kb.ingest.config.DevContextProperties;
 import com.kb.ingest.dto.SpaceAclEntry;
 import com.kb.ingest.dto.SpaceAclResponse;
 import com.kb.ingest.dto.UpdateSpaceAclRequest;
@@ -18,16 +19,14 @@ import java.util.List;
 public class SpaceAclController {
 
     private final SpaceAclService spaceAclService;
-
-    // TODO: PHASE2 权限开发时，从 JWT token 解析 tenant_id
-    private static final String DEV_TENANT_ID = "dev-tenant-001";
+    private final DevContextProperties devContext;
 
     /**
      * 获取所有知识空间的权限配置
      */
     @GetMapping
     public ResponseEntity<List<SpaceAclResponse>> getAllSpaceAcl() {
-        List<SpaceAclResponse> result = spaceAclService.getAllSpaceAcl(DEV_TENANT_ID);
+        List<SpaceAclResponse> result = spaceAclService.getAllSpaceAcl(devContext.getTenantId());
         return ResponseEntity.ok(result);
     }
 
@@ -36,7 +35,7 @@ public class SpaceAclController {
      */
     @GetMapping("/{spaceId}")
     public ResponseEntity<List<SpaceAclEntry>> getSpaceAcl(@PathVariable String spaceId) {
-        List<SpaceAclEntry> result = spaceAclService.getSpaceAcl(DEV_TENANT_ID, spaceId);
+        List<SpaceAclEntry> result = spaceAclService.getSpaceAcl(devContext.getTenantId(), spaceId);
         return ResponseEntity.ok(result);
     }
 
@@ -48,7 +47,7 @@ public class SpaceAclController {
     public ResponseEntity<Void> updateSpaceAcl(
             @PathVariable String spaceId,
             @RequestBody UpdateSpaceAclRequest request) {
-        spaceAclService.updateSpaceAcl(DEV_TENANT_ID, spaceId, request.getPermissions());
+        spaceAclService.updateSpaceAcl(devContext.getTenantId(), spaceId, request.getPermissions());
         return ResponseEntity.ok().build();
     }
 }

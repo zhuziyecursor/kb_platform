@@ -133,7 +133,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
             {!collapsed && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                 <Image src="/logo.png" alt="logo" width={28} height={28} style={{ borderRadius: 6, flexShrink: 0 }} />
-                <Title level={5} style={{ margin: 0, color: 'var(--color-foreground)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <Title level={5} style={{ margin: 0, color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   知识智库
                 </Title>
               </div>
@@ -142,7 +142,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
-              style={{ fontSize: 16, color: 'var(--color-secondary)' }}
+              style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}
             />
           </div>
 
@@ -183,7 +183,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
           <div style={{
             padding: collapsed ? '8px 0' : '8px 12px',
             flexShrink: 0,
-            background: 'var(--color-muted)',
+            background: 'rgba(255,255,255,0.08)',
             margin: 8,
             borderRadius: 'var(--radius-md)',
           }}>
@@ -198,14 +198,14 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                 <Avatar
                   size={collapsed ? 28 : 32}
                   icon={<UserOutlined />}
-                  style={{ background: 'var(--color-accent)', cursor: 'pointer', flexShrink: 0 }}
+                  style={{ background: 'rgba(255,255,255,0.2)', cursor: 'pointer', flexShrink: 0 }}
                 />
               </Dropdown>
 
               {!collapsed && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', flex: 1 }}>
                   <div style={{ overflow: 'hidden', flex: 1 }}>
-                    <Text style={{ fontSize: 13, display: 'block', color: 'var(--color-foreground)', fontWeight: 500 }}>
+                    <Text style={{ fontSize: 13, display: 'block', color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
                       {username}
                     </Text>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -217,7 +217,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                         boxShadow: '0 0 6px var(--color-success)',
                         display: 'inline-block',
                       }} />
-                      <Text style={{ fontSize: 11, color: 'var(--color-secondary)' }}>
+                      <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
                         {roleLabel}
                       </Text>
                     </div>
@@ -230,7 +230,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                 <Button
                   type="text"
                   icon={<MoreOutlined />}
-                  style={{ fontSize: 16, color: 'var(--color-secondary)', flexShrink: 0 }}
+                  style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', flexShrink: 0 }}
                 />
               </Dropdown>
             </div>

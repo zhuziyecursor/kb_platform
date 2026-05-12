@@ -1,20 +1,19 @@
 package com.kb.rag.controller;
 
-import com.kb.rag.dto.ChatRequest;
-import com.kb.rag.dto.ChatResponse;
-import com.kb.rag.dto.RagPipelineTraceResponse;
-import com.kb.rag.service.ChatService;
-import com.kb.rag.service.PipelineTraceService;
-import com.kb.rag.service.SessionService;
+import com.kb.rag.dto.*;
+import com.kb.rag.repository.BadcaseArchiveRepository;
+import com.kb.rag.service.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -29,6 +28,9 @@ public class ChatController {
     private final ChatService chatService;
     private final SessionService sessionService;
     private final PipelineTraceService pipelineTraceService;
+    private final FeedbackService feedbackService;
+    private final AnalyticsService analyticsService;
+    private final BadcaseArchiveRepository badcaseArchiveRepository;
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
 
     @PostMapping("/chat")
@@ -124,5 +126,59 @@ public class ChatController {
         return pipelineTraceService.findByTraceId(traceId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    // ============== Feedback APIs ==============
+
+    @PostMapping("/feedback")
+    public ResponseEntity<FeedbackResponse> submitFeedback(@Valid @RequestBody FeedbackRequest request) {
+        FeedbackResponse response = feedbackService.submit(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/feedback/{traceId}")
+    public ResponseEntity<FeedbackResponse> getFeedback(@PathVariable String traceId) {
+        return feedbackService.findByTraceId(traceId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    // ============== Badcase APIs ==============
+
+    @GetMapping("/badcases")
+    public ResponseEntity<Map<String, Object>> listBadcases(
+            @RequestParam String tenantId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String feedbackType,
+            @RequestParam(required = false) String reportReason,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        Instant fromInstant = from != null ? Instant.parse(from) : null;
+        Instant toInstant = to != null ? Instant.parse(to) : null;
+        var pageResult = badcaseArchiveRepository.findBadcases(
+                tenantId, status, feedbackType, reportReason,
+                fromInstant, toInstant,
+                org.springframework.data.domain.PageRequest.of(page, size));
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("items", pageResult.getContent());
+        result.put("total", pageResult.getTotalElements());
+        result.put("page", pageResult.getNumber());
+        result.put("size", pageResult.getSize());
+        return ResponseEntity.ok(result);
+    }
+
+    // ============== Analytics APIs ==============
+
+    @GetMapping("/analytics/top-queries")
+    public ResponseEntity<List<TopQueriesResponse>> getTopQueries(
+            @RequestParam String tenantId,
+            @RequestParam(defaultValue = "7") int days,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) String spaceId) {
+        return ResponseEntity.ok(analyticsService.getTopQueries(tenantId, days, limit, spaceId));
     }
 }

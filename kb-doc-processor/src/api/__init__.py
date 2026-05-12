@@ -2,7 +2,7 @@ import logging
 import traceback
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from src.app import get_config
 from src.cleaner.text_cleaner import TextCleaner
@@ -18,6 +18,12 @@ from src.kafka_producer import KafkaProducer
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
+
+
+@router.get("/health")
+async def health(request: Request):
+    consumer = request.app.state.kafka_consumer
+    return consumer.get_stats()
 
 
 def _make_trace_id() -> str:
@@ -97,20 +103,28 @@ async def chunk_text(request: dict):
     if not text:
         raise HTTPException(status_code=400, detail={"code": "INVALID_INPUT", "message": "text is required", "traceId": trace_id})
 
-    chunk_mode = request.get("chunkType", request.get("chunkMode", "HEAD_FIRST"))
+    chunk_mode = request.get("chunkType", request.get("chunkMode", config.chunk_defaults.chunk_mode))
     chunk_size = request.get("chunkSize", config.chunk_defaults.chunk_size)
     overlap_ratio = request.get("overlapRatio", config.chunk_defaults.overlap_ratio)
+    smart_cfg = config.chunk_defaults.smart
+    parent_max_size = request.get("parentMaxSize", smart_cfg.parent_max_size)
+    child_size = request.get("childSize", smart_cfg.child_size)
+    child_overlap = request.get("childOverlap", smart_cfg.child_overlap)
 
     if chunk_mode == "SMART_LLM":
         chunker = LLMChunker(
             config=config.intelligent_chunker,
             chunk_size=chunk_size,
             overlap_ratio=overlap_ratio,
+            smart_config=smart_cfg,
         )
     elif chunk_mode == "SMART":
         chunker = SemanticChunker(
             chunk_size=chunk_size,
             overlap_ratio=overlap_ratio,
+            parent_max_size=parent_max_size,
+            child_size=child_size,
+            child_overlap=child_overlap,
         )
     else:
         chunker = FixedLengthChunker(
@@ -129,6 +143,8 @@ async def chunk_text(request: dict):
                 "page": c.page,
                 "charCount": c.char_count,
                 "tokenCount": c.token_count,
+                "isParent": c.is_parent,
+                "parentRef": c.parent_ref,
             }
             for c in result.chunks
         ],
@@ -234,6 +250,7 @@ async def process_file(
     chunk_mode = chunk_type
     chunk_size = config.chunk_defaults.chunk_size
     overlap_ratio = config.chunk_defaults.overlap_ratio
+    smart_cfg = config.chunk_defaults.smart
 
     file_bytes = await file.read()
     _check_file_size(file_bytes, config.mvp_limits.max_file_size_mb)
@@ -252,11 +269,15 @@ async def process_file(
                 config=config.intelligent_chunker,
                 chunk_size=chunk_size,
                 overlap_ratio=overlap_ratio,
+                smart_config=smart_cfg,
             )
         elif chunk_mode == "SMART":
             chunker = SemanticChunker(
                 chunk_size=chunk_size,
                 overlap_ratio=overlap_ratio,
+                parent_max_size=smart_cfg.parent_max_size,
+                child_size=smart_cfg.child_size,
+                child_overlap=smart_cfg.child_overlap,
             )
         else:
             chunker = FixedLengthChunker(
@@ -278,6 +299,8 @@ async def process_file(
                     "page": c.page,
                     "charCount": c.char_count,
                     "tokenCount": c.token_count,
+                    "isParent": c.is_parent,
+                    "parentRef": c.parent_ref,
                 }
                 for c in chunk_result.chunks
             ],

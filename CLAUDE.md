@@ -135,6 +135,11 @@ cd kb-infra/docker-compose && docker compose up -d
 | `knowledge_clean` | kb_knowledge | kb-doc-processor |
 | `knowledge_structured` | kb_knowledge | kb-doc-processor |
 | `embed_task` | kb_knowledge | kb-doc-processor(INSERT) / vector-service(UPDATE) |
+| `rag_session` | kb_knowledge | rag-service |
+| `rag_message` | kb_knowledge | rag-service |
+| `rag_pipeline_trace` | kb_audit | rag-service |
+| `rag_feedback` | kb_audit | rag-service |
+| `badcase_archive` | kb_audit | rag-service |
 
 ---
 

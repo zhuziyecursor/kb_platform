@@ -17,4 +17,6 @@ public class ChatResponse {
     private String traceId;
     private String reason;
     private String sessionId;
+    private Long messageId;
+    private String confidence;
 }

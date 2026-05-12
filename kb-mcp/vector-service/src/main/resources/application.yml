@@ -6,9 +6,9 @@ spring:
     name: vector-service
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:25432/kb_knowledge}
-    username: ${DB_USERNAME:kb_vector}
-    password: ${DB_PASSWORD:kb_vector}
+    url: jdbc:postgresql://${KB_DB_HOST:localhost}:${KB_DB_PORT:25432}/${KB_DB_NAME:kb_knowledge}
+    username: ${KB_DB_USERNAME:kb_vector}
+    password: ${KB_DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -22,7 +22,7 @@ spring:
         default_schema: kb_knowledge
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    bootstrap-servers: ${KB_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     consumer:
       group-id: vector-service
       auto-offset-reset: earliest
@@ -41,16 +41,16 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080/auth}
+          issuer-uri: ${KB_JWT_ISSUER_URI:http://localhost:8080/auth}
 
 app:
   kafka:
-    embed-task-topic: ${EMBED_TASK_TOPIC:embed-task}
+    embed-task-topic: ${KB_KAFKA_EMBED_TASK_TOPIC:embed-task}
 
 milvus:
-  host: ${MILVUS_HOST:localhost}
-  port: ${MILVUS_PORT:19530}
-  collection-name: ${MILVUS_COLLECTION:kb_documents}
+  host: ${KB_MILVUS_HOST:localhost}
+  port: ${KB_MILVUS_PORT:19530}
+  collection-name: ${KB_MILVUS_COLLECTION:kb_documents}
   batch-size: 32
 
 logging:

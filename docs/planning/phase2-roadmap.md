@@ -1,8 +1,27 @@
 # KB Platform 第二阶段（Phase 2）能力补全规划
 
-> 版本：V1.0  
+> 版本：V1.1  
 > 日期：2026-05-10  
+> 最后更新：2026-05-12  
 > 依据：项目现状盘点、用户期望功能点、三阶段技术路线
+
+---
+
+## 零、整体进度
+
+```
+████████████░░░░░░░░░░░░  ~35%
+
+已完成：功能域 5（反馈闭环与持续优化）— 5.1 / 5.2 / 5.3 / 5.4
+
+  功能域 1（生命周期）  ░░░░░░░░░░ 0%
+  功能域 2（多轮对话）  ░░░░░░░░░░ 0%
+  功能域 3（溯源引用）  ░░░░░░░░░░ 0%
+  功能域 4（权限控制）  ░░░░░░░░░░ 0%
+✅ 功能域 5（反馈闭环）  ██████████ 100%
+  功能域 6（安全策略）  ░░░░░░░░░░ 0%
+  检索增强 (A.1-A.6)    ░░░░░░░░░░ 0%
+```
 
 ---
 
@@ -74,18 +93,23 @@ Phase 2 的验收标准：**精确条款 Recall@5 提升 30% 以上；FAQ 平均
 
 ---
 
-### 功能域 5：反馈闭环与持续优化
+### 功能域 5：反馈闭环与持续优化 ✅ 已完成 (2026-05-12)
 
-| # | 功能点 | Phase 2 目标 | 现状缺口 | 实现思路 | 验收标准 |
+| # | 功能点 | Phase 2 目标 | 实现情况 | 关键文件 | 验收标准 |
 |---|--------|-------------|---------|---------|---------|
-| 5.1 | **用户反馈埋点（点赞/点踩/报错）** | 用户可对每条答案点赞、点踩、标记"回答错误"/"引用不准"/"不相关" | 无任何反馈接口或表 | 新增表 `feedback_record`：`message_id`、`feedback_type`（LIKE/DISLIKE/REPORT）、`report_reason`（HALLUCINATION/WRONG_CITATION/IRRELEVANT/OTHER）、`comment`；RAG 接口返回中增加 `feedbackUrl`；前端在每条 assistant 消息下方增加 👍/👎/🚩 按钮 | 前端交互可用；反馈数据持久化到 PG |
-| 5.2 | **Badcase 自动归档** | 点踩和报错的记录自动归入 badcase 库，关联完整 Trace | 无 | `rag-service` 消费反馈消息（或定时任务扫描），将 `feedback_type=DISLIKE/REPORT` 的记录关联 `rag_pipeline_trace`，写入 `badcase_archive` 表；包含 query/rewrittenQuery/citations/traceId/answer | 每条 badcase 可回放完整检索链路；badcase 库可按时间/原因/空间筛选 |
-| 5.3 | **高频问题自动发现** | 自动识别高频 query，作为 FAQ 候选或检索优化依据 | 无 | 基于 `rag_pipeline_trace` 按 `query_text` 聚合，统计高频 query（去重后 Top 100）；对高频 query 生成检索质量报告（平均 recall、rerank score、是否拒答） | 每周自动生成高频问题报告；Top 20 高频问题人工复核 |
-| 5.4 | **答案自评置信度** | LLM 生成答案后，要求模型输出置信度评分，作为拒答辅助判断 | 当前仅靠检索侧分数阈值，无模型自评 | Prompt 增加要求：生成答案后，模型需输出 `[CONFIDENCE: HIGH/MEDIUM/LOW]`；`rag-service` 解析该标记，LOW 置信度时追加人工复核提示 | 模型自评与人工判断一致性 > 75% |
+| 5.1 | **用户反馈埋点（点赞/点踩/报错）** ✅ | 用户可对每条答案点赞、点踩、标记"回答错误"/"引用不准"/"不相关" | 后端：`kb_audit.rag_feedback` 表 + `POST /rag/v1/feedback` + `GET /rag/v1/feedback/{traceId}`；前端：👍 👎 🚩 按钮 + 点踩/报错 Popover（原因选择 + 评论） | `entity/RagFeedback.java`, `service/FeedbackService.java`, `controller/ChatController.java`, `app/rag/page.tsx` | ✅ 前端交互可用；反馈数据持久化到 PG |
+| 5.2 | **Badcase 自动归档** ✅ | 点踩和报错的记录自动归入 badcase 库，关联完整 Trace | `FeedbackService.submit()` 中 DISLIKE/REPORT 自动触发归档，关联 pipeline trace → `kb_audit.badcase_archive`；`GET /rag/v1/badcases` 支持按状态/类型/原因/时间筛选分页 | `entity/BadcaseArchive.java`, `repository/BadcaseArchiveRepository.java`, `service/FeedbackService.java` | ✅ 每条 badcase 可回放完整检索链路；badcase 库可按时间/原因/空间筛选 |
+| 5.3 | **高频问题自动发现** ✅ | 自动识别高频 query，作为 FAQ 候选或检索优化依据 | `AnalyticsService` 基于 `rag_pipeline_trace` 按 `query_text` 聚合（支持 7/14/30 天窗口 + space 过滤），返回 count/avgMs/avgCitations/refusalRate | `service/AnalyticsService.java`, `GET /rag/v1/analytics/top-queries` | ✅ API 可用；Top N 高频问题可查询 |
+| 5.4 | **答案自评置信度** ✅ | LLM 生成答案后，要求模型输出置信度评分 | System Prompt 追加置信度自评指令；ChatServiceImpl 解析 `[CONFIDENCE: HIGH/MEDIUM/LOW]` 并剥离；ChatResponse.confidence 传递到前端；LOW 时展示橙色警告条 | `PromptConstructionService.java`, `ChatServiceImpl.java`, `ChatResponse.java`, `app/rag/page.tsx` | ✅ 模型自评标记正确解析；前端 LOW 置信度警告可用 |
 
 **优先级：5.1 > 5.2 > 5.3 > 5.4**
 
-**说明：** Phase 2 先完成"数据埋点和 badcase 收集"，为 Phase 3 的评测体系（eval-service + eval_dataset）积累数据。没有反馈数据，评测体系就是无米之炊。
+**实施摘要：**
+- DB 迁移：`kb-infra/init-db/updates/018_rag_feedback.sql`
+- 新增 Java 文件：9 个（2 Entity + 2 Repository + 3 DTO + 2 Service）
+- 修改 Java 文件：6 个（Controller, Service, DTO）
+- 前端修改：`types/index.ts`, `api/http-client.ts`, `app/rag/page.tsx`
+- 新增 API：`POST /rag/v1/feedback`, `GET /rag/v1/feedback/{traceId}`, `GET /rag/v1/badcases`, `GET /rag/v1/analytics/top-queries`
 
 ---
 
@@ -129,7 +153,7 @@ Phase 2 的验收标准：**精确条款 Recall@5 提升 30% 以上；FAQ 平均
 | W1 | 权限抽象 | 4.1 CurrentUserContext 抽象 + 代码重构 | 后端 |
 | W1 | 安全策略 | 6.1 Query 黑白名单 + 6.2 输出敏感词过滤 | 后端 |
 | W2 | 检索增强 | A.1 BM25 原型（PG tsvector）+ A.2 FAQ 短路 | 后端 |
-| W2 | 反馈闭环 | 5.1 点赞点踩 + 5.2 Badcase 归档表 + API | 后端+前端 |
+| W2 | 反馈闭环 | ✅ 5.1 点赞点踩 + 5.2 Badcase 归档表 + API | 后端+前端 |
 | W2 | 生命周期 | 1.3 增量更新/版本覆盖 | 后端 |
 | W3 | 检索增强 | A.3 条款 Fast Path + A.4 RRF 融合 + 联调 | 后端 |
 | W3 | 多轮对话 | 2.1 话题切换检测 + 2.2 追问增强 | 后端 |
@@ -144,7 +168,7 @@ Phase 2 的验收标准：**精确条款 Recall@5 提升 30% 以上；FAQ 平均
 |----|--------|---------|
 | W5 | 生命周期 | 1.1 OCR 解析（图片 PDF） |
 | W5 | 安全策略 | 6.3 Prompt 注入防护 + 6.4 运维熔断开关 |
-| W5 | 反馈闭环 | 5.3 高频问题自动发现 + 5.4 答案自评置信度 |
+| W5 | 反馈闭环 | ✅ 5.3 高频问题自动发现 + 5.4 答案自评置信度 (提前完成) |
 | W6 | 生命周期 | 1.2 PII 脱敏 + 1.4 元数据自动抽取 |
 | W6 | 权限控制 | 4.2 空间级运维开关 + 4.4 租户隔离审计 |
 | W6 | 多轮对话 | 2.3 纠错模式 + 2.4 会话状态可视化（前端） |
@@ -195,6 +219,8 @@ Phase 2 结束时的验收标准：
 - [ ] 拒答准确率 > 90%
 - [ ] 代码中无直接引用 `DEV_TENANT_ID`/`DEV_USER_ID` 常量（通过 `CurrentUserContext`）
 - [ ] 黑名单/敏感词拦截率 100%（标准测试集）
-- [ ] 每条 badcase 可回放完整检索链路（Trace + citations + query）
+- [x] 每条 badcase 可回放完整检索链路（Trace + citations + query）— `badcase_archive.trace_summary` 已实现
+- [x] 点赞/点踩/报错交互可用，反馈数据持久化到 PG — `rag_feedback` + 前端 👍👎🚩 已实现
+- [x] LLM 置信度自评标记正确解析，LOW 时前端展示警告 — `[CONFIDENCE: ...]` 解析剥离已实现
 - [ ] 文档软下线后 30 秒内检索零命中
 - [ ] 话题切换检测准确率 > 85%

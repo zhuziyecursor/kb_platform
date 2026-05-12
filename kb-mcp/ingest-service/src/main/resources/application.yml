@@ -22,7 +22,7 @@ spring:
     open-in-view: false
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    bootstrap-servers: ${KB_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -32,11 +32,11 @@ spring:
       default-topic: file-ingest
 
   minio:
-    endpoint: http://localhost:29000
-    access-key: kb_minio_admin
-    secret-key: kb_minio_dev_2026
-    bucket: kb-raw
-    presigned-url-expiry: 300
+    endpoint: ${KB_MINIO_ENDPOINT:http://localhost:29000}
+    access-key: ${KB_MINIO_ACCESS_KEY:kb_minio_admin}
+    secret-key: ${KB_MINIO_SECRET_KEY:}
+    bucket: ${KB_MINIO_BUCKET:kb-raw}
+    presigned-url-expiry: ${KB_MINIO_PRESIGNED_URL_EXPIRY:300}
 
   servlet:
     multipart:
@@ -50,6 +50,10 @@ spring:
         jwt:
           issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080/auth}
 
+app:
+  dev-context:
+    tenant-id: ${KB_DEV_TENANT_ID:dev-tenant-001}
+
 logging:
   level:
     com.kb.ingest: DEBUG
@@ -62,9 +66,9 @@ spring:
       on-profile: local
 
   datasource:
-    url: jdbc:postgresql://localhost:25432/kb_knowledge
-    username: kb_ingest
-    password: kb_ingest
+    url: jdbc:postgresql://${KB_DB_HOST:localhost}:${KB_DB_PORT:25432}/${KB_DB_NAME:kb_knowledge}
+    username: ${KB_DB_USERNAME:kb_ingest}
+    password: ${KB_DB_PASSWORD:kb_ingest}
 
 ---
 spring:
@@ -76,4 +80,4 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:9999
+          issuer-uri: ${KB_JWT_ISSUER_URI:http://localhost:9999}

@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -22,7 +24,8 @@ public class PromptBudgetPlanner {
 
     public PromptPlan plan(String systemPrompt, String query, List<CitationDto> citations,
                            List<SessionService.Turn> sessionHistory, int reservedCompletionTokens) {
-        List<CitationDto> safeCitations = citations == null ? List.of() : citations;
+        int originalCitationCount = citations == null ? 0 : citations.size();
+        List<CitationDto> safeCitations = deduplicateCitations(citations == null ? List.of() : citations);
         List<SessionService.Turn> safeHistory = sessionHistory == null ? List.of() : sessionHistory;
 
         if (!properties.isEnabled()) {
@@ -31,7 +34,7 @@ public class PromptBudgetPlanner {
                     safeHistory,
                     safeCitations.stream().map(c -> new BudgetedCitation(c, citationText(c), false)).toList(),
                     new PromptBudgetStats(false, 0, estimatedTokens, safeHistory.size(), 0,
-                            safeCitations.size(), 0, 0)
+                            safeCitations.size(), Math.max(0, originalCitationCount - safeCitations.size()), 0)
             );
         }
 
@@ -61,7 +64,7 @@ public class PromptBudgetPlanner {
                 citationBudget.citations(),
                 new PromptBudgetStats(true, inputBudget, estimatedTokens,
                         historyBudget.turns().size(), safeHistory.size() - historyBudget.turns().size(),
-                        citationBudget.citations().size(), safeCitations.size() - citationBudget.citations().size(),
+                        citationBudget.citations().size(), originalCitationCount - citationBudget.citations().size(),
                         citationBudget.truncatedCount())
         );
     }
@@ -152,6 +155,32 @@ public class PromptBudgetPlanner {
             tokens += estimateCitationHeader(citation) + tokenEstimator.estimate(citationText(citation));
         }
         return tokens;
+    }
+
+    private List<CitationDto> deduplicateCitations(List<CitationDto> citations) {
+        if (citations.isEmpty()) {
+            return citations;
+        }
+
+        Map<String, CitationDto> bestByKey = new LinkedHashMap<>();
+        for (CitationDto citation : citations) {
+            String key = citationKey(citation);
+            CitationDto existing = bestByKey.get(key);
+            if (existing == null || citation.getScore() > existing.getScore()) {
+                bestByKey.put(key, citation);
+            }
+        }
+        return new ArrayList<>(bestByKey.values());
+    }
+
+    private String citationKey(CitationDto citation) {
+        if (citation == null) {
+            return "";
+        }
+        return String.join("|",
+                citation.getDocId() == null ? "" : citation.getDocId(),
+                String.valueOf(citation.getVersion()),
+                String.valueOf(citation.getChunkSeq()));
     }
 
     private int turnTokens(SessionService.Turn turn) {

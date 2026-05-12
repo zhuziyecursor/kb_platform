@@ -192,6 +192,23 @@ public class DocServiceImpl implements DocService {
             throw new IllegalStateException("文档状态不是 PENDING，无法触发入库");
         }
 
+        // 检查知识空间是否启用流水线处理（基于 smart_parse_enabled 字段）
+        var spaceOpt = spaceRepository.findByIdAndTenantId(doc.getKnowledgeSpaceId(), tenantId);
+        boolean smartParseEnabled = spaceOpt.map(KnowledgeSpace::getSmartParseEnabled).orElse(false);
+
+        // 如果未启用智能解析（未启用流水线），直接标记为 READY
+        if (!smartParseEnabled) {
+            docRepository.updateStatus(tenantId, docId, version, "READY");
+            log.info("ingest: docId={}, version={}, pipeline disabled, marked READY", docId, version);
+            return IngestResponse.builder()
+                    .docId(docId)
+                    .version(version)
+                    .status("READY")
+                    .message("文档已入库（未启用流水线处理）")
+                    .traceId("tr-" + UUID.randomUUID().toString())
+                    .build();
+        }
+
         // 更新状态为 PROCESSING
         docRepository.updateStatus(tenantId, docId, version, "PROCESSING");
 
@@ -311,6 +328,27 @@ public class DocServiceImpl implements DocService {
                 .contentType(contentType)
                 .previewType(previewType)
                 .filename(filename)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DocPreviewResponse getDocPreview(String tenantId, String docId, Integer version,
+                                             Integer page, String highlight) {
+        KnowledgeDoc doc = findDocOrThrow(tenantId, docId, version);
+
+        String presignedUrl = minioService.generateGetPresignedUrl(doc.getSrcPath());
+        String previewType = minioService.getPreviewType(doc.getTitle(), null);
+
+        return DocPreviewResponse.builder()
+                .docId(docId)
+                .version(version)
+                .title(doc.getTitle())
+                .previewUrl(presignedUrl)
+                .previewType(previewType)
+                .page(page)
+                .highlight(highlight)
+                .expireIn(300)
                 .build();
     }
 

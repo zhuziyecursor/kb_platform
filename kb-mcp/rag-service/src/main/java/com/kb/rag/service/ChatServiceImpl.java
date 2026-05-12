@@ -1,6 +1,8 @@
 package com.kb.rag.service;
 
 import com.kb.rag.dto.*;
+import com.kb.rag.config.DevContextProperties;
+import com.kb.rag.config.RerankProperties;
 import com.kb.rag.entity.KnowledgeSpace;
 import com.kb.rag.repository.KnowledgeDocRepository;
 import com.kb.rag.repository.KnowledgeSpaceRepository;
@@ -10,6 +12,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,12 +36,9 @@ public class ChatServiceImpl implements ChatService {
     private final KnowledgeDocRepository knowledgeDocRepository;
     private final ParentLookupService parentLookupService;
     private final PipelineTraceService pipelineTraceService;
-
-    // MVP: hardcoded user context (PHASE2: from OBO token JWT claims)
-    private static final String DEV_USER_ID = "current-user";
-    private static final int DEV_SEC_LEVEL = 5;
-    private static final List<Long> DEV_PERM_GROUP_IDS = List.of(1L);
-    private static final List<String> DEV_USER_GROUPS = List.of();
+    private final DevContextProperties devContext;
+    private final RerankResultSelector rerankResultSelector;
+    private final RerankProperties rerankProperties;
 
     @Override
     public ChatResponse chat(ChatRequest request) {
@@ -45,7 +46,7 @@ public class ChatServiceImpl implements ChatService {
         String tenantId = request.getTenantId();
         String query = request.getQuery();
         PipelineTraceService.TraceContext trace = pipelineTraceService.start(
-                traceId, tenantId, DEV_USER_ID, request.getSessionId(), query,
+                traceId, tenantId, devContext.getUserId(), request.getSessionId(), query,
                 request.getSpaceId(), request.getLang(), false);
 
         log.info("RAG chat traceId={} tenantId={} query={}", traceId, tenantId, query);
@@ -88,25 +89,31 @@ public class ChatServiceImpl implements ChatService {
             // Step 11: Update session
             String sessionId = ctx.sessionId;
             if (sessionId == null) {
-                sessionId = trace.stage("session_create", () -> sessionService.createSession(tenantId, DEV_USER_ID));
+                sessionId = trace.stage("session_create", () -> sessionService.createSession(tenantId, devContext.getUserId()));
             }
             trace.setSessionId(sessionId);
             String finalSessionId = sessionId;
-            trace.stage("session_save", () -> {
+            Long messageId = trace.stage("session_save", () -> {
                 SessionService.SessionData currentSession = sessionService.getSession(finalSessionId, tenantId);
                 if (currentSession == null) {
-                    currentSession = new SessionService.SessionData(finalSessionId, tenantId, DEV_USER_ID,
+                    currentSession = new SessionService.SessionData(finalSessionId, tenantId, devContext.getUserId(),
                             List.of(), System.currentTimeMillis(), System.currentTimeMillis());
                 }
-                sessionService.appendTurnWithCitations(finalSessionId, currentSession, query, answer, ctx.citations, traceId);
+                return sessionService.appendTurnWithCitations(finalSessionId, currentSession, query, answer, ctx.citations, traceId);
             });
+
+            // Step 11.5: Parse confidence from answer
+            String confidence = extractConfidence(answer);
+            String cleanAnswer = stripConfidenceTag(answer);
 
             // Step 12: Cache and return
             ChatResponse response = ChatResponse.builder()
-                    .answer(answer)
+                    .answer(cleanAnswer)
                     .citations(ctx.citations)
                     .traceId(traceId)
                     .sessionId(sessionId)
+                    .messageId(messageId)
+                    .confidence(confidence)
                     .build();
 
             trace.stage("cache_write", () -> cacheService.put(cacheKey, response));
@@ -129,7 +136,7 @@ public class ChatServiceImpl implements ChatService {
         String tenantId = request.getTenantId();
         String query = request.getQuery();
         PipelineTraceService.TraceContext trace = pipelineTraceService.start(
-                traceId, tenantId, DEV_USER_ID, request.getSessionId(), query,
+                traceId, tenantId, devContext.getUserId(), request.getSessionId(), query,
                 request.getSpaceId(), request.getLang(), true);
 
         log.info("RAG stream traceId={} tenantId={} query={}", traceId, tenantId, query);
@@ -141,7 +148,7 @@ public class ChatServiceImpl implements ChatService {
             // Ensure session exists early so frontend gets sessionId in done event
             String sessionId = ctx.sessionId;
             if (sessionId == null) {
-                sessionId = trace.stage("session_create", () -> sessionService.createSession(tenantId, DEV_USER_ID));
+                sessionId = trace.stage("session_create", () -> sessionService.createSession(tenantId, devContext.getUserId()));
             }
             trace.setSessionId(sessionId);
 
@@ -179,23 +186,30 @@ public class ChatServiceImpl implements ChatService {
 
             // Step 11: Update session
             String finalSessionId = sessionId;
-            trace.stage("session_save", () -> {
+            Long messageId = trace.stage("session_save", () -> {
                 SessionService.SessionData currentSession = sessionService.getSession(finalSessionId, tenantId);
                 if (currentSession == null) {
-                    currentSession = new SessionService.SessionData(finalSessionId, tenantId, DEV_USER_ID,
+                    currentSession = new SessionService.SessionData(finalSessionId, tenantId, devContext.getUserId(),
                             List.of(), System.currentTimeMillis(), System.currentTimeMillis());
                 }
-                sessionService.appendTurnWithCitations(finalSessionId, currentSession,
+                return sessionService.appendTurnWithCitations(finalSessionId, currentSession,
                         query, fullAnswer.toString(), ctx.citations, traceId);
             });
+
+            // Step 11.5: Parse confidence from full answer
+            String rawAnswer = fullAnswer.toString();
+            String confidence = extractConfidence(rawAnswer);
+            String cleanAnswer = stripConfidenceTag(rawAnswer);
 
             // Step 12: Complete with metadata
             trace.setResult("SUCCESS");
             onComplete.accept(ChatResponse.builder()
-                    .answer(fullAnswer.toString())
+                    .answer(cleanAnswer)
                     .citations(ctx.citations)
                     .traceId(traceId)
                     .sessionId(sessionId)
+                    .messageId(messageId)
+                    .confidence(confidence)
                     .build());
 
         } catch (Exception e) {
@@ -249,12 +263,12 @@ public class ChatServiceImpl implements ChatService {
         // Step 5: Milvus vector search (tenant_id filter only, ACL done in post-filter below)
         int searchTopK = Math.max(request.getTopK(), 50);
         List<MilvusSearchResult> milvusResults = trace.stage("milvus_search", Map.of("topK", searchTopK),
-                () -> milvusSearchService.search(queryVector, tenantId, DEV_SEC_LEVEL, getPermGroupIds(), searchTopK));
+                () -> milvusSearchService.search(queryVector, tenantId, devContext.getSecLevel(), getPermGroupIds(), searchTopK));
         log.info("Milvus returned {} results", milvusResults.size());
 
         // Step 5.5: ACL post-filter
         List<MilvusSearchResult> aclFiltered = trace.stage("acl_post_filter",
-                () -> milvusSearchService.filterByAcl(milvusResults, DEV_SEC_LEVEL, getPermGroupIds()));
+                () -> milvusSearchService.filterByAcl(milvusResults, devContext.getSecLevel(), getPermGroupIds()));
         log.info("ACL post-filter: {} -> {} results", milvusResults.size(), aclFiltered.size());
 
         // Step 5.6: Space scope filter
@@ -282,28 +296,25 @@ public class ChatServiceImpl implements ChatService {
             try {
                 List<RerankResponse.Result> rerankResults = rerankClient.rerank(finalRewrittenQuery, chunkTexts);
                 log.info("Rerank returned {} results", rerankResults.size());
-
-                List<MilvusSearchResult> results = new ArrayList<>();
-                for (RerankResponse.Result r : rerankResults) {
-                    if (r.getIndex() < rerankSource.size()) {
-                        MilvusSearchResult mr = rerankSource.get(r.getIndex());
-                        mr.setVectorScore(r.getScore());
-                        results.add(mr);
-                    }
-                    if (results.size() >= 5) break;
-                }
-                return results;
+                return rerankResultSelector.select(rerankSource, rerankResults);
             } catch (Exception e) {
                 log.warn("Rerank unavailable, falling back to vector similarity scores: {}", e.getMessage());
                 rerankSource.sort((a, b) -> Double.compare(b.getVectorScore(), a.getVectorScore()));
-                return rerankSource.subList(0, Math.min(5, rerankSource.size()));
+                List<MilvusSearchResult> fallback = rerankSource.subList(0, Math.min(5, rerankSource.size()));
+                double minScore = rerankProperties.getMinScore();
+                for (MilvusSearchResult r : fallback) {
+                    if (r.getVectorScore() < minScore) {
+                        r.setVectorScore(minScore);
+                    }
+                }
+                return fallback;
             }
         });
 
         // Step 7: ACL secondary verification
         List<MilvusSearchResult> verifySource = reranked.isEmpty() ? aclFiltered : reranked;
         List<CitationDto> citations = trace.stage("acl_verify",
-                () -> aclVerificationService.verify(verifySource, tenantId, DEV_USER_ID, DEV_USER_GROUPS));
+                () -> aclVerificationService.verify(verifySource, tenantId, devContext.getUserId(), devContext.getUserGroups()));
         log.info("ACL verified: {} citations (from {} results)", citations.size(),
                 reranked.isEmpty() ? aclFiltered.size() : reranked.size());
 
@@ -378,6 +389,20 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private List<Long> getPermGroupIds() {
-        return DEV_PERM_GROUP_IDS;
+        return devContext.getPermGroupIds();
+    }
+
+    private static final Pattern CONFIDENCE_PATTERN =
+            Pattern.compile("\\[CONFIDENCE:\\s*(HIGH|MEDIUM|LOW)\\s*\\]", Pattern.CASE_INSENSITIVE);
+
+    String extractConfidence(String answer) {
+        if (answer == null) return null;
+        Matcher m = CONFIDENCE_PATTERN.matcher(answer);
+        return m.find() ? m.group(1).toUpperCase() : null;
+    }
+
+    String stripConfidenceTag(String answer) {
+        if (answer == null) return null;
+        return CONFIDENCE_PATTERN.matcher(answer).replaceAll("").replaceAll("\\n\\s*\\n\\s*$", "").stripTrailing();
     }
 }

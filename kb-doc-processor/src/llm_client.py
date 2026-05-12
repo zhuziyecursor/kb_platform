@@ -50,19 +50,50 @@ class MinimaxClient:
         self._timeout = config.timeout_seconds
         self._max_retries = config.max_retries
         self._batch_paragraphs = config.batch_paragraphs
+        self._batch_overlap = config.batch_overlap
 
     def chunk_boundaries(
         self, paragraphs: list[str], chunk_size: int = 1024
     ) -> list[list[int]]:
+        """将段落分批调用 LLM 获取语义边界，批间有重叠以避免边界断裂。
+
+        重叠策略：
+        - 每批末尾 N 个段落与下一批重叠（N = batch_overlap）
+        - 重叠部分以前一批的边界为准
+        - 后一批的边界从重叠区之后开始计算
+        """
+        total = len(paragraphs)
+        if total == 0:
+            return []
+
         all_boundaries: list[list[int]] = []
         offset = 0
+        effective_batch = self._batch_paragraphs
+        overlap = min(self._batch_overlap, effective_batch // 2)
 
-        for batch_start in range(0, len(paragraphs), self._batch_paragraphs):
-            batch = paragraphs[batch_start:batch_start + self._batch_paragraphs]
+        while offset < total:
+            batch_end = min(offset + effective_batch, total)
+            # 非最后一批时扩展 overlap 段落
+            extended_end = min(batch_end + overlap, total)
+
+            batch = paragraphs[offset:extended_end]
             batch_boundaries = self._call_api(batch, chunk_size)
+
+            # 平移边界到全局索引
             shifted = [[b[0] + offset, b[1] + offset] for b in batch_boundaries]
+
+            if extended_end < total:
+                # 只保留非重叠部分的边界
+                keep_until = batch_end - 1
+                shifted = [b for b in shifted if b[1] <= keep_until]
+                if shifted:
+                    offset = shifted[-1][1] + 1
+                else:
+                    offset = batch_end
+            else:
+                offset = total
+
             all_boundaries.extend(shifted)
-            offset = shifted[-1][1] + 1
 
         return all_boundaries
 

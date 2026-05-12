@@ -1,5 +1,6 @@
 package com.kb.ingest.controller;
 
+import com.kb.ingest.config.DevContextProperties;
 import com.kb.ingest.dto.CreateSpaceRequest;
 import com.kb.ingest.dto.SpaceResponse;
 import com.kb.ingest.dto.UpdateSpaceRequest;
@@ -20,31 +21,29 @@ import java.util.Map;
 public class SpaceController {
 
     private final SpaceService spaceService;
-
-    // TODO: PHASE2 权限开发时，从 JWT token 解析 tenant_id
-    private static final String DEV_TENANT_ID = "dev-tenant-001";
+    private final DevContextProperties devContext;
 
     @GetMapping
     public ResponseEntity<Map<String, List<SpaceResponse>>> listSpaces() {
-        List<SpaceResponse> spaces = spaceService.listSpaces(DEV_TENANT_ID);
+        List<SpaceResponse> spaces = spaceService.listSpaces(devContext.getTenantId());
         return ResponseEntity.ok(Map.of("spaces", spaces));
     }
 
     @GetMapping("/tree")
     public ResponseEntity<List<SpaceResponse.SpaceTreeNode>> getSpaceTree() {
-        List<SpaceResponse.SpaceTreeNode> tree = spaceService.getSpaceTree(DEV_TENANT_ID);
+        List<SpaceResponse.SpaceTreeNode> tree = spaceService.getSpaceTree(devContext.getTenantId());
         return ResponseEntity.ok(tree);
     }
 
     @GetMapping("/{spaceId}")
     public ResponseEntity<SpaceResponse> getSpace(@PathVariable String spaceId) {
-        SpaceResponse space = spaceService.getSpace(DEV_TENANT_ID, spaceId);
+        SpaceResponse space = spaceService.getSpace(devContext.getTenantId(), spaceId);
         return ResponseEntity.ok(space);
     }
 
     @PostMapping
     public ResponseEntity<SpaceResponse> createSpace(@Valid @RequestBody CreateSpaceRequest request) {
-        SpaceResponse space = spaceService.createSpace(DEV_TENANT_ID, request);
+        SpaceResponse space = spaceService.createSpace(devContext.getTenantId(), request);
         return ResponseEntity.ok(space);
     }
 
@@ -52,13 +51,13 @@ public class SpaceController {
     public ResponseEntity<SpaceResponse> updateSpace(
             @PathVariable String spaceId,
             @Valid @RequestBody UpdateSpaceRequest request) {
-        SpaceResponse space = spaceService.updateSpace(DEV_TENANT_ID, spaceId, request);
+        SpaceResponse space = spaceService.updateSpace(devContext.getTenantId(), spaceId, request);
         return ResponseEntity.ok(space);
     }
 
     @DeleteMapping("/{spaceId}")
     public ResponseEntity<Void> deleteSpace(@PathVariable String spaceId) {
-        spaceService.deleteSpace(DEV_TENANT_ID, spaceId);
+        spaceService.deleteSpace(devContext.getTenantId(), spaceId);
         return ResponseEntity.ok().build();
     }
 }

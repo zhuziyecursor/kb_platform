@@ -120,6 +120,28 @@ export interface Citation {
   spacePath?: string;
 }
 
+/** 反馈类型 */
+export type FeedbackType = 'LIKE' | 'DISLIKE' | 'REPORT';
+
+/** 报错原因 */
+export type ReportReason = 'HALLUCINATION' | 'WRONG_CITATION' | 'IRRELEVANT' | 'OTHER';
+
+/** 反馈记录 */
+export interface FeedbackRecord {
+  id: number;
+  traceId: string;
+  tenantId: string;
+  uid: string;
+  sessionId?: string;
+  messageId?: number;
+  feedbackType: FeedbackType;
+  reportReason?: ReportReason;
+  comment?: string;
+  confidence?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Chat message */
 export interface ChatMessage {
   id: string;
@@ -132,6 +154,12 @@ export interface ChatMessage {
   reason?: string;
   liked?: boolean;
   favorited?: boolean;
+  /** 后端返回的消息 ID */
+  messageId?: number;
+  /** 已提交的反馈类型 */
+  feedbackType?: FeedbackType;
+  /** 模型自评置信度 */
+  confidence?: string;
 }
 
 /** Chat session */

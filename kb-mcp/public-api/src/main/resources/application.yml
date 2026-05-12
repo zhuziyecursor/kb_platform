@@ -1,0 +1,40 @@
+server:
+  port: ${PUBLIC_API_PORT:31006}
+
+spring:
+  application:
+    name: public-api
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+app:
+  public-api:
+    # API Key 配置（YAML map key 不支持 ${} 占位符，故使用固定 key，环境变量控制是否启用）
+    api-key: ${KB_PUBLIC_API_KEY:pk-dev-0000000000000001}
+    api-key-tenant-id: ${KB_PUBLIC_API_TENANT_ID:dev-tenant-001}
+    api-key-user-id: ${KB_PUBLIC_API_USER_ID:current-user}
+    api-key-owner-uid: ${KB_PUBLIC_API_OWNER_UID:u-dev-001}
+    api-key-dept-id: ${KB_PUBLIC_API_DEPT_ID:D01}
+    api-key-sec-level: ${KB_PUBLIC_API_SEC_LEVEL:5}
+    idempotency:
+      ttl-hours: ${KB_PUBLIC_API_IDEMPOTENCY_TTL_HOURS:24}
+      max-entries: ${KB_PUBLIC_API_IDEMPOTENCY_MAX_ENTRIES:10000}
+    client:
+      ingest-service:
+        base-url: ${KB_SERVICE_INGEST:http://localhost:8081}
+        connect-timeout-seconds: 10
+        read-timeout-seconds: 60
+      rag-service:
+        base-url: ${KB_SERVICE_RAG:http://localhost:31005}
+        connect-timeout-seconds: 10
+        read-timeout-seconds: 120
+      minio:
+        connect-timeout-seconds: 10
+        read-timeout-seconds: 300
+
+logging:
+  level:
+    com.kb.publicapi: DEBUG

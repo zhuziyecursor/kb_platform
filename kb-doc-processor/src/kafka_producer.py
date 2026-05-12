@@ -78,6 +78,9 @@ class EmbedTaskMessage:
     chunk_type: str = ""     # 段落语义类型
     vector: Optional[list[float]] = None
     parent_ref: str = ""     # Parent chunk 引用，格式: "docId/version/parentSeq"，无 Parent 时为空
+    is_parent: bool = False  # 是否为 Parent chunk
+    keywords: str = ""       # 关键词，空格分隔
+    summary: str = ""        # 单句摘要，≤200字符
 
     def to_dict(self) -> dict:
         data = {
@@ -104,6 +107,9 @@ class EmbedTaskMessage:
             "tags": self.tags,
             "chunkType": self.chunk_type,
             "parentRef": self.parent_ref,
+            "isParent": self.is_parent,
+            "keywords": self.keywords,
+            "summary": self.summary,
         }
         if self.vector is not None:
             data["vector"] = {"index": 0, "embedding": self.vector}

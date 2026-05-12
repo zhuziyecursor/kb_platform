@@ -72,6 +72,7 @@ public class EmbedTaskConsumer {
             for (EmbedTaskMessage msg : messages) {
                 markFailed(msg, "MILVUS_UPSERT_FAILED", e.getMessage());
             }
+            markDocumentFailed(first, "MILVUS_UPSERT_FAILED", e.getMessage());
             ack.acknowledge();
         }
     }
@@ -85,6 +86,18 @@ public class EmbedTaskConsumer {
                     "FAILED", errorCode, errorMsg, LocalDateTime.now());
         } catch (Exception ex) {
             log.error("Failed to mark embed_task as FAILED: {}", ex.getMessage());
+        }
+    }
+
+    private void markDocumentFailed(EmbedTaskMessage msg, String errorCode, String errorMsg) {
+        try {
+            versionRepository.updateStatus(msg.getTenantId(), msg.getDocId(), msg.getVersion(), "FAILED");
+            docRepository.updateStatus(msg.getTenantId(), msg.getDocId(), msg.getVersion(), "FAILED");
+            log.error("knowledge_version + knowledge_doc marked FAILED: docId={}, version={}, errorCode={}, error={}",
+                    msg.getDocId(), msg.getVersion(), errorCode, errorMsg);
+        } catch (Exception ex) {
+            log.error("Failed to mark document as FAILED: docId={}, version={}, error={}",
+                    msg.getDocId(), msg.getVersion(), ex.getMessage());
         }
     }
 

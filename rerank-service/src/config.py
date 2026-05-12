@@ -13,8 +13,18 @@ class RerankerConfig(BaseModel):
     local_model_path: str = ""
 
 
+class ServerConfig(BaseModel):
+    port: int = 31003
+
+
+class CorsConfig(BaseModel):
+    allowed_origins: str = "http://localhost:3105,http://localhost:3106"
+
+
 class AppConfig(BaseModel):
     reranker: RerankerConfig = RerankerConfig()
+    server: ServerConfig = ServerConfig()
+    cors: CorsConfig = CorsConfig()
 
 
 def _resolve_env_vars(obj, _path=()):
@@ -26,6 +36,10 @@ def _resolve_env_vars(obj, _path=()):
             obj[i] = _resolve_env_vars(v, _path + (str(i),))
     elif isinstance(obj, str) and obj.startswith("${") and obj.endswith("}"):
         env_var = obj[2:-1]
+        # Handle default value syntax: ${ENV_VAR:default}
+        if ":" in env_var:
+            env_name, default = env_var.split(":", 1)
+            return os.environ.get(env_name, default)
         return os.environ.get(env_var, "")
     return obj
 
@@ -33,7 +47,7 @@ def _resolve_env_vars(obj, _path=()):
 def load_config(config_path: Optional[str] = None) -> AppConfig:
     if config_path is None:
         config_path = os.environ.get(
-            "RERANK_SERVICE_CONFIG",
+            "KB_RERANK_SERVICE_CONFIG",
             str(Path(__file__).parent.parent / "config" / "settings.yaml"),
         )
 
@@ -45,4 +59,6 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     service_cfg = raw.get("kb_rerank_service", {})
     return AppConfig(
         reranker=RerankerConfig(**service_cfg.get("reranker", {})),
+        server=ServerConfig(**service_cfg.get("server", {})),
+        cors=CorsConfig(**service_cfg.get("cors", {})),
     )

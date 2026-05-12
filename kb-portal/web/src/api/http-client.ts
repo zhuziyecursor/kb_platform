@@ -151,6 +151,16 @@ export const getDocFile = (docId: string, version: number = 1): Promise<Blob> =>
 };
 
 /**
+ * Get document preview info (presigned URL + metadata) for citation source navigation.
+ * Front-end can use previewUrl with #page=N or #search=text for PDF positioning and highlighting.
+ */
+export const getDocPreview = (docId: string, version: number = 1, page?: number, highlight?: string): Promise<DocPreviewResponse> => {
+  return httpClient.get<DocPreviewResponse>(`/kb/v1/docs/${docId}/preview`, {
+    params: { version, page, highlight },
+  }).then(res => res.data);
+};
+
+/**
  * Retry a failed document — resets status to PENDING and re-triggers ingestion
  */
 export const retryDoc = (docId: string, version: number = 1): Promise<IngestResponse> => {
@@ -174,6 +184,17 @@ export interface DocFileResponse {
   contentType: string;
   previewType: string;
   filename: string;
+}
+
+export interface DocPreviewResponse {
+  docId: string;
+  version: number;
+  title: string;
+  previewUrl: string;
+  previewType: string;
+  page: number | null;
+  highlight: string | null;
+  expireIn: number;
 }
 
 export const getDoc = (docId: string): Promise<DocSummary | null> =>
@@ -250,6 +271,8 @@ export interface RagChatResponse {
   traceId: string;
   reason?: 'NO_MATCH' | 'NO_PERMISSION' | 'LOW_CONFIDENCE';
   sessionId?: string;
+  messageId?: number;
+  confidence?: string;
 }
 
 export interface Citation {
@@ -466,6 +489,49 @@ export interface StatsOverviewResponse {
  */
 export const getStatsOverview = (): Promise<StatsOverviewResponse> => {
   return httpClient.get<StatsOverviewResponse>('/kb/v1/stats/overview').then(res => res.data);
+};
+
+// ============== Feedback APIs ==============
+
+export interface FeedbackRequest {
+  traceId: string;
+  feedbackType: 'LIKE' | 'DISLIKE' | 'REPORT';
+  reportReason?: 'HALLUCINATION' | 'WRONG_CITATION' | 'IRRELEVANT' | 'OTHER';
+  comment?: string;
+}
+
+export interface FeedbackResponse {
+  id: number;
+  traceId: string;
+  tenantId: string;
+  uid: string;
+  sessionId?: string;
+  messageId?: number;
+  feedbackType: string;
+  reportReason?: string;
+  comment?: string;
+  confidence?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Submit feedback for a RAG answer (like/dislike/report)
+ */
+export const submitFeedback = (request: FeedbackRequest): Promise<FeedbackResponse> => {
+  return httpClient.post<FeedbackResponse>('/rag/v1/feedback', request).then(res => res.data);
+};
+
+/**
+ * Get existing feedback for a specific trace
+ */
+export const getFeedback = (traceId: string): Promise<FeedbackResponse | null> => {
+  return httpClient.get<FeedbackResponse>(`/rag/v1/feedback/${traceId}`)
+    .then(res => res.data)
+    .catch(err => {
+      if (err.response?.status === 404) return null;
+      throw err;
+    });
 };
 
 export default httpClient;

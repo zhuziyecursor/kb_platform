@@ -30,9 +30,16 @@ public class MinioService {
             @Value("${spring.minio.endpoint}") String endpoint,
             @Value("${spring.minio.access-key}") String accessKey,
             @Value("${spring.minio.secret-key}") String secretKey) {
+        okhttp3.OkHttpClient httpClient = new okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .build();
         this.minioClient = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
+                .httpClient(httpClient)
                 .build();
     }
 
@@ -54,6 +61,30 @@ public class MinioService {
         } catch (Exception e) {
             log.error("Failed to generate presigned URL for object: {}", objectPath, e);
             throw new RuntimeException("Failed to generate presigned URL", e);
+        }
+    }
+
+    /**
+     * 生成用于 GET 下载/预览的 presigned URL。
+     *
+     * @param objectPath MinIO 对象路径（不含 bucket 前缀）
+     * @return presigned URL，可直接用于浏览器 iframe 或下载
+     */
+    public String generateGetPresignedUrl(String objectPath) {
+        try {
+            String presignedUrl = minioClient.getPresignedObjectUrl(
+                    GetPresignedObjectUrlArgs.builder()
+                            .method(Method.GET)
+                            .bucket(bucket)
+                            .object(objectPath)
+                            .expiry(presignedUrlExpiry)
+                            .build()
+            );
+            log.debug("Generated GET presigned URL for object: {}, url: {}", objectPath, presignedUrl);
+            return presignedUrl;
+        } catch (Exception e) {
+            log.error("Failed to generate GET presigned URL for object: {}", objectPath, e);
+            throw new RuntimeException("Failed to generate GET presigned URL", e);
         }
     }
 

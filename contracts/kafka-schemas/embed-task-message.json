@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "EmbedTaskMessage",
-  "description": "kb-doc-processor 发布到 embed-task topic 的消息格式。每个 chunk 对应一条消息，触发 vector-service 向量化并写入 Milvus。",
+  "description": "kb-doc-processor 发布到 embed-task topic 的消息格式。每个 chunk 对应一条消息，当前实现中携带 embedding 向量，触发 vector-service 写入 Milvus。",
   "type": "object",
   "required": [
     "traceId",

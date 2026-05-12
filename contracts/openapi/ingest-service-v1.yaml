@@ -85,11 +85,13 @@ components:
 
     ChunkMode:
       type: string
-      enum: [HEAD_FIRST, TAIL_FIRST, UNIFORM]
+      enum: [HEAD_FIRST, TAIL_FIRST, UNIFORM, SMART, SMART_LLM]
       description: |
         - HEAD_FIRST: 从前往后切
         - TAIL_FIRST: 从后往前切
         - UNIFORM: 均匀切分
+        - SMART: 规则语义切片，支持 Parent-Child 双层架构
+        - SMART_LLM: LLM 精修边界，失败回退 SMART
 
     SpaceVisibility:
       type: string
@@ -164,11 +166,15 @@ components:
 
     DocStatus:
       type: string
-      enum: [DRAFT, PENDING, PROCESSING, READY, FAILED, OFFBOARDED, DEPRECATED]
+      enum: [DRAFT, PENDING, PROCESSING, PARSING, CHUNKING, EMBEDDING, VECTOR_PENDING, READY, FAILED, OFFBOARDED, DEPRECATED]
       description: |
         - DRAFT: commit 前的草稿状态
         - PENDING: commit 后，等待 ingest 触发
         - PROCESSING: ingest 触发后，处理中
+        - PARSING: doc-processor 正在拉取文件并解析文本
+        - CHUNKING: doc-processor 正在清洗/切片
+        - EMBEDDING: doc-processor 正在生成 chunk embedding
+        - VECTOR_PENDING: embed-task 已准备发布或等待 vector-service 消费
         - READY: 处理完成，可被检索
         - FAILED: 处理失败（retry_count >= max_retry 时人工介入）
         - OFFBOARDED: 被新版本替代后的旧版本
@@ -210,7 +216,7 @@ paths:
               properties:
                 tenantId:      { type: string, example: "t1" }
                 filename:      { type: string, example: "采购管理办法.pdf" }
-                fileSize:      { type: integer, description: "字节数，最大 5242880 (5MB)", maximum: 5242880 }
+                fileSize:      { type: integer, description: "字节数，最大 52428800 (50MB)", maximum: 52428800 }
                 fileHash:      { type: string, description: "sha256 hex", pattern: "^[0-9a-f]{64}$" }
                 docType:       { type: string, enum: [REGULATION, POLICY, AUDIT, OTHER] }
                 bizDomain:     { type: string, example: "COMPLIANCE" }
@@ -281,8 +287,8 @@ paths:
       summary: 提交入库（附带 ACL）
       description: |
         提交文档元数据和 ACL 配置。
-        成功后在 PG 写入 knowledge_doc（status=DRAFT）和 doc_acl。
-        触发 Kafka file-ingest 消息。
+        成功后写入 doc_acl，创建 knowledge_version（status=PENDING），并将 knowledge_doc 更新为 PENDING。
+        此接口不触发 Kafka；Kafka file-ingest 消息由 `/docs/{docId}/ingest` 显式触发。
       operationId: commitDoc
       security:
         - oboToken: [kb:upload]

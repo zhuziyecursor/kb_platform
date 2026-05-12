@@ -32,7 +32,9 @@ GRANT CONNECT ON DATABASE kb_knowledge TO kb_processor;
 GRANT USAGE ON SCHEMA kb_knowledge TO kb_processor;
 GRANT SELECT, INSERT, UPDATE ON kb_knowledge.knowledge_clean TO kb_processor;
 GRANT SELECT, INSERT, UPDATE ON kb_knowledge.knowledge_structured TO kb_processor;
-GRANT SELECT, INSERT ON kb_knowledge.embed_task TO kb_processor;
+GRANT SELECT, INSERT, UPDATE ON kb_knowledge.embed_task TO kb_processor;
+GRANT SELECT, UPDATE ON kb_knowledge.knowledge_doc TO kb_processor;
+GRANT SELECT, UPDATE ON kb_knowledge.knowledge_version TO kb_processor;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA kb_knowledge TO kb_processor;
 
 -- 创建 kb_vector 用户（向量写入服务）

@@ -1,8 +1,19 @@
-from src.chunker import BaseChunker, ChunkInfo, ChunkResult
+import re
+
+from src.chunker import BaseChunker, ChunkInfo, ChunkResult, estimate_tokens
+
+# 句子/语义边界模式
+_SNAP_PATTERN = re.compile(r'[。！？；\n](?=\s|$)')
 
 
 class FixedLengthChunker(BaseChunker):
-    def __init__(self, chunk_size: int = 512, overlap_ratio: int = 10, mode: str = "HEAD_FIRST"):
+    def __init__(
+        self,
+        chunk_size: int = 512,
+        overlap_ratio: int = 10,
+        mode: str = "HEAD_FIRST",
+        snap_to_boundary: bool = True,
+    ):
         if chunk_size < 100 or chunk_size > 2000:
             raise ValueError(f"chunk_size must be in [100, 2000], got {chunk_size}")
         if overlap_ratio < 0 or overlap_ratio > 50:
@@ -14,6 +25,7 @@ class FixedLengthChunker(BaseChunker):
         self._overlap = int(chunk_size * overlap_ratio / 100)
         self._stride = max(chunk_size - self._overlap, 1)
         self._mode = mode
+        self._snap_to_boundary = snap_to_boundary
 
     @property
     def chunk_size(self) -> int:
@@ -33,13 +45,11 @@ class FixedLengthChunker(BaseChunker):
 
         chunks = []
         for i, chunk_text in enumerate(chunks_raw):
-            char_count = len(chunk_text)
-            token_count = max(1, int(char_count / 1.5))
             chunks.append(ChunkInfo(
                 chunk_seq=i,
                 text=chunk_text,
-                char_count=char_count,
-                token_count=token_count,
+                char_count=len(chunk_text),
+                token_count=estimate_tokens(chunk_text),
             ))
 
         return ChunkResult(chunks=chunks)
@@ -50,6 +60,8 @@ class FixedLengthChunker(BaseChunker):
         text_len = len(text)
         while start < text_len:
             end = min(start + self._chunk_size, text_len)
+            if self._snap_to_boundary and end < text_len:
+                end = self._snap(text, end)
             chunks.append(text[start:end])
             if end >= text_len:
                 break
@@ -62,12 +74,37 @@ class FixedLengthChunker(BaseChunker):
         end = text_len
         while end > 0:
             start = max(end - self._chunk_size, 0)
+            if self._snap_to_boundary and start > 0:
+                start = self._snap(text, start)
             chunks.append(text[start:end])
             if start <= 0:
                 break
             end -= self._stride
         chunks.reverse()
         return chunks
+
+    @staticmethod
+    def _snap(text: str, pos: int) -> int:
+        """回退到最近的句子/语义边界（句号、换行等）。
+
+        在 pos 前后各搜 20% chunk_size 范围内找边界点。
+        找不到则返回原始位置。
+        """
+        search_window = max(100, int(pos * 0.2))
+        search_start = max(0, pos - search_window)
+        search_end = min(len(text), pos + search_window)
+        search_text = text[search_start:search_end]
+
+        best = pos
+        for m in _SNAP_PATTERN.finditer(search_text):
+            boundary = search_start + m.end()
+            if boundary <= pos and (pos - boundary) < (pos - best):
+                best = boundary
+            elif boundary > pos and (pos - best) > (boundary - pos):
+                best = boundary
+                break
+
+        return best
 
     def _chunk_uniform(self, text: str) -> list[str]:
         text_len = len(text)

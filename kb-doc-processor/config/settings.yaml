@@ -1,60 +1,84 @@
 kb_document_processor:
   # Tika Server 配置
   tika:
-    server_uri: "http://localhost:29998"
-    timeout_seconds: 120
+    server_uri: "${KB_TIKA_SERVER_URI:http://localhost:29998}"
+    timeout_seconds: ${KB_TIKA_TIMEOUT_SECONDS:120}
 
   # MinIO 配置
   minio:
-    endpoint: "localhost:29000"
-    access_key: "kb_minio_admin"
-    secret_key: "kb_minio_dev_2026"
-    bucket: "kb-raw"
-    secure: false
+    endpoint: "${KB_MINIO_ENDPOINT:localhost:29000}"
+    access_key: "${KB_MINIO_ACCESS_KEY:kb_minio_admin}"
+    secret_key: "${KB_MINIO_SECRET_KEY:}"  # 必须通过环境变量设置
+    bucket: "${KB_MINIO_BUCKET:kb-raw}"
+    secure: ${KB_MINIO_SECURE:false}
 
   # Kafka 配置
   kafka:
-    bootstrap_servers: "localhost:29092"
-    consumer_group: "kb-doc-processor"
-    file_ingest_topic: "file-ingest"
-    embed_task_topic: "embed-task"
+    bootstrap_servers: "${KB_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}"
+    consumer_group: "${KB_KAFKA_CONSUMER_GROUP:kb-doc-processor}"
+    file_ingest_topic: "${KB_KAFKA_FILE_INGEST_TOPIC:file-ingest}"
+    embed_task_topic: "${KB_KAFKA_EMBED_TASK_TOPIC:embed-task}"
     auto_offset_reset: "earliest"
     enable_auto_commit: false
+    session_timeout_ms: 60000
+    heartbeat_interval_ms: 20000
+    max_poll_interval_ms: 600000
+    socket_timeout_ms: 30000
+    metadata_max_age_ms: 300000
 
   # 数据库配置
   database:
-    host: "localhost"
-    port: 25432
-    name: "kb_knowledge"
-    username: "kb_processor"
-    password: "kb_processor"
-    schema: "kb_knowledge"
+    host: "${KB_DB_HOST:localhost}"
+    port: ${KB_DB_PORT:25432}
+    name: "${KB_DB_NAME:kb_knowledge}"
+    username: "${KB_DB_USERNAME:kb_processor}"
+    password: "${KB_DB_PASSWORD:}"  # 必须通过环境变量设置
+    schema: "${KB_DB_SCHEMA:kb_knowledge}"
 
   # MVP 限制
   mvp_limits:
-    max_file_size_mb: 100
-    max_file_pages: 30
-    ocr_disabled: true
+    max_file_size_mb: ${KB_MAX_FILE_SIZE_MB:100}
+    max_file_pages: ${KB_MAX_FILE_PAGES:30}
+    ocr_disabled: ${KB_OCR_DISABLED:true}
 
   # Chunk 默认值（当消息中未指定 chunkConfig 时使用）
   chunk_defaults:
-    chunk_size: 512
-    overlap_ratio: 10
-    chunk_mode: "HEAD_FIRST"
+    chunk_size: ${KB_CHUNK_SIZE:512}
+    overlap_ratio: ${KB_CHUNK_OVERLAP_RATIO:10}
+    chunk_mode: "${KB_CHUNK_MODE:SMART}"
+    smart:
+      parent_max_size: ${KB_CHUNK_PARENT_MAX_SIZE:1500}
+      child_size: ${KB_CHUNK_CHILD_SIZE:400}
+      child_overlap: ${KB_CHUNK_CHILD_OVERLAP:50}
 
   # Embedding 服务配置
   embedding:
-    url: "http://192.168.30.47:31296/embeddings"
-    # url: "http://193.134.211.121:31296/embeddings"
-    timeout_seconds: 120
-    max_retries: 3
-    model_name: "BGE-zh-v1.5"
-    dim: 1024
+    url: "${KB_EMBEDDING_SERVICE_URL:http://localhost:31296}/embeddings"
+    timeout_seconds: ${KB_EMBEDDING_TIMEOUT_SECONDS:120}
+    max_retries: ${KB_EMBEDDING_MAX_RETRIES:3}
+    model_name: "${KB_EMBEDDING_MODEL_NAME:BGE-zh-v1.5}"
+    dim: ${KB_EMBEDDING_DIM:1024}
 
   # 重试配置
   retry:
-    max_retries: 3
-    backoff_base_seconds: 5
+    max_retries: ${KB_RETRY_MAX_RETRIES:3}
+    backoff_base_seconds: ${KB_RETRY_BACKOFF_BASE_SECONDS:5}
+
+  # 元数据提取器配置（关键词 + 摘要）
+  metadata_extractor:
+    keyword_top_n: ${KB_METADATA_KEYWORD_TOP_N:5}
+    summary_max_chars: ${KB_METADATA_SUMMARY_MAX_CHARS:200}
+    short_text_threshold: ${KB_METADATA_SHORT_TEXT_THRESHOLD:100}
+    allow_pos:
+      - "n"
+      - "vn"
+      - "vd"
+      - "nt"
+      - "nz"
+      - "v"
+      - "ns"
+      - "nr"
+    custom_dict_path: "${KB_METADATA_CUSTOM_DICT_PATH:src/utils/custom_dict.txt}"
 
   parsers:
     - name: TikaParser
@@ -74,16 +98,26 @@ kb_document_processor:
     - name: SemanticChunker
       enabled: true
     - name: LLMChunker
-      enabled: true  # 第二层：LLM 精修
+      enabled: true
 
   # MiniMax 智能分片配置
   intelligent_chunker:
-    enabled: true
-    api_base: "https://api.minimax.chat/v1/text/chatcompletion_v2"
-    api_key: "${MINIMAX_API_KEY}"
-    model: "abab6.5s-chat"
-    temperature: 0.0
-    max_tokens: 4096
-    timeout_seconds: 30
-    max_retries: 2
-    batch_paragraphs: 80
+    enabled: ${KB_INTELLIGENT_CHUNKER_ENABLED:true}
+    api_base: "${KB_MINIMAX_API_BASE:https://api.minimax.chat/v1/text/chatcompletion_v2}"
+    api_key: "${KB_MINIMAX_API_KEY:}"
+    model: "${KB_MINIMAX_MODEL:abab6.5s-chat}"
+    temperature: ${KB_MINIMAX_TEMPERATURE:0.0}
+    max_tokens: ${KB_MINIMAX_MAX_TOKENS:4096}
+    timeout_seconds: ${KB_MINIMAX_TIMEOUT_SECONDS:30}
+    max_retries: ${KB_MINIMAX_MAX_RETRIES:2}
+    batch_paragraphs: ${KB_MINIMAX_BATCH_PARAGRAPHS:80}
+    batch_overlap: ${KB_MINIMAX_BATCH_OVERLAP:10}
+
+  # 服务端口
+  server:
+    host: "${KB_SERVER_HOST:0.0.0.0}"
+    port: ${KB_SERVER_PORT:31001}
+
+  # CORS 配置
+  cors:
+    allowed_origins: "${KB_CORS_ALLOWED_ORIGINS:http://localhost:3105,http://localhost:3106}"

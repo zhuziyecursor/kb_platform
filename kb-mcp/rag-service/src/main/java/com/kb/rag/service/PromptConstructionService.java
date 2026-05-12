@@ -68,6 +68,14 @@ public class PromptConstructionService {
             - 如果参考资料中不包含相关信息，回复"知识库中暂时没有找到相关资料"。
             - 不要编造参考资料中没有的事实性内容。
             - 如果参考资料只部分覆盖了问题，先回答能覆盖的部分，再诚实说明哪些内容知识库中未找到。
+
+            ## 置信度自评
+            在回答的最后一行，单独输出置信度标记。根据参考资料对问题的覆盖程度：
+            - [CONFIDENCE: HIGH] — 所有关键信息来自参考资料，完全覆盖问题
+            - [CONFIDENCE: MEDIUM] — 参考资料部分覆盖问题，部分信息来自你的知识补充
+            - [CONFIDENCE: LOW] — 参考资料与问题相关性弱，信息不足，主要依赖你的知识
+
+            此标记必须独占最后一行，不要在标记前后添加其他文字。
             """;
 
     public LlmGatewayRequest buildPrompt(String query, List<CitationDto> citations,

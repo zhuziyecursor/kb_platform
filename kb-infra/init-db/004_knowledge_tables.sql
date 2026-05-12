@@ -33,7 +33,7 @@ CREATE INDEX idx_doc_tenant_region_domain ON kb_knowledge.knowledge_doc (tenant_
 CREATE INDEX idx_doc_tenant_seclevel   ON kb_knowledge.knowledge_doc (tenant_id, sec_level);
 
 COMMENT ON TABLE kb_knowledge.knowledge_doc IS '文档元数据主表';
-COMMENT ON COLUMN kb_knowledge.knowledge_doc.status IS 'DRAFT/PENDING/READY/FAILED/OFFBOARDED/DELETED';
+COMMENT ON COLUMN kb_knowledge.knowledge_doc.status IS 'DRAFT/PENDING/PROCESSING/PARSING/CHUNKING/EMBEDDING/VECTOR_PENDING/READY/FAILED/OFFBOARDED/DELETED';
 COMMENT ON COLUMN kb_knowledge.knowledge_doc.source_type IS 'UPLOAD/CDC/CRAWL/API';
 COMMENT ON COLUMN kb_knowledge.knowledge_doc.doc_type IS 'REGULATION/POLICY/AUDIT/WEBPAGE/API/IMAGE';
 
@@ -88,7 +88,7 @@ CREATE TABLE kb_knowledge.knowledge_version (
 
 CREATE INDEX idx_version_tenant_status ON kb_knowledge.knowledge_version (tenant_id, status);
 
-COMMENT ON TABLE kb_knowledge.knowledge_version IS '文档版本状态机: PENDING/READY/FAILED/OFFBOARDED';
+COMMENT ON TABLE kb_knowledge.knowledge_version IS '文档版本状态机: PENDING/PROCESSING/PARSING/CHUNKING/EMBEDDING/VECTOR_PENDING/READY/FAILED/OFFBOARDED';
 
 -- 文档 ACL (文档级权限)
 CREATE TABLE kb_knowledge.doc_acl (

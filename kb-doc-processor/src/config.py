@@ -26,6 +26,11 @@ class KafkaConfig(BaseModel):
     embed_task_topic: str = "embed-task"
     auto_offset_reset: str = "earliest"
     enable_auto_commit: bool = False
+    session_timeout_ms: int = 60000
+    heartbeat_interval_ms: int = 20000
+    max_poll_interval_ms: int = 600000
+    socket_timeout_ms: int = 30000
+    metadata_max_age_ms: int = 300000
 
 
 class DatabaseConfig(BaseModel):
@@ -49,10 +54,17 @@ class MvpLimits(BaseModel):
     ocr_disabled: bool = True
 
 
+class SmartChunkConfig(BaseModel):
+    parent_max_size: int = 1500
+    child_size: int = 400
+    child_overlap: int = 50
+
+
 class ChunkDefaults(BaseModel):
     chunk_size: int = 512
     overlap_ratio: int = 10
-    chunk_mode: str = "HEAD_FIRST"
+    chunk_mode: str = "SMART"
+    smart: SmartChunkConfig = SmartChunkConfig()
 
 
 class EmbeddingConfig(BaseModel):
@@ -74,11 +86,29 @@ class IntelligentChunkerConfig(BaseModel):
     timeout_seconds: int = 30
     max_retries: int = 2
     batch_paragraphs: int = 80
+    batch_overlap: int = 10
 
 
 class RetryConfig(BaseModel):
     max_retries: int = 3
     backoff_base_seconds: int = 5
+
+
+class MetadataExtractorConfig(BaseModel):
+    keyword_top_n: int = 5
+    summary_max_chars: int = 200
+    short_text_threshold: int = 100
+    allow_pos: tuple = ("n", "vn", "vd", "nt", "nz", "v", "ns", "nr")
+    custom_dict_path: str = "src/utils/custom_dict.txt"
+
+
+class ServerConfig(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 31001
+
+
+class CorsConfig(BaseModel):
+    allowed_origins: str = "http://localhost:3105,http://localhost:3106"
 
 
 class AppConfig(BaseModel):
@@ -91,10 +121,13 @@ class AppConfig(BaseModel):
     embedding: EmbeddingConfig = EmbeddingConfig()
     retry: RetryConfig = RetryConfig()
     intelligent_chunker: IntelligentChunkerConfig = IntelligentChunkerConfig()
+    metadata_extractor: MetadataExtractorConfig = MetadataExtractorConfig()
+    server: ServerConfig = ServerConfig()
+    cors: CorsConfig = CorsConfig()
 
 
 def _resolve_env_vars(obj, _path=()):
-    """Recursively resolve ${ENV_VAR} placeholders in dict/list config values."""
+    """Recursively resolve ${ENV_VAR} or ${ENV_VAR:default} placeholders in dict/list config values."""
     if isinstance(obj, dict):
         for k, v in obj.items():
             obj[k] = _resolve_env_vars(v, _path + (str(k),))
@@ -103,6 +136,10 @@ def _resolve_env_vars(obj, _path=()):
             obj[i] = _resolve_env_vars(v, _path + (str(i),))
     elif isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
         env_var = obj[2:-1]
+        # Handle default value syntax: ${ENV_VAR:default}
+        if ":" in env_var:
+            env_name, default = env_var.split(":", 1)
+            return os.environ.get(env_name, default)
         return os.environ.get(env_var, '')
     return obj
 
@@ -117,10 +154,13 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
-    # Resolve ${ENV_VAR} placeholders in the raw config
+    # Resolve ${ENV_VAR:default} placeholders in the raw config
     _resolve_env_vars(raw)
 
     processor_cfg = raw.get("kb_document_processor", {})
+
+    chunk_defaults_raw = processor_cfg.get("chunk_defaults", {})
+    smart_raw = chunk_defaults_raw.pop("smart", {})
 
     return AppConfig(
         tika=TikaConfig(**processor_cfg.get("tika", {})),
@@ -128,8 +168,14 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         kafka=KafkaConfig(**processor_cfg.get("kafka", {})),
         database=DatabaseConfig(**processor_cfg.get("database", {})),
         mvp_limits=MvpLimits(**processor_cfg.get("mvp_limits", {})),
-        chunk_defaults=ChunkDefaults(**processor_cfg.get("chunk_defaults", {})),
+        chunk_defaults=ChunkDefaults(
+            **chunk_defaults_raw,
+            smart=SmartChunkConfig(**smart_raw),
+        ),
         embedding=EmbeddingConfig(**processor_cfg.get("embedding", {})),
         retry=RetryConfig(**processor_cfg.get("retry", {})),
         intelligent_chunker=IntelligentChunkerConfig(**processor_cfg.get("intelligent_chunker", {})),
+        metadata_extractor=MetadataExtractorConfig(**processor_cfg.get("metadata_extractor", {})),
+        server=ServerConfig(**processor_cfg.get("server", {})),
+        cors=CorsConfig(**processor_cfg.get("cors", {})),
     )

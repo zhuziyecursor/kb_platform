@@ -4,21 +4,30 @@
 
 接收用户查询 → Query 改写 → 向量检索（Milvus）→ Rerank 精排 → ACL 二次校验 → 构造 Prompt → 调 llm-gateway → 返回带引用的答案。
 
-**不直接访问 PostgreSQL，不直接访问 MinIO，不做向量化。**
+**Phase 2 新增：** 反馈闭环（点赞/点踩/报错）→ Badcase 自动归档 → 高频问题聚合分析 → LLM 答案自评置信度。
 
-## 本服务不拥有任何数据库表
+**不直接访问 MinIO，不做向量化。**
 
-rag-service **无写权限**，仅有以下只读权限：
+## 本服务拥有的数据库表
+
+| 表 | Schema | 读写权限 |
+|----|--------|---------|
+| `rag_session` | kb_knowledge | CRUD |
+| `rag_message` | kb_knowledge | CRUD |
+| `rag_pipeline_trace` | kb_audit | INSERT / SELECT |
+| `rag_feedback` | kb_audit | INSERT / SELECT / UPDATE |
+| `badcase_archive` | kb_audit | INSERT / SELECT / UPDATE |
+
+**只读权限：**
 - `kb_knowledge.doc_acl`：ACL 二次校验
 - `kb_knowledge.knowledge_version`：验证文档版本是否有效（status=READY）
+- `kb_knowledge.knowledge_doc`：空间范围解析
+- `kb_knowledge.knowledge_space`：空间子树查询
 
-DB 用户：`kb_rag`（只读用户）
-
-**严禁添加任何 JPA Repository 或 JDBC 写入逻辑。ArchUnit 测试会检测违规。**
+DB 用户：`kb_rag`
 
 ## 禁止的调用
 
-- 禁止直接访问 PostgreSQL（除 doc_acl / knowledge_version 的只读查询外）
 - 禁止直接访问 MinIO（chunks 已在 Milvus 的 text 字段中）
 - 禁止直接调用 embedding-service（向量化不在 rag 职责内）
 - 禁止接受自定义用户头
@@ -52,8 +61,10 @@ perm_group_id in [{perm_group_ids}] AND
 4. BGE-Reranker 精排 Top20→Top5
 5. ACL 二次校验（查 `doc_acl` 表）
 6. 拒答判断
-7. 构造 Prompt + 引用块
+7. 构造 Prompt + 引用块（含置信度自评指令）
 8. 调 llm-gateway → LLM 生成答案
+9. 解析置信度标记 `[CONFIDENCE: HIGH/MEDIUM/LOW]`，从答案中剥离
+10. 保存会话消息，返回 messageId + confidence
 
 ## 拒答逻辑（必须实现，不允许省略）
 
@@ -65,11 +76,40 @@ perm_group_id in [{perm_group_ids}] AND
 
 所有拒答必须返回 `traceId`。
 
-## 接口清单（MVP 一期）
+## 反馈闭环（Phase 2 新增）
 
-| 接口 | 方法 | 路径 | scope |
-|-----|------|-----|-------|
-| 问答检索 | POST | `/rag/v1/chat` | `kb:search` |
+### 数据流
+
+```
+前端 👍/👎/🚩 → POST /rag/v1/feedback → FeedbackService
+  → kb_audit.rag_feedback (持久化)
+  → DISLIKE/REPORT → 自动归档 kb_audit.badcase_archive
+```
+
+### 反馈表结构
+
+- **rag_feedback**: `trace_id` (UNIQUE), `tenant_id`, `uid`, `session_id`, `message_id`, `feedback_type` (LIKE/DISLIKE/REPORT), `report_reason` (HALLUCINATION/WRONG_CITATION/IRRELEVANT/OTHER), `comment`, `confidence`
+- **badcase_archive**: 从 rag_pipeline_trace + rag_message 脱敏归档，包含 query/rewrittenQuery/answer/citations/trace_summary, `status` (OPEN/REVIEWED/RESOLVED/DISMISSED)
+
+### 答案自评置信度
+
+System Prompt 要求 LLM 在回答最后一行输出 `[CONFIDENCE: HIGH/MEDIUM/LOW]`。ChatServiceImpl 解析并剥离，写入 ChatResponse.confidence。前端 LOW 置信度时展示橙色警告条。
+
+## 接口清单
+
+| 接口 | 方法 | 路径 | 说明 |
+|-----|------|-----|------|
+| 问答检索 | POST | `/rag/v1/chat` | 同步 RAG 问答 |
+| 流式问答 | POST | `/rag/v1/chat/stream` | SSE 流式 RAG 问答 |
+| 会话列表 | GET | `/rag/v1/sessions` | 用户会话列表 |
+| 创建会话 | POST | `/rag/v1/sessions` | 新建 RAG 会话 |
+| 会话消息 | GET | `/rag/v1/sessions/{id}/messages` | 消息历史 |
+| 删除会话 | DELETE | `/rag/v1/sessions/{id}` | 删除会话 |
+| 链路追踪 | GET | `/rag/v1/traces/{traceId}` | Pipeline Trace 详情 |
+| 提交反馈 | POST | `/rag/v1/feedback` | 点赞/点踩/报错 |
+| 查询反馈 | GET | `/rag/v1/feedback/{traceId}` | 查询已有反馈 |
+| Badcase 列表 | GET | `/rag/v1/badcases` | 筛选+分页查询 badcase |
+| 高频问题 | GET | `/rag/v1/analytics/top-queries` | Top N 高频 query |
 
 接口定义详见：`contracts/openapi/rag-service-v1.yaml`
 

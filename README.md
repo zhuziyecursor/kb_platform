@@ -16,7 +16,7 @@ kb-mcp/                      ← Java 微服务
 ├── auth-adapter             ← OIDC 登录 + OBO Token
 ├── user-service             ← 用户上下文
 ├── ingest-service            ← 文档入库 (8081)
-├── vector-service            ← 向量化 + Milvus (31002)
+├── vector-service            ← Milvus 写入 + 状态回写 (31002)
 ├── rag-service               ← RAG 检索 + 对话 (31005)
 └── llm-gateway               ← LLM 路由 + 审计 (31004)
 kb-doc-processor/            ← Python: 解析/清洗/切片 (31001)
@@ -28,7 +28,7 @@ kb-infra/                    ← Docker Compose: PG / Redis / MinIO / Kafka / Mi
 
 | 链路 | 流程 |
 |------|------|
-| **B — 入库** | Portal → ingest-service → Kafka(`file-ingest`) → doc-processor → Kafka(`embed-task`) → vector-service → Milvus |
+| **B — 入库** | Portal → ingest-service → Kafka(`file-ingest`) → doc-processor（解析/清洗/切片/embedding）→ Kafka(`embed-task`) → vector-service → Milvus |
 | **A — 检索** | Portal → rag-service → Milvus → rerank → llm-gateway → Portal |
 
 ---

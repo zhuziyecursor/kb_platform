@@ -16,6 +16,7 @@ import {
   Progress,
   Tag,
   Popover,
+  Radio,
   Divider,
   Empty,
 } from 'antd';
@@ -28,6 +29,8 @@ import {
   FileTextOutlined,
   ThunderboltOutlined,
   CheckCircleFilled,
+  InfoCircleFilled,
+  ExclamationCircleFilled,
   MessageOutlined,
   AimOutlined,
   PaperClipOutlined,
@@ -35,8 +38,13 @@ import {
   FolderOutlined,
   LikeOutlined,
   LikeFilled,
+  DislikeOutlined,
+  DislikeFilled,
   StarOutlined,
   StarFilled,
+  FlagOutlined,
+  FlagFilled,
+  WarningOutlined,
   ProfileOutlined,
   CloseOutlined,
   InboxOutlined,
@@ -48,6 +56,7 @@ import {
   LineChartOutlined,
   CloudServerOutlined,
   ApiOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { ChatMessage, KnowledgeSpaceTreeNode, Skill } from '@/types';
 import {
@@ -61,6 +70,8 @@ import {
   createSession,
   getSessionMessages,
   getPipelineTrace,
+  submitFeedback,
+  getFeedback,
 } from '@/api/http-client';
 import type { RagPipelineTraceResponse } from '@/api/http-client';
 import { getSpaceTree } from '@/api/knowledge-space';
@@ -68,6 +79,7 @@ import CommandBar from '@/components/LUI/CommandBar';
 import AppLayout from '@/components/AppLayout';
 import RagSessionPanel from '@/components/RagSessionPanel';
 import AnswerRenderer from '@/components/AnswerRenderer';
+import FilePreview from '@/components/FilePreview';
 import type { LUIAction } from '@/types';
 import { Button, Badge } from '@/components/ui';
 import { useRouter } from 'next/navigation';
@@ -185,6 +197,7 @@ export default function RAGPage() {
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [sessionRefresh, setSessionRefresh] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // 附件状态
@@ -209,9 +222,24 @@ export default function RAGPage() {
   const [selectedTrace, setSelectedTrace] = useState<RagPipelineTraceResponse | null>(null);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
+  // 引用原文预览状态
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewDocId, setPreviewDocId] = useState<string>('');
+  const [previewVersion, setPreviewVersion] = useState<number>(1);
+  const [previewFilename, setPreviewFilename] = useState<string>('');
+  const [previewPage, setPreviewPage] = useState<number | undefined>(undefined);
+  const [previewHighlight, setPreviewHighlight] = useState<string | undefined>(undefined);
+
   // 技能选择状态
   const [selectedSkill, setSelectedSkill] = useState<Skill | ExternalSkill | PromptConfig | CustomSkill | null>(null);
   const [skillPopoverOpen, setSkillPopoverOpen] = useState(false);
+
+  // 反馈 Popover 状态
+  const [feedbackPopoverMsgId, setFeedbackPopoverMsgId] = useState<string | null>(null);
+  const [feedbackPopoverType, setFeedbackPopoverType] = useState<'DISLIKE' | 'REPORT' | null>(null);
+  const [feedbackReason, setFeedbackReason] = useState<string>('OTHER');
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 
   // 扩展管理数据
   const { externalSkills, customSkills, prompts } = useExtensions();
@@ -244,6 +272,26 @@ export default function RAGPage() {
         });
       }
       setMessages(mapped);
+
+      // Restore feedback state for messages with trace IDs
+      for (const m of mapped) {
+        if (m.traceId && m.role === 'assistant') {
+          try {
+            const fb = await getFeedback(m.traceId);
+            if (fb) {
+              setMessages((prev) =>
+                prev.map((pm) =>
+                  pm.id === m.id
+                    ? { ...pm, feedbackType: fb.feedbackType as ChatMessage['feedbackType'], liked: fb.feedbackType === 'LIKE' }
+                    : pm
+                )
+              );
+            }
+          } catch {
+            // Feedback fetch failure is non-critical
+          }
+        }
+      }
     } catch {
       message.error('加载会话消息失败');
     }
@@ -484,6 +532,8 @@ ${text}`;
   const handleSend = useCallback(async (queryText?: string) => {
     const text = queryText || input.trim();
     if (!text) return;
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     if (text === `/${QUICK_INGEST_SKILL_NAME}` || text === '/quick-ingest') {
       if (!queryText) setInput('');
       openQuickIngest();
@@ -571,6 +621,8 @@ ${text}`;
         traceId: response.traceId,
         timestamp: Date.now(),
         reason: response.reason,
+        messageId: response.messageId,
+        confidence: response.confidence,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -585,13 +637,72 @@ ${text}`;
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      sendingRef.current = false;
     }
   }, [input, sessionId, selectedSpaceId, openQuickIngest, selectedSkill, buildQueryWithSkill]);
 
-  const handleLike = useCallback((msgId: string) => {
+  const handleLike = useCallback(async (msgId: string) => {
+    const msg = messages.find((m) => m.id === msgId);
+    if (!msg?.traceId) return;
+
+    const isLiked = msg.feedbackType === 'LIKE';
+    if (isLiked) {
+      // Unlike: remove feedback state locally (backend keeps last state)
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, liked: false, feedbackType: undefined } : m))
+      );
+      return;
+    }
+
+    // Optimistic update
     setMessages((prev) =>
-      prev.map((m) => (m.id === msgId ? { ...m, liked: !m.liked } : m))
+      prev.map((m) => (m.id === msgId ? { ...m, liked: true, feedbackType: 'LIKE' } : m))
     );
+
+    try {
+      await submitFeedback({ traceId: msg.traceId, feedbackType: 'LIKE' });
+    } catch {
+      // Revert on failure
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, liked: false, feedbackType: undefined } : m))
+      );
+    }
+  }, [messages]);
+
+  const submitNegativeFeedback = useCallback(async () => {
+    const msgId = feedbackPopoverMsgId;
+    if (!msgId || !feedbackPopoverType) return;
+    const msg = messages.find((m) => m.id === msgId);
+    if (!msg?.traceId) return;
+
+    setFeedbackSubmitting(true);
+    try {
+      await submitFeedback({
+        traceId: msg.traceId,
+        feedbackType: feedbackPopoverType,
+        reportReason: feedbackReason as 'HALLUCINATION' | 'WRONG_CITATION' | 'IRRELEVANT' | 'OTHER',
+        comment: feedbackComment || undefined,
+      });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, feedbackType: feedbackPopoverType } : m))
+      );
+      message.success('感谢反馈，我们会持续改进');
+    } catch {
+      message.error('提交失败，请稍后重试');
+    } finally {
+      setFeedbackSubmitting(false);
+      setFeedbackPopoverMsgId(null);
+      setFeedbackPopoverType(null);
+      setFeedbackReason('OTHER');
+      setFeedbackComment('');
+    }
+  }, [feedbackPopoverMsgId, feedbackPopoverType, feedbackReason, feedbackComment, messages, message]);
+
+  const openFeedbackPopover = useCallback((msgId: string, type: 'DISLIKE' | 'REPORT') => {
+    setFeedbackPopoverMsgId(msgId);
+    setFeedbackPopoverType(type);
+    setFeedbackReason('OTHER');
+    setFeedbackComment('');
   }, []);
 
   const handleFavorite = useCallback((msgId: string) => {
@@ -632,6 +743,15 @@ ${text}`;
 
   const navigateToDoc = (docId: string) => {
     router.push(`/documents/${docId}`);
+  };
+
+  const openSourcePreview = (cite: NonNullable<ChatMessage['citations']>[number]) => {
+    setPreviewDocId(cite.docId);
+    setPreviewVersion(cite.version);
+    setPreviewFilename(cite.title || '文档预览');
+    setPreviewPage(cite.page > 0 ? cite.page : undefined);
+    setPreviewHighlight(cite.text || undefined);
+    setPreviewOpen(true);
   };
 
   const handleClearChat = () => {
@@ -782,8 +902,31 @@ ${text}`;
                               <AnswerRenderer
                                 content={msg.content}
                                 onFollowUpClick={handleFollowUpClick}
+                                onCitationClick={(cidx) => {
+                                  const cite = msg.citations?.[cidx];
+                                  if (cite) openSourcePreview(cite);
+                                }}
                               />
                               {isLastAssistant && <span className="chat-typing-cursor" />}
+                            </div>
+                          )}
+
+                          {/* Confidence Warning */}
+                          {msg.confidence === 'LOW' && !msg.reason && (
+                            <div style={{
+                              marginTop: 8,
+                              padding: '6px 12px',
+                              borderRadius: 6,
+                              background: '#FFF7E6',
+                              border: '1px solid #FFD591',
+                              fontSize: 12,
+                              color: '#AD6800',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}>
+                              <WarningOutlined style={{ fontSize: 13 }} />
+                              <span>模型对本次回答置信度较低，建议核实引用来源</span>
                             </div>
                           )}
 
@@ -796,14 +939,96 @@ ${text}`;
                                   <CopyOutlined style={{ fontSize: 13 }} />
                                 </button>
                               </Tooltip>
-                              <Tooltip title={msg.liked ? '取消点赞' : '点赞'}>
+                              <Tooltip title={msg.feedbackType === 'LIKE' ? '取消点赞' : '点赞'}>
                                 <button
-                                  className={cn('chat-action-btn', msg.liked && 'chat-action-btn--active-like')}
+                                  className={cn('chat-action-btn', (msg.liked || msg.feedbackType === 'LIKE') && 'chat-action-btn--active-like')}
                                   onClick={() => handleLike(msg.id)}
                                 >
-                                  {msg.liked ? <LikeFilled style={{ fontSize: 13 }} /> : <LikeOutlined style={{ fontSize: 13 }} />}
+                                  {(msg.liked || msg.feedbackType === 'LIKE') ? <LikeFilled style={{ fontSize: 13 }} /> : <LikeOutlined style={{ fontSize: 13 }} />}
                                 </button>
                               </Tooltip>
+                              <Popover
+                                open={feedbackPopoverMsgId === msg.id && feedbackPopoverType === 'DISLIKE'}
+                                onOpenChange={(open) => { if (!open) { setFeedbackPopoverMsgId(null); setFeedbackPopoverType(null); } }}
+                                trigger="click"
+                                placement="top"
+                                content={
+                                  <div style={{ width: 260 }}>
+                                    <div style={{ marginBottom: 12, fontWeight: 500 }}>请选择不满意的原因</div>
+                                    <Radio.Group
+                                      value={feedbackReason}
+                                      onChange={(e) => setFeedbackReason(e.target.value)}
+                                      style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}
+                                    >
+                                      <Radio value="HALLUCINATION">幻觉 / 事实错误</Radio>
+                                      <Radio value="WRONG_CITATION">引用来源不准确</Radio>
+                                      <Radio value="IRRELEVANT">回答不相关</Radio>
+                                      <Radio value="OTHER">其他</Radio>
+                                    </Radio.Group>
+                                    <Input.TextArea
+                                      rows={2}
+                                      placeholder="补充说明（可选）"
+                                      value={feedbackComment}
+                                      onChange={(e) => setFeedbackComment(e.target.value)}
+                                      style={{ marginBottom: 12 }}
+                                    />
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                      <Button size="sm" onClick={() => { setFeedbackPopoverMsgId(null); setFeedbackPopoverType(null); }}>取消</Button>
+                                      <Button size="sm" variant="primary" loading={feedbackSubmitting} onClick={submitNegativeFeedback}>提交</Button>
+                                    </div>
+                                  </div>
+                                }
+                              >
+                                <Tooltip title={msg.feedbackType === 'DISLIKE' ? '已反馈' : '点踩'}>
+                                  <button
+                                    className={cn('chat-action-btn', msg.feedbackType === 'DISLIKE' && 'chat-action-btn--active-like')}
+                                    onClick={() => openFeedbackPopover(msg.id, 'DISLIKE')}
+                                  >
+                                    {msg.feedbackType === 'DISLIKE' ? <DislikeFilled style={{ fontSize: 13 }} /> : <DislikeOutlined style={{ fontSize: 13 }} />}
+                                  </button>
+                                </Tooltip>
+                              </Popover>
+                              <Popover
+                                open={feedbackPopoverMsgId === msg.id && feedbackPopoverType === 'REPORT'}
+                                onOpenChange={(open) => { if (!open) { setFeedbackPopoverMsgId(null); setFeedbackPopoverType(null); } }}
+                                trigger="click"
+                                placement="top"
+                                content={
+                                  <div style={{ width: 260 }}>
+                                    <div style={{ marginBottom: 12, fontWeight: 500 }}>请选择报错原因</div>
+                                    <Radio.Group
+                                      value={feedbackReason}
+                                      onChange={(e) => setFeedbackReason(e.target.value)}
+                                      style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}
+                                    >
+                                      <Radio value="HALLUCINATION">幻觉 / 事实错误</Radio>
+                                      <Radio value="WRONG_CITATION">引用来源不准确</Radio>
+                                      <Radio value="IRRELEVANT">回答不相关</Radio>
+                                      <Radio value="OTHER">其他</Radio>
+                                    </Radio.Group>
+                                    <Input.TextArea
+                                      rows={2}
+                                      placeholder="补充说明（可选）"
+                                      value={feedbackComment}
+                                      onChange={(e) => setFeedbackComment(e.target.value)}
+                                      style={{ marginBottom: 12 }}
+                                    />
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                      <Button size="sm" onClick={() => { setFeedbackPopoverMsgId(null); setFeedbackPopoverType(null); }}>取消</Button>
+                                      <Button size="sm" variant="primary" loading={feedbackSubmitting} onClick={submitNegativeFeedback}>提交</Button>
+                                    </div>
+                                  </div>
+                                }
+                              >
+                                <Tooltip title={msg.feedbackType === 'REPORT' ? '已报错' : '报错'}>
+                                  <button
+                                    className={cn('chat-action-btn', msg.feedbackType === 'REPORT' && 'chat-action-btn--active-like')}
+                                    onClick={() => openFeedbackPopover(msg.id, 'REPORT')}
+                                  >
+                                    {msg.feedbackType === 'REPORT' ? <FlagFilled style={{ fontSize: 13 }} /> : <FlagOutlined style={{ fontSize: 13 }} />}
+                                  </button>
+                                </Tooltip>
+                              </Popover>
                               <Tooltip title={msg.favorited ? '取消收藏' : '收藏'}>
                                 <button
                                   className={cn('chat-action-btn', msg.favorited && 'chat-action-btn--active-fav')}
@@ -824,22 +1049,44 @@ ${text}`;
                                 <span>参考文档 ({msg.citations.length})</span>
                               </button>
                               <div className="chat-sources-list">
-                                {msg.citations.map((cite, cidx) => (
-                                  <div key={cidx} className="chat-source-item" onClick={() => navigateToDoc(cite.docId)}>
-                                    <div className="chat-source-header">
-                                      <FileTextOutlined style={{ fontSize: 14, color: 'var(--color-accent)', flexShrink: 0 }} />
-                                      <span className="chat-source-title">{cite.title || '无标题文档'}</span>
+                                {msg.citations.map((cite, cidx) => {
+                                  const trustLevel = cite.score >= 0.8 ? 'high' : cite.score >= 0.5 ? 'medium' : 'low';
+                                  const trustConfig = {
+                                    high: { label: '高可信', icon: <CheckCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-high' },
+                                    medium: { label: '中可信', icon: <InfoCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-medium' },
+                                    low: { label: '低可信', icon: <ExclamationCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-low' },
+                                  }[trustLevel];
+                                  return (
+                                    <div key={cidx} className="chat-source-item">
+                                      <div className="chat-source-header">
+                                        <FileTextOutlined style={{ fontSize: 14, color: 'var(--color-accent)', flexShrink: 0 }} />
+                                        <span
+                                          className="chat-source-title"
+                                          onClick={() => navigateToDoc(cite.docId)}
+                                          style={{ cursor: 'pointer' }}
+                                        >
+                                          {cite.title || '无标题文档'}
+                                        </span>
+                                      </div>
+                                      <div className="chat-source-meta">
+                                        <span className={cn('chat-source-tag', trustConfig.className)}>
+                                          {trustConfig.icon} {trustConfig.label}
+                                        </span>
+                                        <span className="chat-source-tag">v{cite.version}</span>
+                                        <span className="chat-source-tag">第{cite.page}页</span>
+                                        <button
+                                          className="chat-source-view-btn"
+                                          onClick={() => openSourcePreview(cite)}
+                                          title="查看原文并高亮"
+                                        >
+                                          <EyeOutlined style={{ fontSize: 11 }} />
+                                          查看原文
+                                        </button>
+                                      </div>
+                                      <p className="chat-source-quote">{cite.text}</p>
                                     </div>
-                                    <div className="chat-source-meta">
-                                      <span className={cn('chat-source-tag', cite.score > 0.85 ? 'chat-source-tag--high' : cite.score > 0.7 ? 'chat-source-tag--medium' : 'chat-source-tag--low')}>
-                                        {cite.score > 0.85 ? '高匹配' : cite.score > 0.7 ? '中匹配' : '低匹配'}
-                                      </span>
-                                      <span className="chat-source-tag">v{cite.version}</span>
-                                      <span className="chat-source-tag">第{cite.page}页</span>
-                                    </div>
-                                    <p className="chat-source-quote">{cite.text}</p>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -1172,6 +1419,7 @@ ${text}`;
                     onPressEnter={(e) => {
                       if (!e.shiftKey) {
                         e.preventDefault();
+                        if (isLoading || isStreaming) return;
                         handleSend();
                       }
                     }}
@@ -1591,6 +1839,17 @@ ${text}`;
           )}
         </div>
       </Modal>
+
+      {/* 引用原文预览 */}
+      <FilePreview
+        docId={previewDocId}
+        version={previewVersion}
+        filename={previewFilename}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        initialPage={previewPage}
+        highlightText={previewHighlight}
+      />
     </AppLayout>
   );
 }

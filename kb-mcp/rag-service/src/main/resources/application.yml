@@ -23,36 +23,43 @@ spring:
 
   data:
     redis:
-      host: ${RAG_REDIS_HOST:localhost}
-      port: ${RAG_REDIS_PORT:26379}
-      password: ${RAG_REDIS_PASSWORD:kb_redis_dev_2026}
+      host: ${KB_REDIS_HOST:localhost}
+      port: ${KB_REDIS_PORT:26379}
+      password: ${KB_REDIS_PASSWORD:}
 
 app:
+  dev-context:
+    user-id: ${KB_DEV_USER_ID:current-user}
+    sec-level: ${KB_DEV_SEC_LEVEL:5}
+    perm-group-ids: ${KB_DEV_PERM_GROUP_IDS:1}
+    user-groups: ${KB_DEV_USER_GROUPS:}
+
   milvus:
-    host: ${MILVUS_HOST:localhost}
-    port: ${MILVUS_PORT:19530}
-    collection-name: ${MILVUS_COLLECTION:kb_documents}
+    host: ${KB_MILVUS_HOST:localhost}
+    port: ${KB_MILVUS_PORT:19530}
+    collection-name: ${KB_MILVUS_COLLECTION:kb_documents}
 
   embedding:
-    # url: ${EMBEDDING_SERVICE_URL:http://193.134.211.121:31296}/embeddings
-    url: ${EMBEDDING_SERVICE_URL:http://192.168.30.47:31296}/embeddings
-    timeout-seconds: 30
-    model-name: BGE-zh-v1.5
-    dim: 1024
-    max-retries: 3
+    url: ${KB_EMBEDDING_SERVICE_URL:http://localhost:31296}/embeddings
+    timeout-seconds: ${KB_EMBEDDING_TIMEOUT_SECONDS:30}
+    model-name: ${KB_EMBEDDING_MODEL_NAME:BGE-zh-v1.5}
+    dim: ${KB_EMBEDDING_DIM:1024}
+    max-retries: ${KB_EMBEDDING_MAX_RETRIES:3}
 
   rerank:
-    url: ${RERANK_SERVICE_URL:http://localhost:31003}/rerank/v1/rerank
-    timeout-seconds: 30
-    max-retries: 3
+    url: ${KB_RERANK_SERVICE_URL:http://localhost:31003}/rerank/v1/rerank
+    timeout-seconds: ${KB_RERANK_TIMEOUT_SECONDS:30}
+    max-retries: ${KB_RERANK_MAX_RETRIES:3}
+    min-score: ${KB_RAG_RERANK_MIN_SCORE:0.3}
+    final-top-k: ${KB_RAG_RERANK_FINAL_TOP_K:5}
 
   llm:
-    url: ${LLM_GATEWAY_URL:http://localhost:31004}/llm/v1/chat/completions
-    timeout-seconds: 60
-    temperature: 0.3
-    max-tokens: 2048
-    model: ${LLM_MODEL:MiniMax-M2.7}
-    max-retries: 2
+    url: ${KB_LLM_GATEWAY_URL:http://localhost:31004}/llm/v1/chat/completions
+    timeout-seconds: ${KB_LLM_TIMEOUT_SECONDS:60}
+    temperature: ${KB_LLM_TEMPERATURE:0.3}
+    max-tokens: ${KB_LLM_MAX_TOKENS:2048}
+    model: ${KB_LLM_MODEL:MiniMax-M2.7}
+    max-retries: ${KB_LLM_MAX_RETRIES:2}
     prompt-budget:
       enabled: ${RAG_PROMPT_BUDGET_ENABLED:true}
       context-window-tokens: ${RAG_CONTEXT_WINDOW_TOKENS:8192}

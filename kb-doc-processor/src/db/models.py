@@ -74,6 +74,8 @@ class EmbedTask(Base):
     chunk_type: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     parent_ref: Mapped[str] = mapped_column(String(128), nullable=False, default="")  # Parent-Children 关联
     is_parent: Mapped[bool] = mapped_column(default=False)  # 是否为 Parent chunk
+    keywords: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # 关键词，空格分隔
+    summary: Mapped[str] = mapped_column(String(256), nullable=False, default="")   # 单句摘要，≤200字符
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
     milvus_pk: Mapped[Optional[int]] = mapped_column(BigInteger)
     milvus_version: Mapped[Optional[int]] = mapped_column(BigInteger)

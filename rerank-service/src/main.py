@@ -25,7 +25,7 @@ def main():
     app = FastAPI(title="kb-rerank-service", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3105", "http://localhost:3106"],
+        allow_origins=config.cors.allowed_origins.split(","),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -40,8 +40,7 @@ def main():
     signal.signal(signal.SIGINT, lambda s, f: (shutdown(), sys.exit(0)))
     signal.signal(signal.SIGTERM, lambda s, f: (shutdown(), sys.exit(0)))
 
-    port = int(os.environ.get("RERANK_SERVICE_PORT", "31003"))
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=config.server.port, log_level="info")
 
 
 if __name__ == "__main__":
