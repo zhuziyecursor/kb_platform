@@ -2,7 +2,7 @@
 
 > 版本：V1.1  
 > 日期：2026-05-10  
-> 最后更新：2026-05-12  
+> 最后更新：2026-05-13  
 > 依据：项目现状盘点、用户期望功能点、三阶段技术路线
 
 ---
@@ -10,11 +10,11 @@
 ## 零、整体进度
 
 ```
-████████████░░░░░░░░░░░░  ~35%
+█████████████░░░░░░░░░░░  ~42%
 
-已完成：功能域 5（反馈闭环与持续优化）— 5.1 / 5.2 / 5.3 / 5.4
+已完成：功能域 5（反馈闭环与持续优化）、功能域 1.4（元数据自动抽取）
 
-  功能域 1（生命周期）  ░░░░░░░░░░ 0%
+  功能域 1（生命周期）  ██░░░░░░░░ 20%
   功能域 2（多轮对话）  ░░░░░░░░░░ 0%
   功能域 3（溯源引用）  ░░░░░░░░░░ 0%
   功能域 4（权限控制）  ░░░░░░░░░░ 0%
@@ -46,10 +46,18 @@ Phase 2 的验收标准：**精确条款 Recall@5 提升 30% 以上；FAQ 平均
 | 1.1 | **OCR/扫描件解析** | 图片 PDF、扫描件、照片中的文字可提取入库 | `OCRParser` 为占位代码，直接抛异常 | 接入 `PaddleOCR` 或 `Tesseract+EasyOCR`，在 `kb-doc-processor` 中实现 `OCRParser.parse()`；配置开关控制；质量低于 Tika 文本时标记 `parse_quality` | 图片 PDF 上传后 5 分钟内完成解析入库；OCR 文本与人工校对准确率 > 90% |
 | 1.2 | **PII 敏感信息脱敏** | 入库前自动检测并脱敏身份证号、手机号、银行卡号、姓名等 | `PIIFilter` 为占位代码 | 基于正则 + 规则引擎实现 `PIIFilter.clean()`；支持配置脱敏策略（`MASK`/`REMOVE`/`HASH`）；脱敏标记写入 `knowledge_clean` 的 `meta_json` | 标准测试集（100 条含 PII 文本）检测率 > 95%，误杀率 < 5% |
 | 1.3 | **增量更新与版本覆盖** | 支持文档内容更新后只变更差异 chunk，不重跑全量 | 当前任何修改触发完整重新解析；`overwriteExisting` 抛 PHASE2 异常 | 基于 `text_hash` 对比：新 chunk 与旧 chunk 的 hash 一致则跳过，差异部分生成新的 `embed_task`；旧版本 Milvus 向量标记 `OFFBOARDED` 或删除 | 30 页文档小修改后入库时间 < 1 分钟；版本历史可回溯 |
-| 1.4 | **元数据自动抽取** | chunk 级关键词、摘要自动生成 | `keywords`/`summary` Milvus 字段为空 | 接入轻量模型（如 `KeyBERT` 或 LLM 摘要接口）在 `kb-doc-processor` 切片后提取；`keywords` 空格分隔写入 Milvus | 关键词与人工标注一致性 > 70%；摘要覆盖核心语义 |
+| 1.4 | **元数据自动抽取** ✅ | chunk 级关键词、摘要自动生成 | ~~`keywords`/`summary` Milvus 字段为空~~ | 已实现：`MetadataExtractor` 提供 jieba TF-IDF（本地）+ LLM 批量提取（通过 llm-gateway）双模式，LLM 不可用时自动降级。Pipeline 在分块后批量提取，写入 PostgreSQL + Kafka → Milvus | ✅ 关键词空格分隔写入 Milvus；摘要 ≤200 字；25 个测试通过 |
 | 1.5 | **文档软下线** | 支持文档/版本下线，下线后不再被检索 | 删除仅删 DB 和 MinIO，Milvus 向量未同步删除 | `ingest-service` 增加 `offboard` 接口；vector-service 消费 `delta-notify` 或同步调用 Milvus `delete`；`knowledge_version` 状态变为 `OFFBOARDED` | 下线后 30 秒内检索不再命中；Trace 中可查询下线记录 |
 
 **优先级：1.3 > 1.5 > 1.1 > 1.2 > 1.4**
+
+**1.4 实施摘要（2026-05-13）：**
+- `MetadataExtractor` 新增 `extract_batch()` 批量接口，支持 LLM（llm-gateway）/ jieba 双模式
+- LLM 模式：通过 `/llm/v1/chat/completions` 批量提取，token 消耗可控（每 8 chunks 一次调用）
+- 本地模式（jieba）：TF-IDF 关键词 + TextRank 摘要，LLM 不可用时自动降级
+- Pipeline 新增 `_extract_metadata()` 阶段，一次批量提取所有 chunks，避免逐条重复调用
+- 契约更新：`embed-task-message.json` 添加 `keywords`/`summary`/`isParent` 字段；Milvus collection 文档移除 PHASE2/PHASE3 标注
+- 新增 10 个测试（LLM mock、降级、JSON 解析），总计 25 个测试
 
 ---
 

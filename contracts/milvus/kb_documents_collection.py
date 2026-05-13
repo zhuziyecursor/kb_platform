@@ -33,7 +33,7 @@ COLLECTION_NAME = "kb_documents"
 
 # ─── 向量维度（与 embedding-service 使用的模型对应）──────────────────────────────
 # BGE-zh-v1.5: 1024 维
-# PHASE2: 多模型路由时此值从配置读取，一期固定 1024
+# 当前固定 1024（BGE-zh-v1.5），多模型路由时从配置读取
 VECTOR_DIM = 1024
 
 
@@ -46,7 +46,7 @@ def get_schema() -> CollectionSchema:
     2. 业务标识字段：doc_id, tenant_id, version, chunk_seq
     3. 向量字段：vector
     4. 内容字段：text, title, section_path, page
-    5. 标签与语义字段：tags, chunk_type（MVP）；keywords, summary（二期/三期）
+    5. 标签与语义字段：tags, chunk_type, keywords, summary（已实现，支持 jieba/LLM 双模式提取）
     6. ACL 预过滤字段：sec_level, region_code, biz_domain, perm_group_id, effective_from, effective_to
     7. 元数据字段：owner_uid, acl_version, create_time
     """
@@ -130,8 +130,8 @@ def get_schema() -> CollectionSchema:
         # ── 标签与语义字段 ────────────────────────────────────────────────────────
         # tags 采用继承展平：文档标签 + 章节标签 + 分片标签，逗号分隔，最多 9 个（3×3）
         # chunk_type 补偿向量盲区：区分 definition / procedure / rule / example / disclaimer
-        # keywords（二期）：关键词提取，支持 BM25 混合检索
-        # summary（三期）：LLM 单句摘要，rerank 时 query vs summary 比 query vs 原文更准
+        # keywords：jieba TF-IDF 或 LLM 关键词提取，支持 BM25 混合检索
+        # summary：TextRank 或 LLM 单句摘要，rerank 时 query vs summary 比 query vs 原文更准
         FieldSchema(
             name="tags",
             dtype=DataType.VARCHAR,
@@ -148,13 +148,13 @@ def get_schema() -> CollectionSchema:
             name="keywords",
             dtype=DataType.VARCHAR,
             max_length=256,
-            description="[PHASE2] 关键词（空格分隔），由 chunker 自动提取，支持 BM25 混合检索",
+            description="关键词（空格分隔），由 MetadataExtractor 自动提取（jieba TF-IDF / LLM 双模式），支持 BM25 混合检索",
         ),
         FieldSchema(
             name="summary",
             dtype=DataType.VARCHAR,
             max_length=256,
-            description="[PHASE3] LLM 精修单句摘要，用于 rerank 阶段 query vs summary 提高精度",
+            description="单句摘要（≤200 字），由 MetadataExtractor 生成（TextRank / LLM 双模式），用于 rerank 阶段 query vs summary 匹配",
         ),
 
         # ── ACL 预过滤字段 ────────────────────────────────────────────────────────

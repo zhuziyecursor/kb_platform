@@ -54,6 +54,7 @@ def test_process_message_updates_observable_stages(monkeypatch):
     monkeypatch.setattr(pipeline, "_parse", MagicMock(return_value=parse_result))
     monkeypatch.setattr(pipeline, "_clean", MagicMock(return_value=clean_result))
     monkeypatch.setattr(pipeline, "_chunk", MagicMock(return_value=chunks))
+    monkeypatch.setattr(pipeline, "_extract_metadata", MagicMock())
     monkeypatch.setattr(pipeline, "_embed", MagicMock(return_value=[[0.1, 0.2]]))
     monkeypatch.setattr(pipeline, "_save_results", MagicMock())
     monkeypatch.setattr(pipeline, "_publish_embed_tasks", MagicMock())

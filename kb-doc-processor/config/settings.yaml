@@ -53,7 +53,7 @@ kb_document_processor:
 
   # Embedding 服务配置
   embedding:
-    url: "${KB_EMBEDDING_SERVICE_URL:http://localhost:31296}/embeddings"
+    url: "${KB_EMBEDDING_SERVICE_URL:http://192.168.30.47:31296/embeddings}"
     timeout_seconds: ${KB_EMBEDDING_TIMEOUT_SECONDS:120}
     max_retries: ${KB_EMBEDDING_MAX_RETRIES:3}
     model_name: "${KB_EMBEDDING_MODEL_NAME:BGE-zh-v1.5}"
@@ -79,6 +79,12 @@ kb_document_processor:
       - "ns"
       - "nr"
     custom_dict_path: "${KB_METADATA_CUSTOM_DICT_PATH:src/utils/custom_dict.txt}"
+    # LLM 增强提取（Phase 2）：通过 llm-gateway 批量提取关键词和摘要
+    llm_enabled: ${KB_METADATA_LLM_ENABLED:false}
+    llm_gateway_url: "${KB_LLM_GATEWAY_URL:http://localhost:31004}/llm/v1/chat/completions"
+    llm_model: "${KB_METADATA_LLM_MODEL:MiniMax-M2.7}"
+    llm_batch_size: ${KB_METADATA_LLM_BATCH_SIZE:8}
+    llm_timeout_seconds: ${KB_METADATA_LLM_TIMEOUT_SECONDS:60}
 
   parsers:
     - name: TikaParser

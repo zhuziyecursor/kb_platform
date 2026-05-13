@@ -153,6 +153,23 @@
       "type": "string",
       "description": "Parent chunk 引用，格式: docId/version/parentSeq。无 Parent 时为空字符串。单层 chunk 也为空字符串。",
       "example": ""
+    },
+    "keywords": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "空格分隔的关键词（3-5 个），由 MetadataExtractor 自动提取，用于 BM25 混合检索",
+      "example": "内部审计 风险评估 控制测试"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "单句摘要（不超过 200 字），由 MetadataExtractor 生成，用于 rerank 阶段 query vs summary 匹配",
+      "example": "内部审计通过系统和规范的方法评价并改善组织的风险管理、控制和治理过程。"
+    },
+    "isParent": {
+      "type": "boolean",
+      "description": "是否为 Parent chunk（SemanticChunker/LLMChunker 产出），用于父子召回策略",
+      "default": false
     }
   },
   "additionalProperties": true,

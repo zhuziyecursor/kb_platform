@@ -68,8 +68,7 @@ class ChunkDefaults(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    # url: str = "http://192.168.30.47:31296/embeddings"
-    url: str = "http://193.134.211.121:31296/embeddings"
+    url: str = "http://192.168.30.47:31296/embeddings"
     timeout_seconds: int = 60
     max_retries: int = 3
     model_name: str = "BGE-zh-v1.5"
@@ -100,6 +99,12 @@ class MetadataExtractorConfig(BaseModel):
     short_text_threshold: int = 100
     allow_pos: tuple = ("n", "vn", "vd", "nt", "nz", "v", "ns", "nr")
     custom_dict_path: str = "src/utils/custom_dict.txt"
+    # LLM-based extraction (Phase 2)
+    llm_enabled: bool = False
+    llm_gateway_url: str = "http://localhost:31004/llm/v1/chat/completions"
+    llm_model: str = "MiniMax-M2.7"
+    llm_batch_size: int = 8
+    llm_timeout_seconds: int = 60
 
 
 class ServerConfig(BaseModel):
@@ -126,6 +131,9 @@ class AppConfig(BaseModel):
     cors: CorsConfig = CorsConfig()
 
 
+import re
+_env_var_pattern = re.compile(r'\$\{([^}:]+)(?::([^}]*))?\}')
+
 def _resolve_env_vars(obj, _path=()):
     """Recursively resolve ${ENV_VAR} or ${ENV_VAR:default} placeholders in dict/list config values."""
     if isinstance(obj, dict):
@@ -134,13 +142,14 @@ def _resolve_env_vars(obj, _path=()):
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
             obj[i] = _resolve_env_vars(v, _path + (str(i),))
-    elif isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
-        env_var = obj[2:-1]
-        # Handle default value syntax: ${ENV_VAR:default}
-        if ":" in env_var:
-            env_name, default = env_var.split(":", 1)
+    elif isinstance(obj, str):
+        # Use regex to find all ${ENV_VAR:default} patterns, even embedded in a larger string
+        def _replacer(m):
+            env_name = m.group(1)
+            default = m.group(2) if m.group(2) is not None else ''
             return os.environ.get(env_name, default)
-        return os.environ.get(env_var, '')
+        resolved = _env_var_pattern.sub(_replacer, obj)
+        return resolved
     return obj
 
 

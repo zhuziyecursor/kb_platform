@@ -62,7 +62,13 @@ class Pipeline:
             short_text_threshold=config.metadata_extractor.short_text_threshold,
             allow_pos=config.metadata_extractor.allow_pos,
             custom_dict_path=config.metadata_extractor.custom_dict_path,
+            llm_enabled=config.metadata_extractor.llm_enabled,
+            llm_gateway_url=config.metadata_extractor.llm_gateway_url,
+            llm_model=config.metadata_extractor.llm_model,
+            llm_batch_size=config.metadata_extractor.llm_batch_size,
+            llm_timeout_seconds=config.metadata_extractor.llm_timeout_seconds,
         )
+        self._current_metadata: list[dict] = []
 
     def process_message(self, msg: FileIngestMessage):
         logger.info(
@@ -77,6 +83,7 @@ class Pipeline:
             clean_result = self._clean(parse_result, msg)
             self._update_document_stage(msg, "CHUNKING")
             chunks = self._chunk(clean_result, msg)
+            self._extract_metadata(chunks)
             self._update_document_stage(msg, "EMBEDDING")
             vectors = self._embed(chunks)
             self._update_document_stage(msg, "VECTOR_PENDING")
@@ -156,6 +163,22 @@ class Pipeline:
 
         return all_vectors
 
+    def _extract_metadata(self, chunks: ChunkResult):
+        """批量提取所有 chunk 的关键词和摘要，存储到 self._current_metadata。"""
+        if not chunks.chunks:
+            self._current_metadata = []
+            return
+
+        batch_input = [
+            {"text": c.text, "is_parent": c.is_parent}
+            for c in chunks.chunks
+        ]
+        self._current_metadata = self._metadata_extractor.extract_batch(batch_input)
+        logger.info(
+            f"Metadata extracted for {len(chunks.chunks)} chunks "
+            f"(llm_enabled={self._metadata_extractor.llm_enabled})"
+        )
+
     @staticmethod
     def _infer_chunk_type(text: str) -> str:
         for pattern, ctype in CHUNK_TYPE_RULES:
@@ -191,22 +214,31 @@ class Pipeline:
             session.add(clean_record)
 
             # knowledge_structured 保留 Parent/Child 元数据
+            # Group chunks by section_path
+            sections_map: dict[str, list] = {}
+            for chunk in chunks.chunks:
+                key = chunk.section_path or ""
+                sections_map.setdefault(key, []).append(chunk)
+
+            sections = []
+            for section_path, section_chunks in sections_map.items():
+                first = section_chunks[0]
+                sections.append({
+                    "section_path": section_path or None,
+                    "page": first.page,
+                    "paragraphs": [
+                        {
+                            "text": c.text,
+                            "chunkSeq": c.chunk_seq,
+                            "isParent": c.is_parent,
+                            "parentRef": c.parent_ref,
+                        }
+                        for c in section_chunks
+                    ],
+                })
+
             structured_body = {
-                "sections": [
-                    {
-                        "section_path": c.section_path,
-                        "page": c.page,
-                        "paragraphs": [
-                            {
-                                "text": c.text,
-                                "chunkSeq": c.chunk_seq,
-                                "isParent": c.is_parent,
-                                "parentRef": c.parent_ref,
-                            }
-                            for c in chunks.chunks
-                        ],
-                    }
-                ],
+                "sections": sections,
                 "traceId": msg.trace_id,
             }
             structured_record = KnowledgeStructured(
@@ -248,8 +280,8 @@ class Pipeline:
                     chunk_type=Pipeline._infer_chunk_type(chunk.text),
                     parent_ref=parent_ref,
                     is_parent=chunk.is_parent,
-                    keywords=self._metadata_extractor.extract_keywords(chunk.text),
-                    summary=self._metadata_extractor.extract_summary(chunk.text, is_parent=chunk.is_parent),
+                    keywords=self._current_metadata[i].get("keywords", "") if i < len(self._current_metadata) else "",
+                    summary=self._current_metadata[i].get("summary", "") if i < len(self._current_metadata) else "",
                     status="PENDING",
                     retry_count=0,
                     max_retries=self._config.retry.max_retries,
@@ -313,8 +345,8 @@ class Pipeline:
                 vector=vector,
                 parent_ref=parent_ref,
                 is_parent=chunk.is_parent,
-                keywords=self._metadata_extractor.extract_keywords(chunk.text),
-                summary=self._metadata_extractor.extract_summary(chunk.text, is_parent=chunk.is_parent),
+                keywords=self._current_metadata[i].get("keywords", "") if i < len(self._current_metadata) else "",
+                summary=self._current_metadata[i].get("summary", "") if i < len(self._current_metadata) else "",
             )
             self._producer.send(
                 topic=self._config.kafka.embed_task_topic,
