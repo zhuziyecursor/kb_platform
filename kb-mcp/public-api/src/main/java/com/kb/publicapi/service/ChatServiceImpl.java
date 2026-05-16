@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -76,6 +77,8 @@ public class ChatServiceImpl implements ChatService {
         if (citationsObj instanceof List<?> rawList) {
             for (Object item : rawList) {
                 if (item instanceof Map<?, ?> c) {
+                    List<String> sourceChannels = extractStringList(c.get("sourceChannels"));
+                    Map<String, Integer> channelRanks = extractStringIntMap(c.get("channelRanks"));
                     citations.add(CitationDto.builder()
                             .index(c.get("index") != null ? ((Number) c.get("index")).intValue() : null)
                             .docId((String) c.get("docId"))
@@ -91,12 +94,15 @@ public class ChatServiceImpl implements ChatService {
                             .effectiveFrom((String) c.get("effectiveFrom"))
                             .effectiveTo((String) c.get("effectiveTo"))
                             .text((String) c.get("text"))
+                            .sourceChannels(sourceChannels)
+                            .channelRanks(channelRanks)
                             .build());
                 }
             }
         }
 
         // 4. Build response
+        Map<String, Integer> channelStats = extractStringIntMap(data.get("channelStats"));
         ChatResponse response = ChatResponse.builder()
                 .answer((String) data.get("answer"))
                 .citations(citations)
@@ -104,6 +110,7 @@ public class ChatServiceImpl implements ChatService {
                 .reason((String) data.get("reason"))
                 .sessionId((String) data.get("sessionId"))
                 .confidence((String) data.get("confidence"))
+                .channelStats(channelStats)
                 .build();
 
         // 5. Audit
@@ -112,5 +119,27 @@ public class ChatServiceImpl implements ChatService {
                 null, 200, response.getTraceId(), null, latency);
 
         return response;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> extractStringList(Object obj) {
+        if (!(obj instanceof List<?> rawList)) return null;
+        List<String> result = new ArrayList<>();
+        for (Object item : rawList) {
+            if (item instanceof String s) result.add(s);
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Integer> extractStringIntMap(Object obj) {
+        if (!(obj instanceof Map<?, ?> rawMap)) return null;
+        Map<String, Integer> result = new LinkedHashMap<>();
+        for (var entry : rawMap.entrySet()) {
+            if (entry.getKey() instanceof String s && entry.getValue() instanceof Number n) {
+                result.put(s, n.intValue());
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 }

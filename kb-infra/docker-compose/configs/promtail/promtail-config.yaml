@@ -1,0 +1,120 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://kb-loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ---- rag-service JSON logs ----
+  - job_name: rag-service
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: rag-service
+          __path__: /logs/rag-service/*.json
+    pipeline_stages:
+      - json:
+          expressions:
+            ts: ts
+            message: message
+            level: level
+            logger_name: logger_name
+            thread_name: thread_name
+            service: service
+            trace_id: trace_id
+            span: span
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+      - labels:
+          level:
+          service:
+          trace_id:
+          span:
+
+  # ---- kb-doc-processor JSON logs ----
+  - job_name: doc-processor
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: kb-doc-processor
+          __path__: /logs/doc-processor/*.json
+    pipeline_stages:
+      - json:
+          expressions:
+            asctime: asctime
+            name: name
+            levelname: levelname
+            message: message
+            service: service
+            trace_id: trace_id
+            event_type: event_type
+            span: span
+      - timestamp:
+          source: asctime
+          format: "2006-01-02 15:04:05,999"
+      - labels:
+          levelname:
+          service:
+          trace_id:
+          span:
+
+  # ---- Java dev.log unstructured logs ----
+  - job_name: java-dev-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: java-backend
+          __path__: /logs/dev-logs/**/*.dev.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2})\s+(?P<level>\w+)\s+(?P<pid>\d+)\s+---\s+\[(?P<service>[\w-]+)\]\s+\[\s*(?P<thread>[^\]]*)\]\s+(?P<logger>[\w.]+)\s+:\s+(?P<message>.*)$'
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+      - labels:
+          level:
+          service:
+
+  # ---- vector-service plain log ----
+  - job_name: vector-service
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: vector-service
+          __path__: /logs/vector-service/*.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2})\s+(?P<level>\w+)\s+(?P<pid>\d+)\s+---\s+\[(?P<service>[\w-]+)\]\s+\[\s*(?P<thread>[^\]]*)\]\s+(?P<logger>[\w.]+)\s+:\s+(?P<message>.*)$'
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+      - labels:
+          level:
+          service:
+
+  # ---- audit.log ----
+  - job_name: audit-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: public-api
+          __path__: /logs/audit/*.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2})\s+(?P<level>\w+)\s+(?P<pid>\d+)\s+---\s+\[(?P<service>[\w-]+)\]\s+\[\s*(?P<thread>[^\]]*)\]\s+(?P<logger>[\w.]+)\s+:\s+(?P<message>.*)$'
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+      - labels:
+          level:
+          service:

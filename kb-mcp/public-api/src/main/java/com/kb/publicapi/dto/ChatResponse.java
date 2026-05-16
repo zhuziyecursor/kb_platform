@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -18,4 +19,5 @@ public class ChatResponse {
     private String reason;
     private String sessionId;
     private String confidence;
+    private Map<String, Integer> channelStats;
 }

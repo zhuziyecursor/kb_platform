@@ -10,15 +10,15 @@ import {
   Input,
   Select,
   Typography,
-  Badge,
   Modal,
   App,
   Descriptions,
-  Tabs,
   Segmented,
   Row,
   Col,
   Dropdown,
+  Tooltip,
+  Empty,
 } from 'antd';
 import {
   PlusOutlined,
@@ -26,12 +26,14 @@ import {
   ReloadOutlined,
   DeleteOutlined,
   EyeOutlined,
-  FolderOutlined,
   AppstoreOutlined,
   UnorderedListOutlined,
   MoreOutlined,
   FileTextOutlined,
   ClusterOutlined,
+  CheckCircleOutlined,
+  SyncOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { DocStatus, SecLevel, DocType, KnowledgeSpace } from '@/types';
@@ -49,6 +51,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 const { Text } = Typography;
 
+const STATUS_ACCENT: Record<string, string> = {
+  READY: 'var(--color-success)',
+  PROCESSING: 'var(--color-info)',
+  PENDING: 'var(--color-warning)',
+  FAILED: 'var(--color-destructive)',
+  DRAFT: 'var(--color-secondary)',
+};
+
 function DocumentListContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -56,7 +66,7 @@ function DocumentListContent() {
   const [data, setData] = useState<DocSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [spaces, setSpaces] = useState<KnowledgeSpace[]>([]);
-  const [activeSpaceTab, setActiveSpaceTab] = useState<string>(urlSpaceId || 'ALL');
+  const [activeSpaceId, setActiveSpaceId] = useState<string | undefined>(urlSpaceId || undefined);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocStatus | 'ALL'>('ALL');
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
@@ -71,19 +81,16 @@ function DocumentListContent() {
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const { modal, message } = App.useApp();
 
-  // 加载知识空间列表
   useEffect(() => {
     listSpaces().then(setSpaces).catch(() => message.error('加载知识空间失败'));
   }, []);
 
-  // 同步 URL spaceId 参数到 activeSpaceTab
   useEffect(() => {
     if (urlSpaceId) {
-      setActiveSpaceTab(urlSpaceId);
+      setActiveSpaceId(urlSpaceId);
     }
   }, [urlSpaceId]);
 
-  // 加载文档列表
   const fetchDocs = useCallback((spaceId?: string) => {
     setLoading(true);
     listDocs(spaceId)
@@ -93,10 +100,10 @@ function DocumentListContent() {
   }, []);
 
   useEffect(() => {
-    fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab);
-  }, [activeSpaceTab, fetchDocs]);
+    fetchDocs(activeSpaceId);
+  }, [activeSpaceId, fetchDocs]);
 
-  // 对 PENDING/PROCESSING 文档自动轮询状态，终态后停止
+  // 对 PENDING/PROCESSING 文档自动轮询状态
   useEffect(() => {
     const inProgressDocs = data.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING');
     if (inProgressDocs.length === 0) {
@@ -106,7 +113,7 @@ function DocumentListContent() {
       }
       return;
     }
-    if (pollingRef.current) return; // 已在轮询，不重复创建
+    if (pollingRef.current) return;
 
     pollingRef.current = setInterval(async () => {
       const updates = await Promise.allSettled(
@@ -136,12 +143,6 @@ function DocumentListContent() {
     };
   }, [data]);
 
-  // 切换知识空间 Tab 时重新加载
-  const handleSpaceTabChange = (key: string) => {
-    setActiveSpaceTab(key);
-  };
-
-  // LUI Action Handler
   const handleLUIAction = useCallback((action: LUIAction) => {
     if (action.type === 'NAVIGATE' && action.payload.path === '/documents') {
       message.success('已通过智能指令导航到文档列表');
@@ -155,7 +156,7 @@ function DocumentListContent() {
   }, []);
 
   const handleDelete = (doc: DocSummary) => {
-    const config = {
+    modal.confirm({
       title: '确认删除',
       content: `确认永久删除文档「${doc.title}」吗？此操作不可撤销。`,
       okText: '确认删除',
@@ -164,48 +165,39 @@ function DocumentListContent() {
         return deleteDoc(doc.docId, doc.version)
           .then(() => {
             message.success(`文档「${doc.title}」已删除`);
-            fetchDocs();
+            fetchDocs(activeSpaceId);
           })
           .catch(() => {
             message.error('删除失败');
           });
       },
-    };
-    modal.confirm(config);
+    });
   };
 
-  const handleMenuClick = (doc: DocSummary, key: string) => {
-    if (key === 'view') {
-      router.push(`/documents/${doc.docId}`);
-    }
-    if (key === 'retry') {
-      modal.confirm({
-        title: '确认重试',
-        content: `确认重新触发文档「${doc.title}」的入库流程吗？`,
-        onOk: async () => {
-          setRetryingDocIds(prev => new Set(prev).add(doc.docId));
-          try {
-            await retryDoc(doc.docId, doc.version);
-            message.success(`已重新触发文档「${doc.title}」的入库流程`);
-            setData(prev => prev.map(d =>
-              d.docId === doc.docId ? { ...d, status: 'PROCESSING' } : d
-            ));
-          } catch {
-            message.error('重试失败，请稍后再试');
-          } finally {
-            setRetryingDocIds(prev => { const s = new Set(prev); s.delete(doc.docId); return s; });
-          }
-        },
-      });
-    }
-    if (key === 'delete') {
-      handleDelete(doc);
-    }
+  const handleRetry = (doc: DocSummary) => {
+    modal.confirm({
+      title: '确认重试',
+      content: `确认重新触发文档「${doc.title}」的入库流程吗？`,
+      onOk: async () => {
+        setRetryingDocIds(prev => new Set(prev).add(doc.docId));
+        try {
+          await retryDoc(doc.docId, doc.version);
+          message.success(`已重新触发文档「${doc.title}」的入库流程`);
+          setData(prev => prev.map(d =>
+            d.docId === doc.docId ? { ...d, status: 'PROCESSING' } : d
+          ));
+        } catch {
+          message.error('重试失败，请稍后再试');
+        } finally {
+          setRetryingDocIds(prev => { const s = new Set(prev); s.delete(doc.docId); return s; });
+        }
+      },
+    });
   };
 
   const handleBatchDelete = () => {
     const selectedDocs = data.filter((doc: any) => selectedRowKeys.includes(doc.id));
-    const config = {
+    modal.confirm({
       title: '确认批量删除',
       content: `确认永久删除选中的 ${selectedRowKeys.length} 个文档吗？此操作不可撤销。`,
       okText: '确认删除',
@@ -215,14 +207,13 @@ function DocumentListContent() {
           .then(() => {
             message.success(`已删除 ${selectedRowKeys.length} 个文档`);
             setSelectedRowKeys([]);
-            fetchDocs();
+            fetchDocs(activeSpaceId);
           })
           .catch(() => {
             message.error('部分文档删除失败');
           });
       },
-    };
-    modal.confirm(config);
+    });
   };
 
   const columns: ColumnsType<DocSummary> = [
@@ -230,20 +221,15 @@ function DocumentListContent() {
       title: '文档名称',
       dataIndex: 'title',
       key: 'title',
-      render: (title: string, record) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{title}</Text>
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            ID: {record.docId} | v{record.version}
-          </Text>
-        </Space>
+      render: (title: string) => (
+        <Text strong style={{ fontSize: 14 }}>{title}</Text>
       ),
     },
     {
-      title: '类型',
+      title: '文件类型',
       dataIndex: 'docType',
       key: 'docType',
-      width: 90,
+      width: 110,
       render: (type: DocType) => <DocTypeBadge docType={type} />,
       filters: [
         { text: '制度', value: 'REGULATION' },
@@ -255,64 +241,41 @@ function DocumentListContent() {
       onFilter: (value, record) => record.docType === value,
     },
     {
-      title: '密级',
-      dataIndex: 'secLevel',
-      key: 'secLevel',
-      width: 80,
-      render: (level: SecLevel) => <SecLevelBadge level={level} />,
+      title: '所属行业',
+      dataIndex: 'bizDomain',
+      key: 'bizDomain',
+      width: 110,
+      render: (biz: string) => <Tag color="blue">{biz}</Tag>,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 110,
       render: (status: DocStatus) => <DocStatusBadge status={status} />,
       filters: [
-        { text: '草稿', value: 'DRAFT' },
-        { text: '等待中', value: 'PENDING' },
-        { text: '处理中', value: 'PROCESSING' },
         { text: '已上线', value: 'READY' },
+        { text: '处理中', value: 'PROCESSING' },
+        { text: '等待中', value: 'PENDING' },
         { text: '失败', value: 'FAILED' },
       ],
       onFilter: (value, record) => record.status === value,
-    },
-    {
-      title: '业务域',
-      dataIndex: 'bizDomain',
-      key: 'bizDomain',
-      width: 100,
-      render: (biz: string) => <Tag>{biz}</Tag>,
-    },
-    {
-      title: '适用地域',
-      dataIndex: 'regionCode',
-      key: 'regionCode',
-      width: 110,
-      render: (region: string) => {
-        const map: Record<string, string> = {
-          'CN-NATIONAL': '全国',
-          'CN-EAST': '华东',
-          'CN-SOUTH': '华南',
-          'CN-NORTH': '华北',
-        };
-        return <Text style={{ fontSize: 12 }}>{map[region] || region}</Text>;
-      },
     },
     {
       title: '上传者',
       dataIndex: 'ownerUid',
       key: 'ownerUid',
       width: 120,
-      render: (uid: string) => <Text type="secondary" style={{ fontSize: 12 }}>{uid}</Text>,
+      render: (uid: string) => <Text style={{ fontSize: 13 }}>{uid}</Text>,
     },
     {
-      title: '创建时间',
+      title: '上传时间',
       dataIndex: 'createTime',
       key: 'createTime',
       width: 160,
       sorter: (a, b) => (a.createTime || '').localeCompare(b.createTime || ''),
       render: (time: string) => (
-        <Text type="secondary" style={{ fontSize: 12 }}>
+        <Text style={{ fontSize: 13 }}>
           {dayjs(time).format('YYYY-MM-DD HH:mm')}
         </Text>
       ),
@@ -320,38 +283,38 @@ function DocumentListContent() {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 140,
       fixed: 'right',
       render: (_, record) => (
         <Space size={0}>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleMenuClick(record, 'view')}>
-            查看
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<ClusterOutlined />}
-            onClick={() => {
-              setPipelineDoc(record);
-              setPipelineModalOpen(true);
-            }}
-          >
-            解析详情
-          </Button>
-          {record.status === 'FAILED' && (
+          <Tooltip title="查看详情">
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => router.push(`/documents/${record.docId}`)} />
+          </Tooltip>
+          <Tooltip title="解析详情">
             <Button
               type="link"
               size="small"
-              icon={<ReloadOutlined />}
-              loading={retryingDocIds.has(record.docId)}
-              onClick={() => handleMenuClick(record, 'retry')}
-            >
-              重试
-            </Button>
+              icon={<ClusterOutlined />}
+              onClick={() => {
+                setPipelineDoc(record);
+                setPipelineModalOpen(true);
+              }}
+            />
+          </Tooltip>
+          {record.status === 'FAILED' && (
+            <Tooltip title="重试入库">
+              <Button
+                type="link"
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={retryingDocIds.has(record.docId)}
+                onClick={() => handleRetry(record)}
+              />
+            </Tooltip>
           )}
-          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-            删除
-          </Button>
+          <Tooltip title="删除">
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
+          </Tooltip>
         </Space>
       ),
     },
@@ -366,6 +329,29 @@ function DocumentListContent() {
     return matchSearch && matchStatus;
   });
 
+  // Stats computed from full data (unfiltered)
+  const readyCount = data.filter(d => d.status === 'READY').length;
+  const processingCount = data.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING').length;
+  const failedCount = data.filter(d => d.status === 'FAILED').length;
+
+  const statCards = [
+    { label: '全部文档', value: data.length, icon: <FileTextOutlined />, color: 'blue' },
+    { label: '已上线', value: readyCount, icon: <CheckCircleOutlined />, color: 'green' },
+    { label: '处理中', value: processingCount, icon: <SyncOutlined />, color: 'amber' },
+    { label: '失败', value: failedCount, icon: <CloseCircleOutlined />, color: failedCount > 0 ? 'red' : 'gray' },
+  ];
+
+  const spaceOptions = [
+    { label: '全部空间', value: '' },
+    ...spaces.map(s => ({ label: s.name, value: s.id })),
+  ];
+
+  const emptyDescription = searchText || statusFilter !== 'ALL'
+    ? '没有匹配的文档，请调整筛选条件'
+    : activeSpaceId
+      ? '该知识空间暂无文档，点击上方「上传文档」开始'
+      : '知识库中暂无文档，点击上方「上传文档」开始';
+
   return (
     <AppLayout>
       <CommandBar onAction={handleLUIAction} />
@@ -378,29 +364,56 @@ function DocumentListContent() {
         title="文档管理"
         description="管理知识库中的所有文档，支持上传、查看、删除等操作"
         actions={
-          <>
-            <Button icon={<ReloadOutlined />} onClick={() => fetchDocs(activeSpaceTab === 'ALL' ? undefined : activeSpaceTab)}>
+          <Space size={8}>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchDocs(activeSpaceId)}>
               刷新
             </Button>
             <Button type="primary" icon={<PlusOutlined />} href="/documents/upload">
               上传文档
             </Button>
-          </>
+          </Space>
         }
-        extra={
-          <Space style={{ marginTop: 16 }} size={12} wrap>
+      />
+
+      {/* Stats Bar */}
+      <div className="stat-grid" style={{ marginBottom: 20 }}>
+        {statCards.map(s => (
+          <div key={s.label} className={`stat-card-v2 stat-card-v2--${s.color}`}>
+            <div className="stat-card-v2__icon">{s.icon}</div>
+            <div className="stat-card-v2__content">
+              <div className="stat-card-v2__label">{s.label}</div>
+              <div className="stat-card-v2__number">{loading && data.length === 0 ? '—' : s.value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Unified Toolbar */}
+      <Card style={{ borderRadius: 'var(--radius-lg)', marginBottom: 20 }}>
+        <Row gutter={[12, 12]} align="middle" justify="space-between">
+          <Col xs={24} sm={12} md={5}>
+            <Select
+              value={activeSpaceId || ''}
+              onChange={(val) => setActiveSpaceId(val || undefined)}
+              options={spaceOptions}
+              style={{ width: '100%' }}
+              placeholder="选择知识空间"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={5}>
             <Input
               placeholder="搜索文档名称或ID..."
               prefix={<SearchOutlined />}
-              style={{ width: 260 }}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               allowClear
             />
+          </Col>
+          <Col xs={12} sm={8} md={3}>
             <Select
               value={statusFilter}
               onChange={setStatusFilter}
-              style={{ width: 130 }}
+              style={{ width: '100%' }}
               options={[
                 { label: '全部状态', value: 'ALL' },
                 { label: '已上线', value: 'READY' },
@@ -409,63 +422,45 @@ function DocumentListContent() {
                 { label: '失败', value: 'FAILED' },
               ]}
             />
-            <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          </Col>
+          <Col xs={12} sm={8} md={3}>
+            <Segmented
+              value={viewMode}
+              onChange={(val) => setViewMode(val as 'list' | 'card')}
+              options={[
+                { label: '', value: 'list', icon: <UnorderedListOutlined /> },
+                { label: '', value: 'card', icon: <AppstoreOutlined /> },
+              ]}
+            />
+          </Col>
+          <Col xs={0} md={4} style={{ textAlign: 'right' }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
               共 {filteredData.length} 条记录
             </Text>
-          </Space>
-        }
-      />
+          </Col>
+        </Row>
+      </Card>
 
-      <Card
-        style={{ borderRadius: 'var(--radius-lg)' }}
-      >
-        {/* 知识空间 Tab */}
-        <Tabs
-          activeKey={activeSpaceTab}
-          onChange={handleSpaceTabChange}
-          tabBarExtraContent={
-            <Button
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={() => router.push('/spaces/create')}
+      {/* Content Area */}
+      <Card style={{ borderRadius: 'var(--radius-lg)' }}>
+        {filteredData.length === 0 ? (
+          <div style={{ padding: '48px 0' }}>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={emptyDescription}
             >
-              新建空间
-            </Button>
-          }
-          items={[
-            {
-              key: 'ALL',
-              label: (
-                <span>
-                  全部 <Badge count={data.length} size="small" style={{ marginLeft: 4 }} />
-                </span>
-              ),
-            },
-            ...spaces.map(space => ({
-              key: space.id,
-              label: (
-                <span>
-                  <FolderOutlined style={{ marginRight: 4 }} />
-                  {space.name} <Badge count={space.docCount || 0} size="small" style={{ marginLeft: 4 }} />
-                </span>
-              ),
-            })),
-          ]}
-          style={{ marginBottom: 16 }}
-        />
-
-        {/* 视图切换 */}
-        <Segmented
-          value={viewMode}
-          onChange={(val) => setViewMode(val as 'list' | 'card')}
-          options={[
-            { label: '列表', value: 'list', icon: <UnorderedListOutlined /> },
-            { label: '卡片', value: 'card', icon: <AppstoreOutlined /> },
-          ]}
-        />
-
-        {/* 列表 / 卡片视图 */}
-        {viewMode === 'list' ? (
+              {(searchText || statusFilter !== 'ALL') ? (
+                <Button onClick={() => { setSearchText(''); setStatusFilter('ALL'); }}>
+                  清除筛选
+                </Button>
+              ) : (
+                <Button type="primary" icon={<PlusOutlined />} href="/documents/upload">
+                  上传文档
+                </Button>
+              )}
+            </Empty>
+          </div>
+        ) : viewMode === 'list' ? (
           <Table
             columns={columns}
             dataSource={filteredData}
@@ -486,6 +481,15 @@ function DocumentListContent() {
           <Row gutter={[16, 16]}>
             {filteredData.map((doc) => {
               const tags = (doc.labelTags || '').split(',').filter(Boolean);
+              const accentColor = STATUS_ACCENT[doc.status] || 'var(--color-border)';
+
+              const sizeText = doc.fileSize
+                ? doc.fileSize >= 1048576
+                  ? `${(doc.fileSize / 1048576).toFixed(1)} MB`
+                  : doc.fileSize >= 1024
+                    ? `${(doc.fileSize / 1024).toFixed(0)} KB`
+                    : `${doc.fileSize} B`
+                : null;
 
               return (
                 <Col key={doc.docId} xs={24} sm={12} md={8} lg={6}>
@@ -493,35 +497,73 @@ function DocumentListContent() {
                     hoverable
                     size="small"
                     onClick={() => router.push(`/documents/${doc.docId}`)}
-                    style={{ borderRadius: 10, height: '100%' }}
+                    style={{
+                      borderRadius: 'var(--radius-lg)',
+                      borderTop: `3px solid ${accentColor}`,
+                      height: '100%',
+                      overflow: 'hidden',
+                    }}
                     styles={{ body: { padding: '16px', display: 'flex', flexDirection: 'column', height: '100%' } }}
                   >
-                    {/* 头部：类型 + 状态 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    {/* Header: type + status */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                       <DocTypeBadge docType={doc.docType} />
                       <DocStatusBadge status={doc.status as DocStatus} />
                     </div>
 
-                    {/* 标题 */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, flex: 1 }}>
-                      <FileTextOutlined style={{ color: 'var(--color-accent)', marginTop: 3, flexShrink: 0 }} />
-                      <Text strong style={{ fontSize: 14, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {doc.title}
-                      </Text>
+                    {/* Title */}
+                    <Text
+                      strong
+                      style={{
+                        fontSize: 14,
+                        lineHeight: 1.5,
+                        marginBottom: 12,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        flex: 1,
+                      }}
+                    >
+                      {doc.title}
+                    </Text>
+
+                    {/* Meta */}
+                    <div
+                      style={{
+                        background: 'var(--color-muted)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '10px 12px',
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Row gutter={[0, 6]}>
+                        <Col span={12}>
+                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>行业</Text>
+                          <Text style={{ fontSize: 13 }}>{doc.bizDomain}</Text>
+                        </Col>
+                        {sizeText && (
+                          <Col span={12}>
+                            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>大小</Text>
+                            <Text style={{ fontSize: 13 }}>{sizeText}</Text>
+                          </Col>
+                        )}
+                        <Col span={12}>
+                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>上传者</Text>
+                          <Text style={{ fontSize: 13 }}>{doc.ownerUid}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>上传时间</Text>
+                          <Text style={{ fontSize: 13 }}>
+                            {doc.createTime ? dayjs(doc.createTime).format('MM-DD HH:mm') : '—'}
+                          </Text>
+                        </Col>
+                      </Row>
                     </div>
 
-                    {/* 元信息 */}
-                    <div style={{ marginBottom: 8 }}>
-                      <Space size={6} wrap>
-                        <SecLevelBadge level={doc.secLevel} />
-                        <Text type="secondary" style={{ fontSize: 12 }}>·</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{doc.bizDomain}</Text>
-                      </Space>
-                    </div>
-
-                    {/* 标签 */}
+                    {/* Tags */}
                     {tags.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>
+                      <div style={{ marginBottom: 10 }}>
                         <Space size={4} wrap>
                           {tags.map((tag: string) => (
                             <Tag key={tag} style={{ fontSize: 10, margin: 0 }}>{tag}</Tag>
@@ -530,23 +572,30 @@ function DocumentListContent() {
                       </div>
                     )}
 
-                    {/* 底部：时间 + 操作 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 'auto' }}>
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        {doc.createTime ? dayjs(doc.createTime).format('MM-DD HH:mm') : '—'}
-                      </Text>
+                    {/* Footer: actions */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
+                      borderTop: '1px solid var(--color-border)',
+                      paddingTop: 10,
+                      marginTop: 'auto',
+                    }}>
                       <Space size={0}>
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EyeOutlined />}
-                          onClick={(e) => { e.stopPropagation(); router.push(`/documents/${doc.docId}`); }}
-                        />
+                        <Tooltip title="查看详情">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={(e) => { e.stopPropagation(); router.push(`/documents/${doc.docId}`); }}
+                          />
+                        </Tooltip>
                         <Dropdown
                           menu={{
                             items: [
                               { key: 'view', label: '查看详情', icon: <EyeOutlined /> },
                               { key: 'pipeline', label: '解析详情', icon: <ClusterOutlined /> },
+                              ...(doc.status === 'FAILED' ? [{ key: 'retry', label: '重试入库', icon: <ReloadOutlined /> }] : []),
                               { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
                             ],
                             onClick: ({ key, domEvent }) => {
@@ -556,6 +605,7 @@ function DocumentListContent() {
                                 setPipelineDoc(doc);
                                 setPipelineModalOpen(true);
                               }
+                              if (key === 'retry') handleRetry(doc);
                               if (key === 'delete') handleDelete(doc);
                             },
                           }}
@@ -572,11 +622,12 @@ function DocumentListContent() {
                     </div>
                   </Card>
                 </Col>
-              )})}
+              );
+            })}
           </Row>
         )}
 
-        {/* 批量操作 */}
+        {/* Batch Actions */}
         {selectedRowKeys.length > 0 && (
           <div
             style={{
@@ -584,6 +635,7 @@ function DocumentListContent() {
               bottom: 0,
               background: 'var(--color-surface)',
               borderTop: '1px solid var(--color-border)',
+              borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
@@ -666,7 +718,7 @@ function DocumentListContent() {
                 await deleteDoc(selectedDoc.docId, selectedDoc.version);
                 message.success(`文档「${selectedDoc.title}」已删除`);
                 setDetailModalOpen(false);
-                fetchDocs();
+                fetchDocs(activeSpaceId);
               } catch (err) {
                 message.error('删除失败');
               }

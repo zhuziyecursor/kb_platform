@@ -1,0 +1,33 @@
+{
+  "category": "definition",
+  "description": "定义/概念类 query — DENSE 主导，FAQ 通道也容易命中（如 \"什么是X\" 类预置 FAQ）。",
+  "queries": [
+    {
+      "id": "def-001",
+      "query": "什么是审计风险",
+      "ideal_doc_ids": ["audit-glossary"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["audit-rule-v2"],
+      "should_refuse": false,
+      "tags": ["definition", "audit"]
+    },
+    {
+      "id": "def-002",
+      "query": "什么是控制环境",
+      "ideal_doc_ids": ["coso-framework"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": false,
+      "tags": ["definition", "internal_control"]
+    },
+    {
+      "id": "def-003",
+      "query": "重要性水平的含义",
+      "ideal_doc_ids": ["audit-glossary"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["audit-rule-v2"],
+      "should_refuse": false,
+      "tags": ["definition", "audit"]
+    }
+  ]
+}

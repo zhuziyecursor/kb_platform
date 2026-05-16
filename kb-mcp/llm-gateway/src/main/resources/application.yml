@@ -6,6 +6,8 @@ spring:
     name: llm-gateway
 
 app:
+  cors:
+    allowed-origins: ${KB_CORS_ALLOWED_ORIGINS:http://localhost:3105}
   minimax:
     api-base: ${MINIMAX_API_BASE:https://api.minimax.chat/v1/text/chatcompletion_v2}
     api-key: ${MINIMAX_API_KEY:}
@@ -14,6 +16,17 @@ app:
     max-tokens: ${LLM_MAX_TOKENS:2048}
     timeout-seconds: ${LLM_TIMEOUT_SECONDS:60}
     max-retries: ${LLM_MAX_RETRIES:3}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
 
 logging:
   level:

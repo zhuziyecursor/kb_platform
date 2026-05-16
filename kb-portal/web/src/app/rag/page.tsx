@@ -13,7 +13,6 @@ import {
   Modal,
   Alert,
   Drawer,
-  Progress,
   Tag,
   Popover,
   Radio,
@@ -44,7 +43,6 @@ import {
   StarFilled,
   FlagOutlined,
   FlagFilled,
-  WarningOutlined,
   ProfileOutlined,
   CloseOutlined,
   InboxOutlined,
@@ -57,10 +55,13 @@ import {
   CloudServerOutlined,
   ApiOutlined,
   EyeOutlined,
+  AudioOutlined,
+  AudioMutedOutlined,
 } from '@ant-design/icons';
-import type { ChatMessage, KnowledgeSpaceTreeNode, Skill } from '@/types';
+import type { ChatMessage, KnowledgeSpaceTreeNode, Skill, StageEvent } from '@/types';
 import {
   ragChat,
+  ragChatStream,
   initUpload,
   uploadFile,
   verifyUpload,
@@ -72,6 +73,7 @@ import {
   getPipelineTrace,
   submitFeedback,
   getFeedback,
+  getErrorMessage,
 } from '@/api/http-client';
 import type { RagPipelineTraceResponse } from '@/api/http-client';
 import { getSpaceTree } from '@/api/knowledge-space';
@@ -80,20 +82,61 @@ import AppLayout from '@/components/AppLayout';
 import RagSessionPanel from '@/components/RagSessionPanel';
 import AnswerRenderer from '@/components/AnswerRenderer';
 import FilePreview from '@/components/FilePreview';
+import ThinkingChainPanel from '@/components/ThinkingChainPanel';
 import type { LUIAction } from '@/types';
+import SlashCommandMenu, { SLASH_COMMANDS } from '@/components/SlashCommandMenu';
+import type { SlashCommandContext } from '@/components/SlashCommandMenu';
+import PipelineTraceView, { formatStageName } from '@/components/PipelineTraceView';
 import { Button, Badge } from '@/components/ui';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import { cn } from '@/lib/utils';
 import { useExtensions, type ExternalSkill, type PromptConfig, type CustomSkill } from '@/hooks/useExtensions';
+import { useAgents, type ExpertAgent } from '@/hooks/useAgents';
 
 const { Text } = Typography;
 const { TextArea } = Input;
+
+function getGeneratingStatus(stages: import('@/types').StageEvent[]): string {
+  if (!stages || stages.length === 0) return '正在连接服务...';
+  const last = stages[stages.length - 1].stage;
+  switch (last) {
+    case 'query_rewrite':
+    case 'query_plan':
+    case 'intent_route':
+      return '正在理解问题...';
+    case 'embedding':
+      return '正在向量化查询...';
+    case 'bm25_search':
+    case 'milvus_search':
+    case 'channel_executor':
+    case 'hybrid_fusion':
+    case 'rrf_fusion':
+    case 'acl_post_filter':
+    case 'clause_fast_path':
+    case 'space_filter':
+      return '正在检索知识库...';
+    case 'rerank':
+    case 'mmr_diversity':
+      return '正在精排结果...';
+    case 'acl_verify':
+    case 'parent_lookup':
+    case 'refusal_check':
+    case 'prompt_build':
+      return '正在整理上下文...';
+    case 'llm_generate':
+    case 'llm_generate_stream':
+      return '正在生成回答...';
+    default:
+      return '正在处理...';
+  }
+}
 
 const DEV_TENANT_ID = 'dev-tenant-001';
 const DEV_USER_ID = 'current-user';
 const QUICK_INGEST_SKILL_ID = 'skill-quick-ingest';
 const QUICK_INGEST_SKILL_NAME = '智能入库';
+const ACTIVE_AGENT_KEY = 'kb_active_expert_agent_id';
 
 // 内置技能定义（与 CommandBar 保持一致）
 const BUILT_IN_SKILLS: Skill[] = [
@@ -110,18 +153,18 @@ const BUILT_IN_SKILLS: Skill[] = [
 const EXAMPLE_QUESTIONS = [
   {
     icon: '📋',
-    q: 'Hermes Agent 的安装方式有哪几种？',
-    tag: '操作指引',
+    q: '内部审计机构的主要任务和工作重点包括哪些？',
+    tag: '内部审计',
   },
   {
     icon: '🔍',
-    q: 'Claude Code 和 OpenClaw 有什么区别？',
-    tag: '产品对比',
+    q: '安全生产法对生产经营单位主要负责人规定了哪些安全职责？',
+    tag: '安全生产',
   },
   {
-    icon: '⚙️',
-    q: '如何配置 MCP 工具连接？',
-    tag: '配置指南',
+    icon: '⚖️',
+    q: '民法典中关于合同无效的法定情形有哪些规定？',
+    tag: '合同法规',
   },
 ];
 
@@ -156,30 +199,6 @@ function getPreferredSmartSpaceId(spaces: KnowledgeSpaceTreeNode[], currentSpace
   return undefined;
 }
 
-const PIPELINE_STAGE_LABELS: Record<string, string> = {
-  cache_lookup: '缓存检查',
-  session_context: '会话上下文',
-  query_rewrite: '查询改写',
-  embedding: '查询向量化',
-  milvus_search: 'Milvus 召回',
-  acl_post_filter: 'ACL 预过滤',
-  space_filter: '知识空间过滤',
-  rerank: '精排',
-  acl_verify: 'ACL 二次校验',
-  parent_lookup: 'Parent 回捞',
-  refusal_check: '拒答判断',
-  prompt_build: 'Prompt 构造',
-  llm_generate: 'LLM 生成',
-  llm_generate_stream: 'LLM 流式生成',
-  session_create: '创建会话',
-  session_save: '保存会话',
-  cache_write: '写入缓存',
-};
-
-function formatStageName(stage: string): string {
-  return PIPELINE_STAGE_LABELS[stage] || stage;
-}
-
 async function computeFileHash(file: File): Promise<string> {
   const fileBuffer = await file.arrayBuffer();
   const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer);
@@ -209,6 +228,12 @@ export default function RAGPage() {
   const [spaceTree, setSpaceTree] = useState<KnowledgeSpaceTreeNode[]>([]);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>();
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const voiceSupported = useRef(
+    typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+  );
+  const recognitionRef = useRef<any>(null);
   const [isContextOpen, setIsContextOpen] = useState(false);
   const [quickIngestOpen, setQuickIngestOpen] = useState(false);
   const [quickIngestSpaceId, setQuickIngestSpaceId] = useState<string | undefined>();
@@ -221,6 +246,11 @@ export default function RAGPage() {
   const [traceLoading, setTraceLoading] = useState(false);
   const [selectedTrace, setSelectedTrace] = useState<RagPipelineTraceResponse | null>(null);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [activeAgent, setActiveAgent] = useState<ExpertAgent | null>(null);
+
+  // 斜杠命令状态
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashFilter, setSlashFilter] = useState('');
 
   // 引用原文预览状态
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -243,17 +273,28 @@ export default function RAGPage() {
 
   // 扩展管理数据
   const { externalSkills, customSkills, prompts } = useExtensions();
+  const { agents, loaded: agentsLoaded } = useAgents();
 
   // 启用的扩展技能列表
   const enabledExternalSkills = useMemo(() => externalSkills.filter(s => s.enabled), [externalSkills]);
   const enabledCustomSkills = useMemo(() => customSkills.filter(s => s.enabled), [customSkills]);
   const enabledPrompts = useMemo(() => prompts.filter(p => p.enabled), [prompts]);
-  const hasAnySkills = enabledExternalSkills.length > 0 || enabledCustomSkills.length > 0 || enabledPrompts.length > 0;
+  const hasAnySkills = enabledExternalSkills.length > 0 || enabledCustomSkills.length > 0;
 
   useEffect(() => {
     setUsername(sessionStorage.getItem('username') || '我');
     getSpaceTree().then(setSpaceTree).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!agentsLoaded) return;
+    const activeAgentId = sessionStorage.getItem(ACTIVE_AGENT_KEY);
+    const nextAgent = activeAgentId ? agents.find((agent) => agent.id === activeAgentId) || null : null;
+    setActiveAgent(nextAgent);
+    if (nextAgent?.spaceIds?.length) {
+      setSelectedSpaceId((current) => current || nextAgent.spaceIds[0]);
+    }
+  }, [agents, agentsLoaded]);
 
   // 加载会话消息
   const loadSessionMessages = useCallback(async (sid: string) => {
@@ -273,9 +314,35 @@ export default function RAGPage() {
       }
       setMessages(mapped);
 
-      // Restore feedback state for messages with trace IDs
+      // Restore thinking stages & feedback for historical assistant messages
       for (const m of mapped) {
         if (m.traceId && m.role === 'assistant') {
+          try {
+            const trace = await getPipelineTrace(m.traceId);
+            if (trace?.stageTimings?.length) {
+              let cumulative = 0;
+              const stages = trace.stageTimings.map((t) => {
+                cumulative += t.durationMs;
+                return {
+                  stage: t.stage,
+                  status: (t.status === 'SUCCESS' ? 'SUCCESS' : t.status === 'ERROR' ? 'ERROR' : 'SKIPPED') as StageEvent['status'],
+                  durationMs: t.durationMs,
+                  elapsedMs: cumulative,
+                  summary: t.metadata,
+                };
+              });
+              setMessages((prev) =>
+                prev.map((pm) =>
+                  pm.id === m.id
+                    ? { ...pm, thinkingStages: stages, thinkingDone: true }
+                    : pm
+                )
+              );
+            }
+          } catch {
+            // Trace fetch failure is non-critical
+          }
+
           try {
             const fb = await getFeedback(m.traceId);
             if (fb) {
@@ -355,8 +422,8 @@ export default function RAGPage() {
       });
 
       message.success(`文件「${file.name}」上传成功`);
-    } catch (err: any) {
-      message.error(`文件上传失败: ${err.message}`);
+    } catch (err) {
+      message.error(`文件上传失败: ${getErrorMessage(err)}`);
     } finally {
       setIsUploadingFile(false);
     }
@@ -473,10 +540,11 @@ export default function RAGPage() {
       setQuickIngestStatusText('文件已上传，流水线正在处理...');
       message.success('文件已提交智能入库');
       await pollQuickIngestStatus(initResp.docId, version);
-    } catch (err: any) {
+    } catch (err) {
+      const detail = getErrorMessage(err, '智能入库失败，请稍后重试');
       setQuickIngestPhase('failed');
-      setQuickIngestStatusText(err?.message || '智能入库失败，请稍后重试');
-      message.error(`智能入库失败: ${err?.message || '未知错误'}`);
+      setQuickIngestStatusText(detail);
+      message.error(`智能入库失败: ${detail}`);
     } finally {
       setQuickIngestLoading(false);
     }
@@ -529,11 +597,34 @@ ${text}`;
     return skillContext;
   }, []);
 
-  const handleSend = useCallback(async (queryText?: string) => {
+  const handleSend = useCallback(async (queryText?: string, opts?: { forceAssistant?: boolean }) => {
     const text = queryText || input.trim();
     if (!text) return;
     if (sendingRef.current) return;
     sendingRef.current = true;
+
+    // 处理斜杠命令
+    if (text.startsWith('/')) {
+      const cmdName = text.slice(1).trim();
+      const cmd = SLASH_COMMANDS.find((c) => c.name === cmdName);
+      if (cmd) {
+        const ctx: SlashCommandContext = {
+          messages,
+          setMessages,
+          setInput,
+          setSessionId,
+          handleSend,
+          setSessionRefresh,
+        };
+        sendingRef.current = false; // release lock so /summary can call handleSend internally
+        cmd.execute(ctx);
+        sendingRef.current = false;
+        setSlashMenuOpen(false);
+        setSlashFilter('');
+        return;
+      }
+    }
+
     if (text === `/${QUICK_INGEST_SKILL_NAME}` || text === '/quick-ingest') {
       if (!queryText) setInput('');
       openQuickIngest();
@@ -578,68 +669,192 @@ ${text}`;
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    setIsStreaming(true);
 
     // 注入技能上下文到查询中
     const queryWithSkill = buildQueryWithSkill(text, selectedSkill);
 
+    // Create assistant message placeholder
+    const assistantId = `assistant-${Date.now()}`;
+    const assistantMessage: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      thinkingStages: [],
+      thinkingDone: false,
+    };
+    setMessages((prev) => [...prev, assistantMessage]);
+
     try {
-      const response = await ragChat({
-        tenantId: DEV_TENANT_ID,
-        query: queryWithSkill,
-        sessionId: currentSessionId,
-        lang: 'zh',
-        spaceId: selectedSpaceId,
-      });
+      await ragChatStream(
+        {
+          tenantId: DEV_TENANT_ID,
+          query: queryWithSkill,
+          sessionId: currentSessionId,
+          lang: 'zh',
+          spaceId: selectedSpaceId || activeAgent?.spaceIds?.[0],
+          systemPrompt: activeAgent?.systemPrompt,
+          mode: (opts?.forceAssistant || activeAgent?.expertType === 'assistant') ? 'assistant' : 'rag',
+        },
+        // onToken
+        (token) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: m.content + token, thinkingDone: true }
+                : m
+            )
+          );
+        },
+        // onDone
+        (result) => {
+          const refusalMessages: Record<string, string> = {
+            NO_MATCH: '当前知识库中未检索到与您的问题高度相关的内容。建议您换一种表述方式，或补充更具体的审计关键词后重试。',
+            NO_PERMISSION: '您暂无权限访问该知识库的相关内容，请联系管理员开通对应空间的查阅权限。',
+            LOW_CONFIDENCE: '当前匹配到的内容相关性较低，回答仅供参考。建议您调整问题表述或指定具体的审计业务场景。',
+          };
 
-      // 发送成功后清除选中的技能
-      if (selectedSkill) {
-        setSelectedSkill(null);
-      }
+          const displayContent = result.reason
+            ? refusalMessages[result.reason] || result.answer
+            : result.answer;
 
-      const refusalMessages: Record<string, string> = {
-        NO_MATCH: '知识库中暂时没有找到相关资料，请尝试调整问题或补充更多关键词。',
-        NO_PERMISSION: '您没有权限查看相关内容，如有需要请联系管理员授权。',
-        LOW_CONFIDENCE: '知识库中暂时没有找到相关资料，请尝试调整问题表述。',
-      };
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    content: displayContent,
+                    citations: (result.citations || []).map((c) => ({
+                      ...c,
+                      sectionPath: c.sectionPath || '',
+                      regionCode: c.regionCode || '',
+                      effectiveFrom: c.effectiveFrom || '',
+                      effectiveTo: c.effectiveTo,
+                      spacePath: c.spacePath || '',
+                    })),
+                    traceId: result.traceId,
+                    reason: result.reason,
+                    messageId: result.messageId,
+                    confidence: result.confidence,
+                    intent: result.intent,
+                    searchMode: result.searchMode,
+                    channelStats: result.channelStats,
+                    thinkingDone: true,
+                  }
+                : m
+            )
+          );
+          setIsLoading(false);
+          setIsStreaming(false);
+          setSessionRefresh((n) => n + 1);
+          sendingRef.current = false;
 
-      const displayContent = response.reason
-        ? refusalMessages[response.reason] || response.answer
-        : response.answer;
-
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: displayContent,
-        citations: (response.citations || []).map((c) => ({
-          ...c,
-          sectionPath: c.sectionPath || '',
-          regionCode: c.regionCode || '',
-          effectiveFrom: c.effectiveFrom || '',
-          effectiveTo: c.effectiveTo,
-          spacePath: c.spacePath || '',
-        })),
-        traceId: response.traceId,
-        timestamp: Date.now(),
-        reason: response.reason,
-        messageId: response.messageId,
-        confidence: response.confidence,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      setSessionRefresh((n) => n + 1);
+          // 发送成功后清除选中的技能
+          if (selectedSkill) {
+            setSelectedSkill(null);
+          }
+        },
+        // onError
+        (errMsg) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    content: '服务暂时不可用，请稍后再试或联系管理员。',
+                    thinkingDone: true,
+                  }
+                : m
+            )
+          );
+          setIsLoading(false);
+          setIsStreaming(false);
+          sendingRef.current = false;
+        },
+        // onStage
+        (stageEvent) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    thinkingStages: [...(m.thinkingStages || []), stageEvent],
+                  }
+                : m
+            )
+          );
+        }
+      );
     } catch (err: any) {
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: '服务暂时不可用，请稍后再试或联系管理员。',
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                content: '服务暂时不可用，请稍后再试或联系管理员。',
+                thinkingDone: true,
+              }
+            : m
+        )
+      );
       setIsLoading(false);
+      setIsStreaming(false);
       sendingRef.current = false;
     }
-  }, [input, sessionId, selectedSpaceId, openQuickIngest, selectedSkill, buildQueryWithSkill]);
+  }, [activeAgent, input, sessionId, selectedSpaceId, openQuickIngest, selectedSkill, buildQueryWithSkill, messages]);
+
+  const startVoiceInput = useCallback(() => {
+    if (!voiceSupported.current) {
+      message.warning('您的浏览器不支持语音输入，请使用 Chrome 或 Edge');
+      return;
+    }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript;
+        }
+      }
+      if (finalTranscript) {
+        setInput((prev) => prev + finalTranscript);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        message.error('请授权麦克风权限后重试');
+      } else if (event.error !== 'aborted') {
+        message.error('语音识别出错，请重试');
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+    message.info('正在聆听...');
+  }, [message]);
+
+  const stopVoiceInput = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.abort();
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  }, []);
 
   const handleLike = useCallback(async (msgId: string) => {
     const msg = messages.find((m) => m.id === msgId);
@@ -759,6 +974,15 @@ ${text}`;
     setSessionId(undefined);
   };
 
+  const exitAgentMode = () => {
+    sessionStorage.removeItem(ACTIVE_AGENT_KEY);
+    setActiveAgent(null);
+    setSelectedSpaceId(undefined);
+    setMessages([]);
+    setSessionId(undefined);
+    message.success('已切换为普通知识问答');
+  };
+
   const spaceTreeOptions = buildSpaceTreeNodes(spaceTree);
 
   return (
@@ -769,30 +993,60 @@ ${text}`;
       <div className="chat-header">
         <div className="chat-header__brand">
           <div className="chat-header__icon">
-            <RobotOutlined style={{ fontSize: 18, color: '#fff' }} />
+            {activeAgent ? (
+              <span style={{ fontSize: 18, lineHeight: 1 }}>{activeAgent.icon}</span>
+            ) : (
+              <RobotOutlined style={{ fontSize: 18, color: 'currentColor' }} />
+            )}
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="chat-header__title">知识智库</span>
-              <span className="chat-header__badge">AI 驱动</span>
+              <span className="chat-header__title">{activeAgent?.name || '知识智库'}</span>
+              <span className="chat-header__badge">{activeAgent ? activeAgent.category : 'AI 驱动'}</span>
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              基于知识库文档，返回带引用的可信答案
+              {activeAgent?.description || '基于知识库文档，返回带引用的可信答案'}
             </Text>
+            {activeAgent?.expertType === 'assistant' && (
+              <Tag color="purple" style={{ marginLeft: 8 }}>助手模式</Tag>
+            )}
           </div>
         </div>
 
         <div className="chat-header__features">
-          {[
-            { icon: <CheckCircleFilled style={{ color: '#15803D' }} />, label: '精准检索' },
-            { icon: <BookOutlined style={{ color: '#1D4ED8' }} />, label: '多文档融合' },
-            { icon: <FileTextOutlined style={{ color: '#7C3AED' }} />, label: '原文溯源' },
-          ].map((item, i) => (
+          {(activeAgent?.expertType === 'assistant'
+            ? [
+                { icon: <CheckCircleFilled style={{ color: '#15803D' }} />, label: '智能对话' },
+                { icon: <BookOutlined style={{ color: '#1D4ED8' }} />, label: '上下文理解' },
+                { icon: <FileTextOutlined style={{ color: '#7C3AED' }} />, label: '即时响应' },
+              ]
+            : [
+                { icon: <CheckCircleFilled style={{ color: '#15803D' }} />, label: '精准检索' },
+                { icon: <BookOutlined style={{ color: '#1D4ED8' }} />, label: '多文档融合' },
+                { icon: <FileTextOutlined style={{ color: '#7C3AED' }} />, label: '原文溯源' },
+              ]
+          ).map((item, i) => (
             <div key={i} className="chat-header__feature-item">
               <span style={{ fontSize: 14 }}>{item.icon}</span>
               <span className="chat-header__feature-label">{item.label}</span>
             </div>
           ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/experts')}
+          >
+            返回广场
+          </Button>
+          {activeAgent && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={exitAgentMode}
+            >
+              退出专家
+            </Button>
+          )}
           <Button
             variant={isContextOpen ? 'primary' : 'outline'}
             size="sm"
@@ -826,13 +1080,15 @@ ${text}`;
                 <div className="chat-empty">
                   <div style={{ textAlign: 'center' }}>
                     <div className="chat-empty__icon">
-                      <RobotOutlined style={{ fontSize: 28, color: '#fff' }} />
+                      <RobotOutlined style={{ fontSize: 28, color: 'currentColor' }} />
                     </div>
                     <span className="chat-empty__title">
-                      有什么可以帮助你的？
+                      {activeAgent?.expertType === 'assistant' ? '你好，我是你的智能助手' : '有什么可以帮助你的？'}
                     </span>
                     <p className="chat-empty__subtitle">
-                      基于知识库文档，AI 智能分析并返回可信答案
+                      {activeAgent?.expertType === 'assistant'
+                        ? '直接与大模型对话，回答各类问题'
+                        : '基于知识库文档，AI 智能分析并返回可信答案'}
                     </p>
                   </div>
 
@@ -871,12 +1127,12 @@ ${text}`;
                     style={{ animationDelay: `${Math.min(idx * 40, 300)}ms` }}
                   >
                     {!isUser && (
-                      <Avatar size={36} icon={<RobotOutlined />} className="chat-avatar chat-avatar--assistant" />
+                      <Avatar size={36} icon={activeAgent ? <span>{activeAgent.icon}</span> : <RobotOutlined />} className="chat-avatar chat-avatar--assistant" />
                     )}
 
                     <div className="chat-content">
                       <div className={cn('chat-content-header', isUser && 'chat-content-header--user')}>
-                        <span className="chat-author">{isUser ? username : '知识智库'}</span>
+                        <span className="chat-author">{isUser ? username : activeAgent?.name || '知识智库'}</span>
                         <span className="chat-time">{dayjs(msg.timestamp).format('HH:mm')}</span>
                         {!isUser && msg.traceId && (
                           <button
@@ -899,8 +1155,41 @@ ${text}`;
                             </div>
                           ) : (
                             <div className="chat-bubble-assistant">
+                              {/* Generating indicator: visible while streaming and no content yet */}
+                              {isLastAssistant && !msg.content && !msg.reason && (
+                                <div className="chat-generating">
+                                  <span className="chat-generating-dot" />
+                                  <span>{getGeneratingStatus(msg.thinkingStages || [])}</span>
+                                </div>
+                              )}
+                              {/* Thinking Chain Panel */}
+                              {!msg.reason && msg.thinkingStages && msg.thinkingStages.length > 0 && (
+                                <ThinkingChainPanel
+                                  stages={msg.thinkingStages}
+                                  streaming={isLastAssistant && !msg.thinkingDone}
+                                  traceId={msg.traceId}
+                                />
+                              )}
+
+                              {/* Confidence Bar — always visible when answer has citations */}
+                              {msg.citations && msg.citations.length > 0 && (() => {
+                                const scores = msg.citations.map(c => c.score);
+                                const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                                const level: 'high' | 'medium' | 'low' = avg >= 0.8 ? 'high' : avg >= 0.5 ? 'medium' : 'low';
+                                const label = level === 'high' ? '可信度高' : level === 'medium' ? '可信度中等' : '可信度偏低';
+                                return (
+                                  <div className={`chat-trust-bar chat-trust-bar--${level}`}>
+                                    <span className="chat-trust-bar__dot" />
+                                    <span className="chat-trust-bar__label">{label}</span>
+                                    <span className="chat-trust-bar__meta">
+                                      基于 <strong>{msg.citations.length}</strong> 条参考 · 平均相关度 <strong>{avg.toFixed(2)}</strong>
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                               <AnswerRenderer
                                 content={msg.content}
+                                citations={msg.citations}
                                 onFollowUpClick={handleFollowUpClick}
                                 onCitationClick={(cidx) => {
                                   const cite = msg.citations?.[cidx];
@@ -911,22 +1200,32 @@ ${text}`;
                             </div>
                           )}
 
-                          {/* Confidence Warning */}
-                          {msg.confidence === 'LOW' && !msg.reason && (
-                            <div style={{
-                              marginTop: 8,
-                              padding: '6px 12px',
-                              borderRadius: 6,
-                              background: '#FFF7E6',
-                              border: '1px solid #FFD591',
-                              fontSize: 12,
-                              color: '#AD6800',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                            }}>
-                              <WarningOutlined style={{ fontSize: 13 }} />
-                              <span>模型对本次回答置信度较低，建议核实引用来源</span>
+                          {/* Search Mode & Intent Tags */}
+                          {!msg.reason && (msg.searchMode || msg.intent || msg.channelStats) && (
+                            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                              {msg.searchMode && (
+                                <Tag
+                                  color={msg.searchMode === 'HYBRID' ? 'purple' : msg.searchMode === 'BM25' ? 'blue' : msg.searchMode === 'FAQ' ? 'green' : msg.searchMode === 'CHITCHAT' ? 'orange' : 'default'}
+                                  style={{ fontSize: 11, margin: 0 }}
+                                >
+                                  检索: {msg.searchMode}
+                                </Tag>
+                              )}
+                              {msg.intent && (
+                                <Tag
+                                  color={msg.intent === 'POLICY_QA' ? 'blue' : msg.intent === 'DOC_SEARCH' ? 'cyan' : 'orange'}
+                                  style={{ fontSize: 11, margin: 0 }}
+                                >
+                                  意图: {msg.intent}
+                                </Tag>
+                              )}
+                              {msg.channelStats && Object.entries(msg.channelStats).filter(([, v]) => v > 0).length > 0 && (
+                                <span style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                  通道命中: {Object.entries(msg.channelStats).filter(([, v]) => v > 0).map(([k, v]) => (
+                                    <Tag key={k} color={k === 'DENSE' ? 'blue' : k === 'SPARSE' ? 'green' : k === 'STRUCTURED' ? 'orange' : k === 'FAQ' ? 'cyan' : 'default'} style={{ fontSize: 10, margin: 0, padding: '0 4px', lineHeight: '16px' }}>{k}:{v}</Tag>
+                                  ))}
+                                </span>
+                              )}
                             </div>
                           )}
 
@@ -1052,9 +1351,9 @@ ${text}`;
                                 {msg.citations.map((cite, cidx) => {
                                   const trustLevel = cite.score >= 0.8 ? 'high' : cite.score >= 0.5 ? 'medium' : 'low';
                                   const trustConfig = {
-                                    high: { label: '高可信', icon: <CheckCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-high' },
-                                    medium: { label: '中可信', icon: <InfoCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-medium' },
-                                    low: { label: '低可信', icon: <ExclamationCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-low' },
+                                    high: { label: `高可信 ${cite.score.toFixed(2)}`, icon: <CheckCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-high' },
+                                    medium: { label: `中可信 ${cite.score.toFixed(2)}`, icon: <InfoCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-medium' },
+                                    low: { label: `低可信 ${cite.score.toFixed(2)}`, icon: <ExclamationCircleFilled style={{ fontSize: 11 }} />, className: 'chat-source-tag--trust-low' },
                                   }[trustLevel];
                                   return (
                                     <div key={cidx} className="chat-source-item">
@@ -1065,7 +1364,7 @@ ${text}`;
                                           onClick={() => navigateToDoc(cite.docId)}
                                           style={{ cursor: 'pointer' }}
                                         >
-                                          {cite.title || '无标题文档'}
+                                          {cite.title || `相关度 ${cite.score.toFixed(2)}`}
                                         </span>
                                       </div>
                                       <div className="chat-source-meta">
@@ -1074,6 +1373,9 @@ ${text}`;
                                         </span>
                                         <span className="chat-source-tag">v{cite.version}</span>
                                         <span className="chat-source-tag">第{cite.page}页</span>
+                                        {cite.sourceChannels && cite.sourceChannels.length > 0 && cite.sourceChannels.map(ch => (
+                                          <Tag key={ch} color={ch === 'DENSE' ? 'blue' : ch === 'SPARSE' ? 'green' : ch === 'STRUCTURED' ? 'orange' : ch === 'FAQ' ? 'cyan' : 'default'} style={{ fontSize: 10, margin: 0, padding: '0 4px', lineHeight: '16px' }}>{ch}</Tag>
+                                        ))}
                                         <button
                                           className="chat-source-view-btn"
                                           onClick={() => openSourcePreview(cite)}
@@ -1109,75 +1411,57 @@ ${text}`;
                 );
               })}
 
-              {/* Loading */}
-              {isLoading && !isStreaming && (
-                <div className="chat-loading-row">
-                  <div className="chat-loading-avatar"><RobotOutlined /></div>
-                  <div className="chat-loading-content">
-                    <div className="chat-loading-dots"><span /><span /><span /></div>
-                    <span className="chat-loading-text">正在检索知识库...</span>
-                  </div>
-                </div>
-              )}
-
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
             <div className="chat-input-area">
-              <div className={cn('chat-input-box', 'focus-ring', isInputFocused && 'chat-input-box--focused', selectedSkill && 'chat-input-box--skilled')}>
+              <div className={cn('chat-input-box', 'focus-ring', isInputFocused && 'chat-input-box--focused', selectedSkill && 'chat-input-box--skilled')} style={slashMenuOpen ? { overflow: 'visible' } : undefined}>
                 <div className="chat-input-toolbar">
-                  {/* 检索范围选择器 */}
-                  <TreeSelect
-                    value={selectedSpaceId}
-                    onChange={setSelectedSpaceId}
-                    placeholder="全部知识库"
-                    allowClear
-                    treeData={spaceTreeOptions}
-                    style={{ width: 180 }}
-                    size="small"
-                    variant="borderless"
-                    treeDefaultExpandAll
-                    suffixIcon={<FolderOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
-                    styles={{ popup: { root: { maxHeight: 400, overflow: 'auto' } } }}
-                  />
+                  {/* 检索范围选择器 — only for RAG experts */}
+                  {activeAgent?.expertType !== 'assistant' && (
+                    <TreeSelect
+                      value={selectedSpaceId}
+                      onChange={setSelectedSpaceId}
+                      placeholder="全部知识库"
+                      allowClear
+                      treeData={spaceTreeOptions}
+                      style={{ width: 180 }}
+                      size="small"
+                      variant="borderless"
+                      treeDefaultExpandAll
+                      suffixIcon={<FolderOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />}
+                      styles={{ popup: { root: { maxHeight: 400, overflow: 'auto' } } }}
+                    />
+                  )}
 
                   <div style={{ flex: 1 }} />
 
-                  {/* 技能选择器 */}
-                  {selectedSkill ? (
-                    <Tooltip title={`已选择: ${selectedSkill.name}，点击清除`}>
-                      <Tag
-                        color="blue"
-                        closable
-                        onClose={() => setSelectedSkill(null)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          padding: '2px 10px',
-                          borderRadius: 16,
-                          fontSize: 12,
-                          fontWeight: 500,
-                          margin: 0,
-                          cursor: 'pointer',
-                        }}
+
+                  {/* 技能选择器 — only for RAG mode */}
+                  {activeAgent?.expertType !== 'assistant' && (
+                    selectedSkill ? (
+                      <button
+                        type="button"
+                        className="skill-active-chip"
+                        onClick={() => setSelectedSkill(null)}
+                        title="点击清除当前技能"
                       >
                         <ThunderboltOutlined style={{ fontSize: 11 }} />
                         {'icon' in selectedSkill && selectedSkill.icon ? (
                           <span style={{ fontSize: 12 }}>{selectedSkill.icon}</span>
                         ) : null}
                         <span>{selectedSkill.name}</span>
-                      </Tag>
-                    </Tooltip>
-                  ) : (
-                    <Popover
-                      open={skillPopoverOpen}
-                      onOpenChange={setSkillPopoverOpen}
-                      trigger="click"
-                      placement="bottomRight"
-                      arrow={false}
-                      content={(
+                        <span className="skill-active-chip__close" aria-label="清除">×</span>
+                      </button>
+                    ) : (
+                      <Popover
+                        open={skillPopoverOpen}
+                        onOpenChange={setSkillPopoverOpen}
+                        trigger="click"
+                        placement="bottomRight"
+                        arrow={false}
+                        content={(
                         <div style={{ width: 340, maxHeight: 480, overflow: 'auto' }}>
                           {/* 内置技能 */}
                           <div style={{ padding: '10px 14px' }}>
@@ -1323,53 +1607,6 @@ ${text}`;
                             </>
                           )}
 
-                          {/* 提示词模板 */}
-                          {enabledPrompts.length > 0 && (
-                            <>
-                              <Divider style={{ margin: '4px 0' }} />
-                              <div style={{ padding: '10px 14px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                                  <FormOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
-                                  <Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>提示词模板</Text>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  {enabledPrompts.map((prompt) => (
-                                    <div
-                                      key={prompt.id}
-                                      onClick={() => {
-                                        setSelectedSkill(prompt);
-                                        setSkillPopoverOpen(false);
-                                        message.success(`已选择提示词: ${prompt.name}`);
-                                        inputRef.current?.focus();
-                                      }}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 10,
-                                        padding: '8px 10px',
-                                        borderRadius: 8,
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s',
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.06)';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        (e.currentTarget as HTMLDivElement).style.background = 'transparent';
-                                      }}
-                                    >
-                                      <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{prompt.icon || '📝'}</span>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-foreground)', lineHeight: 1.4 }}>{prompt.name}</div>
-                                        <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', lineHeight: 1.4, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prompt.description}</div>
-                                      </div>
-                                      {prompt.category && <Tag style={{ fontSize: 10, flexShrink: 0, lineHeight: '18px', height: 20, padding: '0 6px' }}>{prompt.category}</Tag>}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </>
-                          )}
 
                           {!hasAnySkills && (
                             <Empty
@@ -1377,7 +1614,7 @@ ${text}`;
                               description={
                                 <div style={{ fontSize: 12, color: 'var(--color-muted-foreground)' }}>
                                   暂无可用扩展技能<br />
-                                  前往<Button variant="ghost" size="xs" onClick={() => router.push('/extensions')} style={{ fontSize: 12, padding: '0 4px', height: 'auto' }}>扩展管理</Button>配置
+                                  前往<Button variant="ghost" size="xs" onClick={() => router.push('/skills')} style={{ fontSize: 12, padding: '0 4px', height: 'auto' }}>技能中心</Button>配置
                                 </div>
                               }
                               style={{ padding: '20px 0' }}
@@ -1386,36 +1623,45 @@ ${text}`;
                         </div>
                       )}
                     >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 12px',
-                        background: 'rgba(37,99,235,0.06)',
-                        borderRadius: 16,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        border: skillPopoverOpen ? '1px solid rgba(37,99,235,0.25)' : '1px solid transparent',
-                      }}
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.12)';
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLDivElement).style.background = 'rgba(37,99,235,0.06)';
-                        }}
+                      <button
+                        type="button"
+                        className={cn('skill-trigger-chip', skillPopoverOpen && 'skill-trigger-chip--open')}
                       >
-                        <ThunderboltOutlined style={{ fontSize: 12, color: 'var(--color-accent)' }} />
-                        <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 500 }}>选择技能</span>
-                      </div>
+                        <ThunderboltOutlined style={{ fontSize: 12 }} />
+                        <span>更多技能</span>
+                      </button>
                     </Popover>
+                  )
                   )}
                 </div>
 
-                <div className="chat-input-body">
+                <div className="chat-input-body" style={{ position: 'relative' }}>
+                  <SlashCommandMenu
+                    visible={slashMenuOpen}
+                    filter={slashFilter}
+                    onSelect={(cmd) => {
+                      handleSend(`/${cmd.name}`);
+                    }}
+                    onClose={() => {
+                      setSlashMenuOpen(false);
+                      setSlashFilter('');
+                    }}
+                    inputRef={inputRef}
+                  />
                   <TextArea
                     ref={inputRef as React.RefObject<any>}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setInput(val);
+                      if (val.startsWith('/')) {
+                        setSlashMenuOpen(true);
+                        setSlashFilter(val);
+                      } else {
+                        setSlashMenuOpen(false);
+                        setSlashFilter('');
+                      }
+                    }}
                     onPressEnter={(e) => {
                       if (!e.shiftKey) {
                         e.preventDefault();
@@ -1424,8 +1670,14 @@ ${text}`;
                       }
                     }}
                     onFocus={() => setIsInputFocused(true)}
-                    onBlur={() => setIsInputFocused(false)}
-                    placeholder={selectedSkill ? `[${selectedSkill.name}] 输入你的问题...` : '输入你的问题，或输入 /智能入库 快速上传解析文件...'}
+                    onBlur={() => {
+                      setIsInputFocused(false);
+                      setTimeout(() => {
+                        setSlashMenuOpen(false);
+                        setSlashFilter('');
+                      }, 200);
+                    }}
+                    placeholder={selectedSkill ? `[${selectedSkill.name}] 输入你的问题...` : '输入你的问题...'}
                     autoSize={{ minRows: 1, maxRows: 6 }}
                     style={{
                       border: 'none',
@@ -1493,16 +1745,36 @@ ${text}`;
                     )}
                   </Space>
 
-                  <Button
-                    variant="primary"
-                    size="md"
-                    icon={<SendOutlined />}
-                    onClick={() => handleSend()}
-                    loading={isLoading || isStreaming}
-                    disabled={(!input.trim() && !attachedFile) || isLoading || isStreaming}
-                  >
-                    {isStreaming ? '生成中...' : '发送'}
-                  </Button>
+                  <Space size={8}>
+                    {voiceSupported.current && (
+                      <Tooltip title={isListening ? '点击停止' : '语音输入'}>
+                        <Button
+                          variant={isListening ? 'primary' : 'ghost'}
+                          size="icon"
+                          icon={isListening ? <AudioMutedOutlined /> : <AudioOutlined />}
+                          onClick={() => isListening ? stopVoiceInput() : startVoiceInput()}
+                          style={{
+                            height: 32,
+                            width: 32,
+                            borderRadius: 8,
+                            ...(isListening ? {} : { color: 'var(--color-secondary)' }),
+                          }}
+                          className={isListening ? 'voice-btn--listening' : ''}
+                          aria-label={isListening ? '停止语音输入' : '语音输入'}
+                        />
+                      </Tooltip>
+                    )}
+                    <Button
+                      variant="primary"
+                      size="md"
+                      icon={<SendOutlined />}
+                      onClick={() => handleSend()}
+                      loading={isLoading || isStreaming}
+                      disabled={(!input.trim() && !attachedFile) || isLoading || isStreaming}
+                    >
+                      {isStreaming ? '生成中...' : '发送'}
+                    </Button>
+                  </Space>
                 </div>
               </div>
 
@@ -1561,6 +1833,22 @@ ${text}`;
             </Tooltip>
           </div>
           <div className="chat-context-panel__scroll">
+            {activeAgent && (
+              <div className="chat-context-item">
+                <div className="chat-context-item__head">
+                  <span className="chat-context-item__role chat-context-item__role--assistant">当前专家</span>
+                  <span className="chat-context-item__time">{activeAgent.category}</span>
+                </div>
+                <p className="chat-context-item__text">
+                  {activeAgent.icon} {activeAgent.name}：{activeAgent.description}
+                </p>
+                <div className="chat-context-item__refs">
+                  <BookOutlined />
+                  <span>绑定知识空间 {activeAgent.spaceIds.length || '全部'}</span>
+                </div>
+                <div className="chat-context-item__line" />
+              </div>
+            )}
             {messages.length === 0 ? (
               <div className="chat-context-empty">
                 <ProfileOutlined />
@@ -1598,152 +1886,11 @@ ${text}`;
         onClose={() => setTraceDrawerOpen(false)}
         width={520}
       >
-        <div className="pipeline-trace-drawer">
-          {traceLoading ? (
-            <div className="pipeline-trace-loading">
-              <LoadingOutlined />
-              <span>正在加载链路详情...</span>
-            </div>
-          ) : selectedTrace ? (
-            <>
-              <div className="pipeline-trace-summary">
-                <div>
-                  <Text type="secondary">Trace ID</Text>
-                  <div className="pipeline-trace-id">
-                    <Text code copyable>{selectedTrace.traceId}</Text>
-                  </div>
-                </div>
-                <Tag color={selectedTrace.result === 'SUCCESS' ? 'success' : selectedTrace.result === 'ERROR' ? 'error' : 'processing'}>
-                  {selectedTrace.result}
-                </Tag>
-              </div>
-
-              <div className="pipeline-trace-metrics">
-                <div className="pipeline-trace-metric">
-                  <span>{selectedTrace.totalMs}</span>
-                  <label>总耗时 ms</label>
-                </div>
-                <div className="pipeline-trace-metric">
-                  <span>{selectedTrace.recallCount}</span>
-                  <label>召回</label>
-                </div>
-                <div className="pipeline-trace-metric">
-                  <span>{selectedTrace.rerankCount}</span>
-                  <label>精排</label>
-                </div>
-                <div className="pipeline-trace-metric">
-                  <span>{selectedTrace.citationsCount}</span>
-                  <label>引用</label>
-                </div>
-                {selectedTrace.promptBudget?.estimatedPromptTokens != null && (
-                  <div className="pipeline-trace-metric">
-                    <span>{selectedTrace.promptBudget.estimatedPromptTokens}</span>
-                    <label>Prompt Tokens</label>
-                  </div>
-                )}
-              </div>
-
-              <div className="pipeline-trace-flags">
-                <Tag color={selectedTrace.cacheHit ? 'green' : 'default'}>
-                  {selectedTrace.cacheHit ? '缓存命中' : '未命中缓存'}
-                </Tag>
-                {selectedTrace.firstTokenMs != null && (
-                  <Tag color="blue">首 Token {selectedTrace.firstTokenMs}ms</Tag>
-                )}
-                {selectedTrace.refusalReason && (
-                  <Tag color="orange">{selectedTrace.refusalReason}</Tag>
-                )}
-                {selectedTrace.promptBudget?.enabled != null && (
-                  <Tag color={selectedTrace.promptBudget.enabled ? 'purple' : 'default'}>
-                    {selectedTrace.promptBudget.enabled ? '预算控制开启' : '预算控制关闭'}
-                  </Tag>
-                )}
-              </div>
-
-              {selectedTrace.rewrittenQuery && selectedTrace.rewrittenQuery !== selectedTrace.queryText && (
-                <div className="pipeline-trace-block">
-                  <Text type="secondary">改写后查询</Text>
-                  <p>{selectedTrace.rewrittenQuery}</p>
-                </div>
-              )}
-
-              {selectedTrace.promptBudget && Object.keys(selectedTrace.promptBudget).length > 0 && (
-                <div className="pipeline-trace-block">
-                  <Text type="secondary">Prompt 预算</Text>
-                  <div className="pipeline-budget-grid">
-                    <span>输入预算 {selectedTrace.promptBudget.inputBudgetTokens ?? '-'}</span>
-                    <span>预估 Prompt {selectedTrace.promptBudget.estimatedPromptTokens ?? '-'}</span>
-                    <span>保留引用 {selectedTrace.promptBudget.includedCitations ?? '-'}</span>
-                    <span>丢弃引用 {selectedTrace.promptBudget.droppedCitations ?? '-'}</span>
-                    <span>压缩引用 {selectedTrace.promptBudget.truncatedCitations ?? '-'}</span>
-                    <span>保留历史 {selectedTrace.promptBudget.includedHistoryTurns ?? '-'}</span>
-                    <span>丢弃历史 {selectedTrace.promptBudget.droppedHistoryTurns ?? '-'}</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="pipeline-trace-section-title">阶段耗时</div>
-              <div className="pipeline-stage-list">
-                {selectedTrace.stageTimings.map((stage, index) => {
-                  const percent = selectedTrace.totalMs > 0
-                    ? Math.min(100, Math.round((stage.durationMs / selectedTrace.totalMs) * 100))
-                    : 0;
-                  return (
-                    <div key={`${stage.stage}-${index}`} className="pipeline-stage-item">
-                      <div className="pipeline-stage-item__head">
-                        <span>{formatStageName(stage.stage)}</span>
-                        <span className={stage.status === 'ERROR' ? 'pipeline-stage-item__time--error' : ''}>
-                          {stage.durationMs}ms
-                        </span>
-                      </div>
-                      <Progress
-                        percent={percent}
-                        showInfo={false}
-                        size="small"
-                        status={stage.status === 'ERROR' ? 'exception' : 'normal'}
-                      />
-                      {stage.errorMessage && (
-                        <div className="pipeline-stage-item__error">{stage.errorMessage}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {selectedTrace.hitDocs.length > 0 && (
-                <>
-                  <div className="pipeline-trace-section-title">命中文档</div>
-                  <div className="pipeline-hit-docs">
-                    {selectedTrace.hitDocs.map((doc, index) => (
-                      <div key={`${doc.docId}-${index}`} className="pipeline-hit-doc">
-                        <FileTextOutlined />
-                        <div>
-                          <div className="pipeline-hit-doc__title">{doc.title || doc.docId || '未命名文档'}</div>
-                          <div className="pipeline-hit-doc__meta">
-                            {doc.score != null && <span>score {Number(doc.score).toFixed(3)}</span>}
-                            {doc.version != null && <span>v{doc.version}</span>}
-                            {doc.page != null && <span>第{doc.page}页</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {selectedTrace.errorMessage && (
-                <Alert type="error" showIcon message="链路异常" description={selectedTrace.errorMessage} />
-              )}
-            </>
-          ) : (
-            <Alert
-              type="warning"
-              showIcon
-              message="未找到链路记录"
-              description={selectedTraceId ? `traceId: ${selectedTraceId}` : undefined}
-            />
-          )}
-        </div>
+        <PipelineTraceView
+          trace={selectedTrace}
+          loading={traceLoading}
+          traceId={selectedTraceId}
+        />
       </Drawer>
 
       <Modal

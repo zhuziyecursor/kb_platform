@@ -166,6 +166,8 @@ export default function HomePage() {
   const rankTotal = rankData.reduce((sum, d) => sum + d.count, 0);
 
   const todayStr = dayjs().format('YYYY年M月D日 dddd');
+  const hour = dayjs().hour();
+  const timeGreeting = hour < 12 ? '上午好，祝您工作顺利' : hour < 18 ? '下午好，祝您工作顺利' : '晚上好，请注意休息';
 
   return (
     <AppLayout>
@@ -174,47 +176,47 @@ export default function HomePage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <Title
             level={2}
-            style={{ color: '#fff', margin: 0, fontSize: 28, letterSpacing: '-0.02em' }}
+            style={{ color: 'var(--color-foreground)', margin: 0, fontSize: 28, letterSpacing: '-0.02em' }}
           >
             欢迎回来，{username}
           </Title>
-          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 14, marginTop: 8, display: 'block' }}>
-            {todayStr} · 知识库运行正常
+          <Text style={{ color: 'var(--color-muted-foreground)', fontSize: 14, marginTop: 8, display: 'block' }}>
+            {todayStr} · {timeGreeting}
           </Text>
         </div>
 
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           <div className="glass-card">
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, display: 'block', marginBottom: 4 }}>
+            <Text style={{ color: 'var(--color-muted-foreground)', fontSize: 12, display: 'block', marginBottom: 4 }}>
               文档总数
             </Text>
-            <Text strong style={{ color: '#fff', fontSize: 28, lineHeight: 1.2 }}>
+            <Text strong style={{ color: 'var(--color-foreground)', fontSize: 28, lineHeight: 1.2 }}>
               {loading ? (
-                <Spin size="small" style={{ color: '#fff' }} />
+                <Spin size="small" style={{ color: 'var(--color-foreground)' }} />
               ) : (
                 <AnimatedNumber value={totalDocs} />
               )}
             </Text>
           </div>
           <div className="glass-card">
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, display: 'block', marginBottom: 4 }}>
+            <Text style={{ color: 'var(--color-muted-foreground)', fontSize: 12, display: 'block', marginBottom: 4 }}>
               知识空间
             </Text>
-            <Text strong style={{ color: '#fff', fontSize: 28, lineHeight: 1.2 }}>
+            <Text strong style={{ color: 'var(--color-foreground)', fontSize: 28, lineHeight: 1.2 }}>
               {loading ? (
-                <Spin size="small" style={{ color: '#fff' }} />
+                <Spin size="small" style={{ color: 'var(--color-foreground)' }} />
               ) : (
                 <AnimatedNumber value={totalSpaces} />
               )}
             </Text>
           </div>
           <div className="glass-card">
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, display: 'block', marginBottom: 4 }}>
+            <Text style={{ color: 'var(--color-muted-foreground)', fontSize: 12, display: 'block', marginBottom: 4 }}>
               待处理
             </Text>
-            <Text strong style={{ color: '#fff', fontSize: 28, lineHeight: 1.2 }}>
+            <Text strong style={{ color: 'var(--color-foreground)', fontSize: 28, lineHeight: 1.2 }}>
               {loading ? (
-                <Spin size="small" style={{ color: '#fff' }} />
+                <Spin size="small" style={{ color: 'var(--color-foreground)' }} />
               ) : (
                 <AnimatedNumber value={pendingCount} />
               )}

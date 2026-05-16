@@ -391,6 +391,121 @@ services:
       - dev-tools
 
 # =============================================================================
+# Grafana + Loki — 可观测性平台 (日志聚合 + 可视化)
+# =============================================================================
+# 用途:
+#   - Loki: 日志聚合存储，索引 label，不索引日志正文
+#   - Grafana: 日志查询 UI + 仪表盘 + 告警
+# 设计:
+#   - Loki 使用 MinIO 作为对象存储（复用已有 MinIO）
+#   - Grafana 仪表盘通过 provisioning 自动加载，重建容器不丢失
+#   - 日志保留 30 天（开发环境），生产环境可延长
+#   - Promtail 在宿主机运行（非 Docker），tail 应用服务日志
+# =============================================================================
+  # =============================================================================
+  # Promtail - 日志采集 Agent
+  # =============================================================================
+  # 用途: 挂载宿主机日志目录，tail JSON/文本日志，推送到 Loki
+  # =============================================================================
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: kb-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./configs/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - ../../kb-doc-processor/logs:/logs/doc-processor:ro
+      - ../../kb-mcp/rag-service/logs:/logs/rag-service:ro
+      - ../../kb-mcp/ingest-service:/logs/dev-logs/ingest-service:ro
+      - ../../kb-mcp/vector-service:/logs/dev-logs/vector-service:ro
+      - ../../kb-mcp/llm-gateway:/logs/dev-logs/llm-gateway:ro
+      - ../../kb-mcp/public-api:/logs/dev-logs/public-api:ro
+      - ../../kb-mcp/vector-service/logs:/logs/vector-service:ro
+      - ../../kb-mcp/public-api/logs:/logs/audit:ro
+      - /tmp/promtail-positions:/tmp
+    depends_on:
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    networks:
+      - kb-network
+    stop_grace_period: 10s
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: kb-loki
+    restart: unless-stopped
+    ports:
+      - "${LOKI_PORT:-31008}:3100"
+    command:
+      - -config.file=/etc/loki/loki-config.yaml
+      - -config.expand-env=true
+    environment:
+      LOKI_RETENTION_DAYS: "30"
+    volumes:
+      - ./configs/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    networks:
+      - kb-network
+    stop_grace_period: 10s
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: kb-grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-31009}:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_USERS_DEFAULT_THEME: "light"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./configs/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./configs/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    networks:
+      - kb-network
+    stop_grace_period: 10s
+
+# =============================================================================
 # 资源定义
 # =============================================================================
 volumes:
@@ -403,6 +518,8 @@ volumes:
   milvus_data:
     driver: local
   kafka_data:
+    driver: local
+  grafana_data:
     driver: local
 
 # =============================================================================

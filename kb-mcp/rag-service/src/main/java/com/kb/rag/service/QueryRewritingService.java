@@ -1,5 +1,7 @@
 package com.kb.rag.service;
 
+import com.kb.rag.dto.LlmRewriteResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -9,7 +11,10 @@ import java.util.regex.Pattern;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class QueryRewritingService {
+
+    private final LlmQueryRewriteService llmRewriteService;
 
     private static final Map<String, List<String>> SYNONYMS = new LinkedHashMap<>();
     private static final Pattern PRONOUN_PATTERN = Pattern.compile(
@@ -28,7 +33,41 @@ public class QueryRewritingService {
         SYNONYMS.put("绩效考核", List.of("KPI", "业绩考核", "考评"));
     }
 
+    /**
+     * Rewrite query with LLM when appropriate, falling back to synonym expansion.
+     *
+     * @param query   raw user query
+     * @param history recent session turns (max 3 used)
+     * @return rewrite result with intent and enriched query
+     */
+    public RewriteResult rewrite(String query, List<SessionService.Turn> history) {
+        // Try LLM rewrite first
+        LlmRewriteResponse llmResult = llmRewriteService.rewrite(query, history);
+        if (llmResult != null) {
+            String enriched = KeywordFallbackService.enhanceQueryStatic(llmResult.getMainQuery());
+            return new RewriteResult(
+                    enriched,
+                    llmResult.getMainQuery(),
+                    llmResult.getSubQueries(),
+                    llmResult.getKeywords(),
+                    llmResult.getIntent()
+            );
+        }
+
+        // Fallback: synonym expansion + keyword enhancement
+        String expanded = synonymExpand(query);
+        String enriched = KeywordFallbackService.enhanceQueryStatic(expanded);
+        return new RewriteResult(enriched, query, List.of(), List.of(), null);
+    }
+
+    /**
+     * Legacy rewrite: simple synonym expansion, no LLM.
+     */
     public String rewrite(String query) {
+        return synonymExpand(query);
+    }
+
+    private String synonymExpand(String query) {
         StringBuilder expanded = new StringBuilder(query);
         for (Map.Entry<String, List<String>> entry : SYNONYMS.entrySet()) {
             if (query.contains(entry.getKey())) {
@@ -69,5 +108,17 @@ public class QueryRewritingService {
             }
         }
         return String.join(" ", found);
+    }
+
+    public record RewriteResult(
+            String rewrittenQuery,
+            String mainQuery,
+            List<String> subQueries,
+            List<String> keywords,
+            String intent
+    ) {
+        public boolean hasIntent() {
+            return intent != null && !intent.isEmpty();
+        }
     }
 }

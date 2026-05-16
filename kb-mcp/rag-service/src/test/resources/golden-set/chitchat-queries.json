@@ -1,0 +1,33 @@
+{
+  "category": "chitchat",
+  "description": "闲聊 / 越界 query — IntentRouter 应路由到 CHITCHAT，pipeline 应拒答（不调用检索）。",
+  "queries": [
+    {
+      "id": "chitchat-001",
+      "query": "你好",
+      "ideal_doc_ids": [],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": true,
+      "tags": ["chitchat", "greeting"]
+    },
+    {
+      "id": "chitchat-002",
+      "query": "今天天气怎么样",
+      "ideal_doc_ids": [],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": true,
+      "tags": ["chitchat", "off_topic"]
+    },
+    {
+      "id": "chitchat-003",
+      "query": "讲个笑话",
+      "ideal_doc_ids": [],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": true,
+      "tags": ["chitchat", "off_topic"]
+    }
+  ]
+}

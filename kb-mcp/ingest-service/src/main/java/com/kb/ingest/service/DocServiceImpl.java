@@ -337,7 +337,8 @@ public class DocServiceImpl implements DocService {
                                              Integer page, String highlight) {
         KnowledgeDoc doc = findDocOrThrow(tenantId, docId, version);
 
-        String presignedUrl = minioService.generateGetPresignedUrl(doc.getSrcPath());
+        String contentType = getContentType(doc.getTitle());
+        String presignedUrl = minioService.generateGetPresignedUrl(doc.getSrcPath(), contentType);
         String previewType = minioService.getPreviewType(doc.getTitle(), null);
 
         return DocPreviewResponse.builder()
@@ -416,7 +417,10 @@ public class DocServiceImpl implements DocService {
             return "image/svg+xml";
         }
         if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
-            return "text/markdown";
+            return "text/markdown; charset=UTF-8";
+        }
+        if (lower.endsWith(".txt")) {
+            return "text/plain; charset=UTF-8";
         }
         return "application/octet-stream";
     }

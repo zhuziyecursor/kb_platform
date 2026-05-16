@@ -19,4 +19,7 @@ public class ChatResponse {
     private String sessionId;
     private Long messageId;
     private String confidence;
+    private String intent;
+    private String searchMode;
+    private java.util.Map<String, Integer> channelStats;
 }

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmbedTaskRetryRequest",
+  "description": "Reprocess request published by vector-service's ReconcileJob when a chunk exists in kb_knowledge.knowledge_search_idx but is missing from Milvus. The consumer (kb-doc-processor) is expected to re-fetch the chunk text from knowledge_clean, re-embed it, and re-publish a full embed-task message.",
+  "topic": "embed-task-retry",
+  "type": "object",
+  "required": ["tenantId", "docId", "version", "chunkSeq", "reason"],
+  "properties": {
+    "traceId": {
+      "type": "string",
+      "description": "Trace id of the reconcile run that triggered this retry."
+    },
+    "tenantId": { "type": "string" },
+    "docId": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "chunkSeq": { "type": "integer", "minimum": 0 },
+    "reason": {
+      "type": "string",
+      "enum": ["RECONCILE_MISSING_IN_MILVUS", "MANUAL_REPAIR"],
+      "description": "Why this retry was issued. Consumers may use this for telemetry tagging."
+    }
+  },
+  "additionalProperties": false
+}

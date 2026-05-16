@@ -101,7 +101,7 @@ function SpaceCard({ space, depth, onRefresh }: SpaceCardProps) {
 
         {/* 图标 */}
         <div className={`space-card__icon ${isDefault ? 'space-card__icon--default' : ''}`}>
-          <FolderOutlined style={{ fontSize: 15, color: '#fff' }} />
+          <FolderOutlined style={{ fontSize: 15, color: 'currentColor' }} />
         </div>
 
         {/* 内容 */}

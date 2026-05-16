@@ -1,0 +1,51 @@
+{
+  "category": "clause",
+  "description": "条款编号定向 query — 应被 STRUCTURED + SPARSE 通道精确命中；rerank top-1 必须落在指定文档的指定章节。",
+  "queries": [
+    {
+      "id": "clause-001",
+      "query": "第32条规定了什么",
+      "ideal_doc_ids": ["audit-rule-v2"],
+      "ideal_chunk_seqs": [31],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": false,
+      "tags": ["clause", "policy"]
+    },
+    {
+      "id": "clause-002",
+      "query": "审计准则第三章第二节如何描述风险评估",
+      "ideal_doc_ids": ["audit-rule-v2"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["audit-rule-v1"],
+      "should_refuse": false,
+      "tags": ["clause", "section_path"]
+    },
+    {
+      "id": "clause-003",
+      "query": "3.2.1 节具体内容",
+      "ideal_doc_ids": ["audit-rule-v2"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": false,
+      "tags": ["clause", "western_notation"]
+    },
+    {
+      "id": "clause-004",
+      "query": "第一百零八条的执行依据是什么",
+      "ideal_doc_ids": ["audit-rule-v2"],
+      "ideal_chunk_seqs": [107],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": false,
+      "tags": ["clause", "chinese_numeral"]
+    },
+    {
+      "id": "clause-005",
+      "query": "第五条到第十条的覆盖范围",
+      "ideal_doc_ids": ["audit-rule-v2"],
+      "ideal_chunk_seqs": [4, 5, 6, 7, 8, 9],
+      "acceptable_alt_doc_ids": [],
+      "should_refuse": false,
+      "tags": ["clause", "range"]
+    }
+  ]
+}

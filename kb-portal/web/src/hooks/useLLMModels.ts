@@ -7,16 +7,80 @@ const STORAGE_KEY = 'kb_llm_models';
 
 // LLM 提供商元信息
 export const LLM_PROVIDERS: LLMProviderInfo[] = [
-  { value: 'openai', label: 'OpenAI', icon: '🤖', defaultModel: 'gpt-5.4' },
-  { value: 'anthropic', label: 'Anthropic', icon: '🧠', defaultModel: 'claude-opus-4-7' },
-  { value: 'google', label: 'Google', icon: '🔵', defaultModel: 'gemini-2.5-pro' },
-  { value: 'volcengine', label: '火山引擎', icon: '🌋', defaultModel: 'Doubao-Seed-2.0-pro' },
-  { value: 'ali', label: '阿里云', icon: '🦅', defaultModel: 'qwen3.5-plus' },
-  { value: 'minimax', label: 'MiniMax', icon: '📱', defaultModel: 'MiniMax-M2.7' },
+  // 国内模型
+  { value: 'minimax',  label: 'MiniMax',   icon: '📱', defaultModel: 'MiniMax-M2.7' },
+  { value: 'glm',      label: '智谱 GLM',   icon: '🔮', defaultModel: 'glm-4.7' },
+  { value: 'deepseek', label: 'DeepSeek',  icon: '🐋', defaultModel: 'deepseek-chat' },
+  { value: 'moonshot', label: 'Kimi月亮',   icon: '🌙', defaultModel: 'moonshot-v1-128k' },
+  { value: 'qwen',     label: '通义千问',   icon: '🦅', defaultModel: 'qwen3.5-plus' },
+  { value: 'doubao',   label: '豆包',       icon: '🌋', defaultModel: 'Doubao-Seed-2.0-pro' },
+  { value: 'xunfei',   label: '讯飞星火',   icon: '🎤', defaultModel: 'spark-4.0' },
+  // 国外模型
+  { value: 'openai',    label: 'OpenAI',     icon: '🤖', defaultModel: 'gpt-5.4' },
+  { value: 'anthropic', label: 'Anthropic',  icon: '🧠', defaultModel: 'claude-opus-4-7' },
+  { value: 'gemini',    label: 'Gemini',     icon: '🔵', defaultModel: 'gemini-2.5-pro' },
+  { value: 'grok',      label: 'Grok',       icon: '🚀', defaultModel: 'grok-4' },
+  // 本地模型
+  { value: 'ollama', label: 'Ollama', icon: '🦙', defaultModel: 'llama3.2' },
+  { value: 'vllm',   label: 'vLLM',   icon: '⚡', defaultModel: 'default' },
+  { value: 'custom', label: '自定义',  icon: '🔧', defaultModel: '' },
+  // 旧兼容
+  { value: 'google',     label: 'Google',    icon: '🔵', defaultModel: 'gemini-2.5-pro' },
+  { value: 'volcengine', label: '火山引擎',   icon: '🌋', defaultModel: 'Doubao-Seed-2.0-pro' },
+  { value: 'ali',        label: '阿里云',     icon: '🦅', defaultModel: 'qwen3.5-plus' },
 ];
 
-// 默认模型列表（按提供商）- 2025-2026年最新模型名称
-export const DEFAULT_MODELS: Record<LLMProvider, string[]> = {
+// 默认模型列表（按提供商）
+export const DEFAULT_MODELS: Record<string, string[]> = {
+  // 国内模型
+  minimax: [
+    'MiniMax-M2.7',
+    'MiniMax-M2.5',
+    'MiniMax-Text-01',
+    'abab6.5s-chat',
+  ],
+  glm: [
+    'glm-4.7',
+    'glm-4.5',
+    'glm-4-plus',
+    'glm-4-flash',
+    'glm-4-long',
+    'glm-4-air',
+  ],
+  deepseek: [
+    'deepseek-chat',
+    'deepseek-coder',
+    'deepseek-reasoner',
+  ],
+  moonshot: [
+    'moonshot-v1-128k',
+    'moonshot-v1-32k',
+    'moonshot-v1-8k',
+  ],
+  qwen: [
+    'qwen3.5-plus',
+    'qwen3.5-flash',
+    'qwen3-max',
+    'qwen3-coder-plus',
+    'qwen3-coder-flash',
+    'qwen-plus',
+    'qwen-turbo',
+    'qwen-long',
+  ],
+  doubao: [
+    'Doubao-Seed-2.0-pro',
+    'Doubao-Seed-2.0-lite',
+    'Doubao-Seed-2.0-Code',
+    'Doubao-Seed-1.8',
+    'Doubao-pro-256k',
+  ],
+  xunfei: [
+    'spark-4.0',
+    'spark-4.0-ultra',
+    'spark-lite',
+    'spark-pro',
+  ],
+  // 国外模型
   openai: [
     'gpt-5.4',
     'gpt-5.3-chat-latest',
@@ -24,8 +88,6 @@ export const DEFAULT_MODELS: Record<LLMProvider, string[]> = {
     'gpt-5.2-pro',
     'gpt-5.1',
     'gpt-5.1-mini',
-    'gpt-5',
-    'gpt-5-mini',
     'gpt-4.1',
     'gpt-4.1-mini',
   ],
@@ -41,7 +103,7 @@ export const DEFAULT_MODELS: Record<LLMProvider, string[]> = {
     'claude-sonnet-4-0',
     'claude-3-haiku-20240307',
   ],
-  google: [
+  gemini: [
     'gemini-2.5-pro',
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
@@ -49,26 +111,29 @@ export const DEFAULT_MODELS: Record<LLMProvider, string[]> = {
     'gemini-1.5-pro',
     'gemini-1.5-flash',
   ],
-  volcengine: [
-    'Doubao-Seed-2.0-pro',
-    'Doubao-Seed-2.0-lite',
-    'Doubao-Seed-2.0-Code',
-    'Doubao-Seed-1.8',
+  grok: [
+    'grok-4',
+    'grok-3',
+    'grok-3-mini',
   ],
-  ali: [
-    'qwen3.5-plus',
-    'qwen3.5-flash',
-    'qwen3-max',
-    'qwen3-coder-plus',
-    'qwen3-coder-flash',
-    'qwen-plus',
-    'qwen-turbo',
-    'qwen-long',
+  // 本地模型
+  ollama: [
+    'llama3.2',
+    'llama3.2-70b',
+    'qwen2.5:7b',
+    'qwen2.5:14b',
+    'qwen2.5:32b',
+    'deepseek-r1:8b',
+    'deepseek-r1:14b',
+    'mistral:7b',
+    'codellama:7b',
   ],
-  minimax: [
-    'MiniMax-M2.7',
-    'MiniMax-M2.5',
-  ],
+  vllm: ['default'],
+  custom: [],
+  // 旧兼容
+  google: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+  volcengine: ['Doubao-Seed-2.0-pro', 'Doubao-Seed-2.0-lite'],
+  ali: ['qwen3.5-plus', 'qwen3.5-flash', 'qwen-plus', 'qwen-turbo'],
 };
 
 function generateId(): string {

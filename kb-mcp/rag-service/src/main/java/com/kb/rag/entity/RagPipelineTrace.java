@@ -88,6 +88,10 @@ public class RagPipelineTrace {
     @JdbcTypeCode(SqlTypes.JSON)
     private String promptBudget;
 
+    @Column(name = "channel_hits", nullable = false, columnDefinition = "JSONB")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String channelHits;
+
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
@@ -102,5 +106,6 @@ public class RagPipelineTrace {
         if (stageTimings == null) stageTimings = "[]";
         if (hitDocs == null) hitDocs = "[]";
         if (promptBudget == null) promptBudget = "{}";
+        if (channelHits == null) channelHits = "{}";
     }
 }

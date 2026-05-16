@@ -10,6 +10,7 @@ import com.kb.rag.repository.RagSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -215,7 +216,7 @@ public class SessionService {
     @Transactional
     public void deleteSession(String sessionId, String tenantId) {
         sessionRepository.deleteByIdAndTenantId(sessionId, tenantId);
-        stringRedisTemplate.delete(SESSION_KEY_PREFIX + sessionId);
+        deleteFromRedis(sessionId);
     }
 
     private void saveToRedis(String sessionId, SessionData data) {
@@ -228,18 +229,36 @@ public class SessionService {
             );
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize session: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            log.warn("Redis unavailable while saving session {}. Falling back to database only: {}",
+                    sessionId, e.getMessage());
         }
     }
 
     private SessionData getFromRedis(String sessionId) {
         String key = SESSION_KEY_PREFIX + sessionId;
-        String json = stringRedisTemplate.opsForValue().get(key);
+        String json;
+        try {
+            json = stringRedisTemplate.opsForValue().get(key);
+        } catch (DataAccessException e) {
+            log.warn("Redis unavailable while reading session {}. Falling back to database: {}",
+                    sessionId, e.getMessage());
+            return null;
+        }
         if (json == null) return null;
         try {
             return objectMapper.readValue(json, SessionData.class);
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize session: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private void deleteFromRedis(String sessionId) {
+        try {
+            stringRedisTemplate.delete(SESSION_KEY_PREFIX + sessionId);
+        } catch (DataAccessException e) {
+            log.warn("Redis unavailable while deleting session {} cache: {}", sessionId, e.getMessage());
         }
     }
 

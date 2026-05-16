@@ -1,0 +1,71 @@
+groups:
+  - name: rag-hybrid-retrieval
+    rules:
+      - alert: HybridRetrievalDenseFailureHigh
+        expr: rate(rag_channel_failed_total{channel="DENSE"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: rag-service
+        annotations:
+          summary: "DENSE 通道失败率过高"
+          description: "DENSE 通道在 5 分钟内失败率超过 0.1/s，Milvus 或 embedding-service 可能异常。"
+
+      - alert: HybridRetrievalPlannerCircuitOpen
+        expr: increase(rag_planner_fallback_total[5m]) > 0
+        labels:
+          severity: warning
+          component: rag-service
+        annotations:
+          summary: "LLM Planner 熔断触发"
+          description: "LLM Planner 在过去 5 分钟内触发了降级，检查 llm-gateway 健康状态。"
+
+      - alert: HybridRetrievalRefusalSpike
+        expr: rate(rag_pipeline_refusal_total[5m]) > 2 * avg_over_time(rate(rag_pipeline_refusal_total[5m])[1h:5m])
+        for: 5m
+        labels:
+          severity: warning
+          component: rag-service
+        annotations:
+          summary: "拒答率异常飙升"
+          description: "当前拒答速率超过过去 1 小时均值的 2 倍，可能是知识库内容问题或检索质量下降。"
+
+      - alert: ReconcileLagHigh
+        expr: rag_reconcile_missing_in_milvus > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: vector-service
+        annotations:
+          summary: "PG-Milvus 数据不一致超过 100 条"
+          description: "{{ $labels.tenant }} 在 PG 中有但 Milvus 中缺失的 chunk 超过 100 条，检查 vector-service 消费是否堆积。"
+
+      - alert: HybridRetrievalPartialFailureSustained
+        expr: rate(rag_fusion_partial_failure_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: rag-service
+        annotations:
+          summary: "Hybrid 融合长期处于部分失败状态"
+          description: "过去 10 分钟内 >0.5/s 的请求只使用了部分通道完成融合。检查通道失败计数定位根因。"
+
+      - alert: HybridRetrievalRerankFallbackSustained
+        expr: rate(rag_rerank_fallback_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: rag-service
+        annotations:
+          summary: "rerank-service 长期不可用"
+          description: "过去 10 分钟内 rerank fallback 速率 >0.5/s，rerank-service 可能挂了；LOW_CONFIDENCE 拒答阈值已自动 +0.2。"
+
+      - alert: HybridRetrievalAclDroppedSpike
+        expr: rate(rag_acl_filter_dropped_total[5m]) > 5 * avg_over_time(rate(rag_acl_filter_dropped_total[5m])[1h:5m])
+        for: 5m
+        labels:
+          severity: critical
+          component: rag-service
+        annotations:
+          summary: "ACL 过滤丢弃数异常升高"
+          description: "{{ $labels.channel }} 通道的 ACL 过滤丢弃速率显著高于过去 1 小时均值，可能是回填脚本未跑全或权限模型变更，需立即排查。"

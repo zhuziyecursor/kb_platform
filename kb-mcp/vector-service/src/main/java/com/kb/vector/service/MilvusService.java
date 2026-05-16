@@ -76,7 +76,13 @@ public class MilvusService {
             tagsList.add(m.getTags() != null ? m.getTags() : "");
             chunkTypeList.add(m.getChunkType() != null ? m.getChunkType() : "");
             keywordsList.add(m.getKeywords() != null ? m.getKeywords() : "");
-            summaryList.add(m.getSummary() != null ? m.getSummary() : "");
+            String rawSummary = m.getSummary() != null ? m.getSummary() : "";
+            String truncatedSummary = truncate(rawSummary, 256);
+            if (rawSummary.length() > 256) {
+                log.warn("Summary truncated: docId={}, chunkSeq={}, before={}, after={}",
+                        m.getDocId(), m.getChunkSeq(), rawSummary.length(), truncatedSummary.length());
+            }
+            summaryList.add(truncatedSummary);
             parentRefs.add(m.getParentRef() != null ? m.getParentRef() : "");
         }
 
@@ -123,5 +129,12 @@ public class MilvusService {
         return result.getSuccIndexList().stream()
                 .map(Long::valueOf)
                 .collect(Collectors.toList());
+    }
+
+    private static String truncate(String value, int maxLen) {
+        if (value == null || value.length() <= maxLen) {
+            return value != null ? value : "";
+        }
+        return value.substring(0, maxLen);
     }
 }

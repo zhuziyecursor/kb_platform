@@ -216,7 +216,7 @@ class Pipeline:
             # knowledge_structured 保留 Parent/Child 元数据
             # Group chunks by section_path
             sections_map: dict[str, list] = {}
-            for chunk in chunks.chunks:
+            for i, chunk in enumerate(chunks.chunks):
                 key = chunk.section_path or ""
                 sections_map.setdefault(key, []).append(chunk)
 
@@ -252,7 +252,7 @@ class Pipeline:
 
             now = datetime.now(timezone.utc)
             current_parent_seq = None
-            for chunk in chunks.chunks:
+            for i, chunk in enumerate(chunks.chunks):
                 text_hash = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
 
                 if chunk.is_parent:

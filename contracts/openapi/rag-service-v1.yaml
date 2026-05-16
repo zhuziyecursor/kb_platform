@@ -51,6 +51,14 @@ components:
         text:          { type: string, description: "对应的原始文本片段" }
         knowledgeSpaceId: { type: string, description: "所属知识空间 ID" }
         spacePath:     { type: string, description: "知识空间路径，如 审计案例库/案例评优" }
+        sourceChannels:
+          type: array
+          items: { type: string, enum: [DENSE, SPARSE, STRUCTURED, METADATA, FAQ] }
+          description: "召回来源通道列表（可选，Sprint 2+）"
+        channelRanks:
+          type: object
+          additionalProperties: { type: integer }
+          description: "各通道内排名（可选，Sprint 2+）"
 
     RefusalReason:
       type: string
@@ -122,6 +130,18 @@ paths:
                   reason:
                     $ref: "#/components/schemas/RefusalReason"
                     description: "仅拒答时返回"
+                  intent:
+                    type: string
+                    enum: [POLICY_QA, DOC_SEARCH, CHITCHAT]
+                    description: "意图分类（A.6 意图路由）"
+                  searchMode:
+                    type: string
+                    enum: [DENSE, BM25, HYBRID, FAQ, CHITCHAT, STRUCTURED_FAST]
+                    description: "实际使用的检索模式"
+                  channelStats:
+                    type: object
+                    additionalProperties: { type: integer }
+                    description: "各通道命中统计（可选，Sprint 2+）"
               examples:
                 success:
                   summary: 正常回答
@@ -262,3 +282,121 @@ paths:
       responses:
         "204":
           description: 删除成功
+
+  /analytics/top-queries:
+    get:
+      summary: 高频问题统计
+      operationId: getTopQueries
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 7 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+        - name: spaceId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Top queries list
+
+  /analytics/dashboard:
+    get:
+      summary: 监控仪表盘指标
+      description: |
+        返回指定周期的全景指标：
+        - 请求量、成功率、平均响应时间、拒答率
+        - 反馈统计（点赞/点踩/报错）
+        - 慢查询 Top N（含 P95）
+        - 拒答趋势（today 按小时，7days/30days 按天）
+        - 请求趋势
+      operationId: getDashboardMetrics
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [today, 7days, 30days]
+            default: 7days
+        - name: slowQueryLimit
+          in: query
+          required: false
+          schema: { type: integer, default: 10 }
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardMetrics"
+
+    # ========== Dashboard Schemas ==========
+
+    DashboardMetrics:
+      type: object
+      properties:
+        period:
+          type: string
+          enum: [today, 7days, 30days]
+        totalRequests:
+          type: integer
+          format: int64
+        successRate:
+          type: number
+          format: double
+        avgResponseMs:
+          type: number
+          format: double
+        refusalRate:
+          type: number
+          format: double
+        feedbackStats:
+          $ref: "#/components/schemas/FeedbackStats"
+        topSlowQueries:
+          type: array
+          items:
+            $ref: "#/components/schemas/SlowQuery"
+        refusalTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        requestTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+
+    FeedbackStats:
+      type: object
+      properties:
+        likeCount:     { type: integer, format: int64 }
+        dislikeCount:  { type: integer, format: int64 }
+        reportCount:   { type: integer, format: int64 }
+        likeRate:      { type: number, format: double }
+
+    SlowQuery:
+      type: object
+      properties:
+        query:  { type: string }
+        avgMs:  { type: number, format: double }
+        count:  { type: integer, format: int64 }
+        p95Ms:  { type: number, format: double }
+
+    TrendPoint:
+      type: object
+      properties:
+        label:  { type: string, description: "HH:00 for hourly, YYYY-MM-DD for daily" }
+        value:  { type: number, format: double }
+        count:  { type: integer, format: int64 }

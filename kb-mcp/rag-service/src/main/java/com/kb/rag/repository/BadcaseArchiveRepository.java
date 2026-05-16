@@ -17,8 +17,8 @@ public interface BadcaseArchiveRepository extends JpaRepository<BadcaseArchive, 
           AND (:status IS NULL OR b.status = :status)
           AND (:feedbackType IS NULL OR b.feedbackType = :feedbackType)
           AND (:reportReason IS NULL OR b.reportReason = :reportReason)
-          AND (:from IS NULL OR b.createdAt >= :from)
-          AND (:to IS NULL OR b.createdAt <= :to)
+          AND b.createdAt >= :from
+          AND b.createdAt <= :to
         ORDER BY b.createdAt DESC
     """)
     Page<BadcaseArchive> findBadcases(@Param("tenantId") String tenantId,

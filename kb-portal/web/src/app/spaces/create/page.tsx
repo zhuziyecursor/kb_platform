@@ -41,7 +41,13 @@ function CreateSpaceForm() {
 
   const handleSubmit = async () => {
     try {
-      const values = await form.validateFields();
+      const values = await form.validateFields([
+        'name',
+        'visibility',
+        'chunkSize',
+        'overlapRatio',
+        'chunkMode',
+      ]);
       setLoading(true);
       const payload = { ...values };
       if (parentId) {
@@ -50,8 +56,16 @@ function CreateSpaceForm() {
       await createSpace(payload);
       message.success('知识空间创建成功');
       router.push('/spaces');
-    } catch {
-      message.error('请完善必填信息');
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        const fields = (error as { errorFields: Array<{ errors: string[] }> }).errorFields;
+        message.error(fields[0]?.errors?.[0] || '请完善必填信息');
+      } else if (error && typeof error === 'object' && 'response' in error) {
+        const axiosErr = error as { response?: { data?: { message?: string } }; message?: string };
+        message.error(axiosErr.response?.data?.message || axiosErr.message || '创建失败，请稍后重试');
+      } else {
+        message.error('创建失败，请稍后重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -178,7 +192,7 @@ function CreateSpaceForm() {
             <div className="space-create-preview__label">预览</div>
             <div className="space-create-preview__card">
               <div className="space-create-preview__icon">
-                <FolderOutlined style={{ fontSize: 20, color: '#fff' }} />
+                <FolderOutlined style={{ fontSize: 20, color: 'currentColor' }} />
               </div>
               <div className="space-create-preview__name">
                 {form.getFieldValue('name') || '未命名空间'}

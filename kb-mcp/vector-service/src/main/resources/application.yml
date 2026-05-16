@@ -10,6 +10,14 @@ spring:
     username: ${KB_DB_USERNAME:kb_vector}
     password: ${KB_DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT:600000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION:60000}
+      pool-name: vector-pool
 
   jpa:
     hibernate:
@@ -46,12 +54,28 @@ spring:
 app:
   kafka:
     embed-task-topic: ${KB_KAFKA_EMBED_TASK_TOPIC:embed-task}
+  search-index:
+    write-enabled: ${KB_SEARCH_INDEX_WRITE_ENABLED:true}
+  reconcile:
+    enabled: ${KB_RECONCILE_ENABLED:true}
+    cron: ${KB_RECONCILE_CRON:0 17 * * * *}
 
 milvus:
   host: ${KB_MILVUS_HOST:localhost}
   port: ${KB_MILVUS_PORT:19530}
   collection-name: ${KB_MILVUS_COLLECTION:kb_documents}
   batch-size: 32
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
 
 logging:
   file:

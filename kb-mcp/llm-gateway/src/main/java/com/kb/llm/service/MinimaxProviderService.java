@@ -3,6 +3,7 @@ package com.kb.llm.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kb.llm.dto.*;
+import com.kb.llm.util.TraceLogHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +49,7 @@ public class MinimaxProviderService {
     private int timeoutSeconds;
 
     public MinimaxResponse chat(MinimaxRequest request) {
+        TraceLogHelper.setSpan("llm_upstream");
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Authorization", "Bearer " + apiKey);
@@ -80,6 +82,7 @@ public class MinimaxProviderService {
      * Streaming chat: reads MiniMax SSE stream and pushes tokens via onToken callback.
      */
     public void chatStream(MinimaxRequest request, Consumer<String> onToken) throws Exception {
+        TraceLogHelper.setSpan("llm_upstream");
         request.setStream(true);
 
         HttpClient client = HttpClient.newBuilder()

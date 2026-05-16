@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from src.logging_config import set_trace_context, clear_trace_context
 from src.reranker import get_reranker
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,17 @@ class RerankResponse(BaseModel):
     traceId: str = Field(default_factory=lambda: f"tr-{uuid.uuid4()}")
 
 
+@router.get("/health")
+async def health():
+    try:
+        reranker_instance = get_reranker()
+        if reranker_instance._model is not None:
+            return {"status": "UP", "model_loaded": True}
+        return {"status": "DOWN", "model_loaded": False}
+    except Exception:
+        return {"status": "DOWN", "model_loaded": False}
+
+
 @router.post("/rerank")
 async def rerank(request: RerankRequest):
     trace_id = f"tr-{uuid.uuid4()}"
@@ -46,6 +58,7 @@ async def rerank(request: RerankRequest):
         )
 
     try:
+        set_trace_context(trace_id=trace_id, span="rerank_inference")
         reranker_instance = get_reranker()
         texts = [doc.text for doc in request.documents]
         scores = reranker_instance.rerank(request.query, texts)
@@ -66,3 +79,5 @@ async def rerank(request: RerankRequest):
             status_code=500,
             detail={"code": "RERANK_ERROR", "message": str(e), "traceId": trace_id},
         )
+    finally:
+        clear_trace_context()

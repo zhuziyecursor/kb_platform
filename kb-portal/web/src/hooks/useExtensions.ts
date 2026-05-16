@@ -3,8 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import defaultExternalSkills from '@/data/external-skills.json';
 import defaultPrompts from '@/data/prompts.json';
+import defaultToolbox from '@/data/toolbox.json';
 
 // ==================== Types ====================
+
+export type SkillStatus = 'DRAFT' | 'PENDING' | 'PUBLISHED' | 'ENABLED';
 
 export interface PromptConfig {
   id: string;
@@ -22,6 +25,8 @@ export interface PromptConfig {
   author?: string;
   tags?: string[];
   installCommand?: string;
+  status?: SkillStatus;
+  rejectReason?: string;
 }
 
 export interface ExternalSkill {
@@ -35,6 +40,8 @@ export interface ExternalSkill {
   category?: string;   // 分类标签
   author?: string;     // 作者
   enabled: boolean;   // 是否启用，可在知识问答中使用
+  status?: SkillStatus;
+  rejectReason?: string;
 }
 
 export interface SkillParameter {
@@ -52,6 +59,8 @@ export interface CustomSkill {
   filePath: string;
   parameters: SkillParameter[];
   enabled: boolean;
+  status?: SkillStatus;
+  rejectReason?: string;
 }
 
 export interface MCPServer {
@@ -64,6 +73,25 @@ export interface MCPServer {
   enabled: boolean;
   lastTestAt?: string;
   lastTestResult?: 'success' | 'failed';
+  status?: SkillStatus;
+  rejectReason?: string;
+}
+
+export interface ToolboxTool {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  toolType: 'file-compare' | 'text-diff' | 'json-formatter' | 'code-formatter' | 'regex-tester' | 'dify-agent' | 'other';
+  endpoint?: string;
+  command?: string;
+  redirectUrl?: string;
+  enabled: boolean;
+  status?: SkillStatus;
+  rejectReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ==================== Storage Keys ====================
@@ -73,6 +101,7 @@ const STORAGE_KEYS = {
   externalSkills: 'kb_extension_external_skills',
   customSkills: 'kb_extension_custom_skills',
   mcpServers: 'kb_extension_mcp_servers',
+  toolbox: 'kb_extension_toolbox',
 };
 
 // ==================== Utility ====================
@@ -106,6 +135,17 @@ function mergeDefaultsById<T extends { id: string }>(stored: T[], defaults: T[])
   return [...defaults.filter((item) => !storedIds.has(item.id)), ...stored];
 }
 
+function normalizeSkillStatus<T extends { enabled?: boolean; status?: SkillStatus }>(item: T): T {
+  return {
+    ...item,
+    status: item.status || (item.enabled ? 'ENABLED' : 'PUBLISHED'),
+  };
+}
+
+function normalizeSkillCollection<T extends { enabled?: boolean; status?: SkillStatus }>(items: T[]): T[] {
+  return items.map(normalizeSkillStatus);
+}
+
 // ==================== Hook ====================
 
 export function useExtensions() {
@@ -125,22 +165,38 @@ export function useExtensions() {
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
   const [mcpServersLoaded, setMcpServersLoaded] = useState(false);
 
+  // Toolbox
+  const [toolbox, setToolbox] = useState<ToolboxTool[]>([]);
+  const [toolboxLoaded, setToolboxLoaded] = useState(false);
+
   // Load from localStorage
   useEffect(() => {
-    setPrompts(loadFromStorage(STORAGE_KEYS.prompts, defaultPrompts as PromptConfig[]));
+    const loadedPrompts = normalizeSkillCollection(loadFromStorage(STORAGE_KEYS.prompts, defaultPrompts as PromptConfig[]));
+    setPrompts(loadedPrompts);
+    saveToStorage(STORAGE_KEYS.prompts, loadedPrompts);
     setPromptsLoaded(true);
 
-    const loadedExternalSkills = loadFromStorage(STORAGE_KEYS.externalSkills, defaultExternalSkills as ExternalSkill[]);
-    const mergedExternalSkills = mergeDefaultsById(loadedExternalSkills, defaultExternalSkills as ExternalSkill[]);
+    const loadedExternalSkills = normalizeSkillCollection(loadFromStorage(STORAGE_KEYS.externalSkills, defaultExternalSkills as ExternalSkill[]));
+    const mergedExternalSkills = normalizeSkillCollection(mergeDefaultsById(loadedExternalSkills, defaultExternalSkills as ExternalSkill[]));
     setExternalSkills(mergedExternalSkills);
     saveToStorage(STORAGE_KEYS.externalSkills, mergedExternalSkills);
     setExternalSkillsLoaded(true);
 
-    setCustomSkills(loadFromStorage(STORAGE_KEYS.customSkills, []));
+    const loadedCustomSkills = normalizeSkillCollection(loadFromStorage(STORAGE_KEYS.customSkills, [] as CustomSkill[]));
+    setCustomSkills(loadedCustomSkills);
+    saveToStorage(STORAGE_KEYS.customSkills, loadedCustomSkills);
     setCustomSkillsLoaded(true);
 
-    setMcpServers(loadFromStorage(STORAGE_KEYS.mcpServers, []));
+    const loadedMcpServers = normalizeSkillCollection(loadFromStorage(STORAGE_KEYS.mcpServers, [] as MCPServer[]));
+    setMcpServers(loadedMcpServers);
+    saveToStorage(STORAGE_KEYS.mcpServers, loadedMcpServers);
     setMcpServersLoaded(true);
+
+    const loadedToolbox = normalizeSkillCollection(loadFromStorage(STORAGE_KEYS.toolbox, defaultToolbox as ToolboxTool[]));
+    const mergedToolbox = normalizeSkillCollection(mergeDefaultsById(loadedToolbox, defaultToolbox as ToolboxTool[]));
+    setToolbox(mergedToolbox);
+    saveToStorage(STORAGE_KEYS.toolbox, mergedToolbox);
+    setToolboxLoaded(true);
   }, []);
 
   // ==================== Prompts CRUD ====================
@@ -149,6 +205,7 @@ export function useExtensions() {
     const newPrompt: PromptConfig = {
       ...prompt,
       id: generateId(),
+      status: prompt.status || (prompt.enabled ? 'ENABLED' : 'PUBLISHED'),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -214,10 +271,30 @@ export function useExtensions() {
     });
   }, [prompts]);
 
+  const submitPromptForReview = useCallback((id: string) => {
+    updatePrompt(id, { status: 'PENDING', enabled: false, rejectReason: undefined });
+  }, [updatePrompt]);
+
+  const approvePrompt = useCallback((id: string) => {
+    updatePrompt(id, { status: 'PUBLISHED', enabled: false, rejectReason: undefined });
+  }, [updatePrompt]);
+
+  const rejectPrompt = useCallback((id: string, rejectReason: string) => {
+    updatePrompt(id, { status: 'DRAFT', enabled: false, rejectReason });
+  }, [updatePrompt]);
+
+  const enablePrompt = useCallback((id: string) => {
+    updatePrompt(id, { status: 'ENABLED', enabled: true });
+  }, [updatePrompt]);
+
+  const disablePrompt = useCallback((id: string) => {
+    updatePrompt(id, { status: 'PUBLISHED', enabled: false });
+  }, [updatePrompt]);
+
   // ==================== External Skills CRUD ====================
 
   const addExternalSkill = useCallback((skill: Omit<ExternalSkill, 'id'>) => {
-    const newSkill: ExternalSkill = { ...skill, id: generateId() };
+    const newSkill: ExternalSkill = { ...skill, id: generateId(), status: skill.status || (skill.enabled ? 'ENABLED' : 'PUBLISHED') };
     const newSkills = [...externalSkills, newSkill];
     saveToStorage(STORAGE_KEYS.externalSkills, newSkills);
     setExternalSkills(newSkills);
@@ -269,10 +346,30 @@ export function useExtensions() {
     });
   }, [externalSkills]);
 
+  const submitExternalSkillForReview = useCallback((id: string) => {
+    updateExternalSkill(id, { status: 'PENDING', enabled: false, rejectReason: undefined });
+  }, [updateExternalSkill]);
+
+  const approveExternalSkill = useCallback((id: string) => {
+    updateExternalSkill(id, { status: 'PUBLISHED', enabled: false, rejectReason: undefined });
+  }, [updateExternalSkill]);
+
+  const rejectExternalSkill = useCallback((id: string, rejectReason: string) => {
+    updateExternalSkill(id, { status: 'DRAFT', enabled: false, rejectReason });
+  }, [updateExternalSkill]);
+
+  const enableExternalSkill = useCallback((id: string) => {
+    updateExternalSkill(id, { status: 'ENABLED', enabled: true });
+  }, [updateExternalSkill]);
+
+  const disableExternalSkill = useCallback((id: string) => {
+    updateExternalSkill(id, { status: 'PUBLISHED', enabled: false });
+  }, [updateExternalSkill]);
+
   // ==================== Custom Skills CRUD ====================
 
   const addCustomSkill = useCallback((skill: Omit<CustomSkill, 'id'>) => {
-    const newSkill: CustomSkill = { ...skill, id: generateId() };
+    const newSkill: CustomSkill = { ...skill, id: generateId(), status: skill.status || (skill.enabled ? 'ENABLED' : 'PUBLISHED') };
     const newSkills = [...customSkills, newSkill];
     saveToStorage(STORAGE_KEYS.customSkills, newSkills);
     setCustomSkills(newSkills);
@@ -324,10 +421,30 @@ export function useExtensions() {
     });
   }, [customSkills]);
 
+  const submitCustomSkillForReview = useCallback((id: string) => {
+    updateCustomSkill(id, { status: 'PENDING', enabled: false, rejectReason: undefined });
+  }, [updateCustomSkill]);
+
+  const approveCustomSkill = useCallback((id: string) => {
+    updateCustomSkill(id, { status: 'PUBLISHED', enabled: false, rejectReason: undefined });
+  }, [updateCustomSkill]);
+
+  const rejectCustomSkill = useCallback((id: string, rejectReason: string) => {
+    updateCustomSkill(id, { status: 'DRAFT', enabled: false, rejectReason });
+  }, [updateCustomSkill]);
+
+  const enableCustomSkill = useCallback((id: string) => {
+    updateCustomSkill(id, { status: 'ENABLED', enabled: true });
+  }, [updateCustomSkill]);
+
+  const disableCustomSkill = useCallback((id: string) => {
+    updateCustomSkill(id, { status: 'PUBLISHED', enabled: false });
+  }, [updateCustomSkill]);
+
   // ==================== MCP Servers CRUD ====================
 
   const addMCPServer = useCallback((server: Omit<MCPServer, 'id'>) => {
-    const newServer: MCPServer = { ...server, id: generateId() };
+    const newServer: MCPServer = { ...server, id: generateId(), status: server.status || (server.enabled ? 'ENABLED' : 'PUBLISHED') };
     const newServers = [...mcpServers, newServer];
     saveToStorage(STORAGE_KEYS.mcpServers, newServers);
     setMcpServers(newServers);
@@ -389,6 +506,76 @@ export function useExtensions() {
     });
   }, [mcpServers]);
 
+  const submitMCPServerForReview = useCallback((id: string) => {
+    updateMCPServer(id, { status: 'PENDING', enabled: false, rejectReason: undefined });
+  }, [updateMCPServer]);
+
+  const approveMCPServer = useCallback((id: string) => {
+    updateMCPServer(id, { status: 'PUBLISHED', enabled: false, rejectReason: undefined });
+  }, [updateMCPServer]);
+
+  const rejectMCPServer = useCallback((id: string, rejectReason: string) => {
+    updateMCPServer(id, { status: 'DRAFT', enabled: false, rejectReason });
+  }, [updateMCPServer]);
+
+  const enableMCPServer = useCallback((id: string) => {
+    updateMCPServer(id, { status: 'ENABLED', enabled: true });
+  }, [updateMCPServer]);
+
+  const disableMCPServer = useCallback((id: string) => {
+    updateMCPServer(id, { status: 'PUBLISHED', enabled: false });
+  }, [updateMCPServer]);
+
+  // ==================== Toolbox CRUD ====================
+
+  const addToolboxTool = useCallback((tool: Omit<ToolboxTool, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newTool: ToolboxTool = {
+      ...tool,
+      id: generateId(),
+      status: tool.status || (tool.enabled ? 'ENABLED' : 'PUBLISHED'),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const newTools = [...toolbox, newTool];
+    saveToStorage(STORAGE_KEYS.toolbox, newTools);
+    setToolbox(newTools);
+    return newTool;
+  }, [toolbox]);
+
+  const updateToolboxTool = useCallback((id: string, updates: Partial<ToolboxTool>) => {
+    const newTools = toolbox.map(t =>
+      t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+    );
+    saveToStorage(STORAGE_KEYS.toolbox, newTools);
+    setToolbox(newTools);
+  }, [toolbox]);
+
+  const removeToolboxTool = useCallback((id: string) => {
+    const newTools = toolbox.filter(t => t.id !== id);
+    saveToStorage(STORAGE_KEYS.toolbox, newTools);
+    setToolbox(newTools);
+  }, [toolbox]);
+
+  const submitToolboxToolForReview = useCallback((id: string) => {
+    updateToolboxTool(id, { status: 'PENDING', enabled: false, rejectReason: undefined });
+  }, [updateToolboxTool]);
+
+  const approveToolboxTool = useCallback((id: string) => {
+    updateToolboxTool(id, { status: 'PUBLISHED', enabled: false, rejectReason: undefined });
+  }, [updateToolboxTool]);
+
+  const rejectToolboxTool = useCallback((id: string, rejectReason: string) => {
+    updateToolboxTool(id, { status: 'DRAFT', enabled: false, rejectReason });
+  }, [updateToolboxTool]);
+
+  const enableToolboxTool = useCallback((id: string) => {
+    updateToolboxTool(id, { status: 'ENABLED', enabled: true });
+  }, [updateToolboxTool]);
+
+  const disableToolboxTool = useCallback((id: string) => {
+    updateToolboxTool(id, { status: 'PUBLISHED', enabled: false });
+  }, [updateToolboxTool]);
+
   return {
     // Prompts
     prompts,
@@ -399,6 +586,11 @@ export function useExtensions() {
     setDefaultPrompt,
     exportPrompts,
     importPrompts,
+    submitPromptForReview,
+    approvePrompt,
+    rejectPrompt,
+    enablePrompt,
+    disablePrompt,
     // External Skills
     externalSkills,
     externalSkillsLoaded,
@@ -407,6 +599,11 @@ export function useExtensions() {
     removeExternalSkill,
     exportExternalSkills,
     importExternalSkills,
+    submitExternalSkillForReview,
+    approveExternalSkill,
+    rejectExternalSkill,
+    enableExternalSkill,
+    disableExternalSkill,
     // Custom Skills
     customSkills,
     customSkillsLoaded,
@@ -415,6 +612,11 @@ export function useExtensions() {
     removeCustomSkill,
     exportCustomSkills,
     importCustomSkills,
+    submitCustomSkillForReview,
+    approveCustomSkill,
+    rejectCustomSkill,
+    enableCustomSkill,
+    disableCustomSkill,
     // MCP Servers
     mcpServers,
     mcpServersLoaded,
@@ -424,5 +626,21 @@ export function useExtensions() {
     testMCPServer,
     exportMCPServers,
     importMCPServers,
+    submitMCPServerForReview,
+    approveMCPServer,
+    rejectMCPServer,
+    enableMCPServer,
+    disableMCPServer,
+    // Toolbox
+    toolbox,
+    toolboxLoaded,
+    addToolboxTool,
+    updateToolboxTool,
+    removeToolboxTool,
+    submitToolboxToolForReview,
+    approveToolboxTool,
+    rejectToolboxTool,
+    enableToolboxTool,
+    disableToolboxTool,
   };
 }

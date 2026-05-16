@@ -26,4 +26,6 @@ public class CitationDto {
     private String parentRef;     // Parent-Children 关联：格式 "docId/version/parentSeq"
     private String knowledgeSpaceId;
     private String spacePath;
+    private java.util.Set<String> sourceChannels;
+    private java.util.Map<String, Integer> channelRanks;
 }

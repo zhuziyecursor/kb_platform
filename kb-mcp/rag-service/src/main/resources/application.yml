@@ -10,6 +10,14 @@ spring:
     username: ${DB_USERNAME:kb_rag}
     password: ${DB_PASSWORD:kb_rag}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT:600000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION:60000}
+      pool-name: rag-pool
 
   jpa:
     hibernate:
@@ -28,6 +36,8 @@ spring:
       password: ${KB_REDIS_PASSWORD:}
 
 app:
+  cors:
+    allowed-origins: ${KB_CORS_ALLOWED_ORIGINS:http://localhost:3105}
   dev-context:
     user-id: ${KB_DEV_USER_ID:current-user}
     sec-level: ${KB_DEV_SEC_LEVEL:5}
@@ -40,7 +50,7 @@ app:
     collection-name: ${KB_MILVUS_COLLECTION:kb_documents}
 
   embedding:
-    url: ${KB_EMBEDDING_SERVICE_URL:http://localhost:31296}/embeddings
+    url: ${KB_EMBEDDING_SERVICE_URL:http://192.168.30.47:31296}/embeddings
     timeout-seconds: ${KB_EMBEDDING_TIMEOUT_SECONDS:30}
     model-name: ${KB_EMBEDDING_MODEL_NAME:BGE-zh-v1.5}
     dim: ${KB_EMBEDDING_DIM:1024}
@@ -83,6 +93,94 @@ app:
   refusal:
     confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.3}
 
+  query-rewrite:
+    llm-enabled: ${RAG_QUERY_REWRITE_LLM_ENABLED:true}
+    min-query-length-for-llm: ${RAG_QUERY_REWRITE_MIN_LENGTH:6}
+    cache-ttl-minutes: ${RAG_QUERY_REWRITE_CACHE_TTL:30}
+    temperature: ${RAG_QUERY_REWRITE_TEMPERATURE:0.1}
+    max-tokens: ${RAG_QUERY_REWRITE_MAX_TOKENS:512}
+    max-keyword-length: ${RAG_QUERY_REWRITE_MAX_KEYWORD_LENGTH:25}
+
+  bm25:
+    enabled: ${RAG_BM25_ENABLED:true}
+    top-k: ${RAG_BM25_TOP_K:50}
+    weight: ${RAG_BM25_WEIGHT:1.0}
+
+  faq:
+    enabled: ${RAG_FAQ_ENABLED:true}
+    similarity-threshold: ${RAG_FAQ_THRESHOLD:0.95}
+    max-results: ${RAG_FAQ_MAX_RESULTS:3}
+
+  rrf:
+    k: ${RAG_RRF_K:60}
+    faq-boost-weight: ${RAG_RRF_FAQ_BOOST:2.0}
+
+  intent:
+    enabled: ${RAG_INTENT_ENABLED:true}
+
+  clause-fast-path:
+    enabled: ${RAG_CLAUSE_FAST_PATH_ENABLED:true}
+
+  acl:
+    strict-mode: ${RAG_ACL_STRICT_MODE:true}
+
+  eval:
+    chunk-size: ${EVAL_CHUNK_SIZE:800}
+    chunk-overlap: ${EVAL_CHUNK_OVERLAP:100}
+    qa-batch-size: ${EVAL_QA_BATCH_SIZE:20}
+    max-qa-per-file: ${EVAL_MAX_QA_PER_FILE:50}
+    generator-model: ${EVAL_GENERATOR_MODEL:MiniMax-M2.7}
+    generator-temperature: ${EVAL_GENERATOR_TEMPERATURE:0.7}
+    generator-max-tokens: ${EVAL_GENERATOR_MAX_TOKENS:4096}
+    eval-parallelism: ${EVAL_PARALLELISM:4}
+    judge-model: ${EVAL_JUDGE_MODEL:MiniMax-M2.7}
+
+  retrieval:
+    dense-fail-close: ${RAG_DENSE_FAIL_CLOSE:true}
+    rollout-percent: ${RAG_ROLLOUT_PERCENT:0}
+    plan:
+      llm-enabled: ${RAG_PLANNER_LLM_ENABLED:true}
+      llm-timeout-ms: ${RAG_PLANNER_LLM_TIMEOUT_MS:1500}
+    channels:
+      dense:
+        enabled: true
+        top-k: 50
+        sub-query-max: ${RAG_DENSE_SUB_QUERY_MAX:1}
+        timeout-ms: 500
+      sparse:
+        enabled: true
+        top-k: 50
+        score-fn: ts_rank_cd
+        timeout-ms: 300
+      structured:
+        enabled: true
+        top-k: 5
+        timeout-ms: 200
+      faq:
+        enabled: true
+        shortcut-threshold: 0.95
+        fusion-threshold: 0.85
+        top-k: 3
+        timeout-ms: 100
+    fusion:
+      rrf-k:
+        dense: 60
+        sparse: 60
+        structured: 10
+        metadata: 10
+        faq: 5
+      score-norm-weight: 0.3
+      multi-channel-boost: 0.10
+      structured-rank1-boost: 0.50
+    diversity:
+      enabled: true
+      mmr-lambda: 0.7
+      parent-collapse: true
+      pool-size: 10
+    rerank:
+      final-top-k: ${KB_RAG_RERANK_FINAL_TOP_K:10}
+      mmr-output-top-k: ${KB_RAG_RERANK_MMR_OUTPUT_TOP_K:5}
+
 logging:
   level:
     com.kb.rag: DEBUG
@@ -96,3 +194,31 @@ management:
     health:
       probes:
         enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      llmPlanner:
+        slidingWindowSize: 20
+        failureRateThreshold: 50
+        waitDurationInOpenState: 60s
+        permittedNumberOfCallsInHalfOpenState: 3
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 1500ms
+
+kb:
+  alert:
+    enabled: ${KB_ALERT_ENABLED:true}
+    thresholds:
+      error_rate:
+        value: 0.05
+        description: "错误率超过阈值"
+      refusal_rate:
+        value: 0.20
+        description: "拒答率超过阈值"
+      p95_latency_ms:
+        value: 5000
+        description: "P95延迟超过阈值"
+      dead_service:
+        value: 0
+        description: "服务无请求"

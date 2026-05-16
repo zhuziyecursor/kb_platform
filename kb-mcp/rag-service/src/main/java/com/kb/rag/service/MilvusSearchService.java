@@ -192,8 +192,7 @@ public class MilvusSearchService {
 
     /**
      * Query Milvus by parent_ref to get Parent chunk texts.
-     * Used for Parent-Children architecture: after Rerank, lookup Parent texts
-     * to provide complete context for LLM generation.
+     * Uses a single batch query with IN expression instead of N individual queries.
      *
      * @param parentRefs Set of parent_ref values (format: "docId/version/parentSeq")
      * @param tenantId Tenant ID for ACL filter
@@ -211,6 +210,42 @@ public class MilvusSearchService {
                 .build();
         milvusClient.loadCollection(loadParam);
 
+        String inExpr = parentRefs.stream()
+                .map(ref -> "'" + ref + "'")
+                .collect(java.util.stream.Collectors.joining(", ", "parent_ref in [", "]"));
+        String expr = "tenant_id == '" + tenantId + "' AND " + inExpr;
+
+        try {
+            QueryParam queryParam = QueryParam.newBuilder()
+                    .withCollectionName(collectionName)
+                    .withExpr(expr)
+                    .withOutFields(List.of("parent_ref", "text"))
+                    .build();
+
+            R<QueryResults> response = milvusClient.query(queryParam);
+            if (response.getStatus() == 0 && response.getData() != null) {
+                QueryResultsWrapper wrapper = new QueryResultsWrapper(response.getData());
+                for (RowRecord row : wrapper.getRowRecords()) {
+                    String pref = getStrField(row, "parent_ref");
+                    String text = getStrField(row, "text");
+                    if (!pref.isEmpty()) {
+                        result.put(pref, text);
+                    }
+                }
+            } else {
+                log.warn("Parent batch query failed: status={} msg={}", response.getStatus(), response.getMessage());
+            }
+        } catch (Exception e) {
+            log.warn("Parent batch query failed, falling back to individual queries: {}", e.getMessage());
+            return queryParentTextsIndividually(parentRefs, tenantId);
+        }
+
+        log.debug("Parent lookup: {} refs -> {} texts found (single batch query)", parentRefs.size(), result.size());
+        return result;
+    }
+
+    private Map<String, String> queryParentTextsIndividually(Set<String> parentRefs, String tenantId) {
+        Map<String, String> result = new HashMap<>();
         for (String pref : parentRefs) {
             try {
                 QueryParam queryParam = QueryParam.newBuilder()
@@ -232,8 +267,6 @@ public class MilvusSearchService {
                 log.warn("Failed to query parent_ref={}: {}", pref, e.getMessage());
             }
         }
-
-        log.debug("Parent lookup: {} refs -> {} texts found", parentRefs.size(), result.size());
         return result;
     }
 

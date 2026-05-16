@@ -1,0 +1,51 @@
+{
+  "category": "procedure",
+  "description": "流程/操作类 query — 主要靠 DENSE + SPARSE，rerank 后 Top1 应给出有"步骤"特征的 chunk。",
+  "queries": [
+    {
+      "id": "proc-001",
+      "query": "如何申请加班补贴",
+      "ideal_doc_ids": ["hr-overtime-policy"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["hr-handbook-2024"],
+      "should_refuse": false,
+      "tags": ["procedure", "hr"]
+    },
+    {
+      "id": "proc-002",
+      "query": "差旅报销流程是什么",
+      "ideal_doc_ids": ["travel-reimbursement"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["finance-handbook-2024"],
+      "should_refuse": false,
+      "tags": ["procedure", "finance"]
+    },
+    {
+      "id": "proc-003",
+      "query": "采购合同审批的步骤有哪些",
+      "ideal_doc_ids": ["procurement-sop"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["procurement-handbook"],
+      "should_refuse": false,
+      "tags": ["procedure", "procurement"]
+    },
+    {
+      "id": "proc-004",
+      "query": "员工离职手续怎么办理",
+      "ideal_doc_ids": ["offboarding-process"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["hr-handbook-2024"],
+      "should_refuse": false,
+      "tags": ["procedure", "hr"]
+    },
+    {
+      "id": "proc-005",
+      "query": "供应商资质审核的流程要走哪几步",
+      "ideal_doc_ids": ["vendor-qualification"],
+      "ideal_chunk_seqs": [],
+      "acceptable_alt_doc_ids": ["procurement-sop"],
+      "should_refuse": false,
+      "tags": ["procedure", "procurement"]
+    }
+  ]
+}

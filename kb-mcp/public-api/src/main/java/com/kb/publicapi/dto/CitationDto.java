@@ -5,6 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -24,4 +27,6 @@ public class CitationDto {
     private String effectiveFrom;
     private String effectiveTo;
     private String text;
+    private List<String> sourceChannels;
+    private Map<String, Integer> channelRanks;
 }

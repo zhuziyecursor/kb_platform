@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Button as AntButton } from 'antd';
 import type { ButtonProps as AntButtonProps } from 'antd';
 import { cn } from '@/lib/utils';
@@ -127,20 +127,25 @@ const sizeTokens: Record<ButtonSize, { height: number; fontSize: number; padding
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'default', size = 'md', className, style, ...props }, ref) => {
-    const [isDark, setIsDark] = useState(false);
-
-    useEffect(() => {
-      setIsDark(document.documentElement.getAttribute('data-theme') === 'dark');
-    }, []);
-
-    const variantStyle = isDark ? darkVariantTokens[variant] : lightVariantTokens[variant];
+    const variantStyle = lightVariantTokens[variant];
+    const darkVariantStyle = darkVariantTokens[variant];
     const sizeStyle = sizeTokens[size];
 
-    const computedStyle: React.CSSProperties = {
+    const computedStyle: React.CSSProperties & Record<string, string | number> = {
       ...style,
-      backgroundColor: variantStyle.bg,
-      color: variantStyle.color,
-      borderColor: variantStyle.border,
+      '--btn-bg': variantStyle.bg,
+      '--btn-color': variantStyle.color,
+      '--btn-border': variantStyle.border,
+      '--btn-hover-bg': variantStyle.hoverBg,
+      '--btn-hover-color': variantStyle.hoverColor,
+      '--btn-dark-bg': darkVariantStyle.bg,
+      '--btn-dark-color': darkVariantStyle.color,
+      '--btn-dark-border': darkVariantStyle.border,
+      '--btn-dark-hover-bg': darkVariantStyle.hoverBg,
+      '--btn-dark-hover-color': darkVariantStyle.hoverColor,
+      backgroundColor: 'var(--btn-bg)',
+      color: 'var(--btn-color)',
+      borderColor: 'var(--btn-border)',
       height: sizeStyle.height,
       fontSize: sizeStyle.fontSize,
       paddingInline: sizeStyle.paddingInline,
@@ -159,16 +164,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={cn('btn', `btn--${variant}`, `btn--${size}`, className)}
         style={computedStyle}
-        onMouseEnter={(e) => {
-          const target = e.currentTarget;
-          target.style.backgroundColor = variantStyle.hoverBg;
-          target.style.color = variantStyle.hoverColor;
-        }}
-        onMouseLeave={(e) => {
-          const target = e.currentTarget;
-          target.style.backgroundColor = variantStyle.bg;
-          target.style.color = variantStyle.color;
-        }}
         {...props}
       />
     );

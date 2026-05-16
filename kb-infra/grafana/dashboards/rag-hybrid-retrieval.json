@@ -1,0 +1,259 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "总延迟 (P50/P95/P99) — 按 variant 分",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineInterpolation": "smooth", "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(rag_pipeline_total_seconds_bucket[5m])) by (le, variant))",
+          "legendFormat": "P50-{{variant}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rag_pipeline_total_seconds_bucket[5m])) by (le, variant))",
+          "legendFormat": "P95-{{variant}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(rag_pipeline_total_seconds_bucket[5m])) by (le, variant))",
+          "legendFormat": "P99-{{variant}}"
+        }
+      ],
+      "title": "Pipeline 总延迟 (P50/P95/P99)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "stacking": { "mode": "normal" } }
+        }
+      },
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(rag_pipeline_request_total[5m])) by (result, variant)",
+          "legendFormat": "{{result}}-{{variant}}"
+        }
+      ],
+      "title": "请求速率 (按 result × variant)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(rag_rollout_variant_total[5m])) by (variant)",
+          "legendFormat": "{{variant}}"
+        }
+      ],
+      "title": "灰度分流比例",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "id": 200,
+      "panels": [],
+      "title": "通道延迟与吞吐",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 12 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rag_channel_latency_seconds_bucket[5m])) by (le, channel))",
+          "legendFormat": "{{channel}}"
+        }
+      ],
+      "title": "每通道 P95 延迟",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 12 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(rag_channel_timeout_total[5m])",
+          "legendFormat": "{{channel}} timeout"
+        },
+        {
+          "expr": "rate(rag_channel_failed_total[5m])",
+          "legendFormat": "{{channel}} failed ({{reason}})"
+        }
+      ],
+      "title": "通道超时 / 失败速率",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 300,
+      "panels": [],
+      "title": "健康状态",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 23 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(rag_planner_fallback_total[5m])",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "title": "Planner Fallback 速率",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 23 },
+      "id": 7,
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "expr": "resilience4j_circuitbreaker_state{name=\"llmPlanner\"}",
+          "legendFormat": "llmPlanner state"
+        }
+      ],
+      "title": "Circuit Breaker 状态 (0=CLOSED, 1=OPEN, 2=HALF_OPEN)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 23 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(rag_rerank_fallback_total[5m])",
+          "legendFormat": "rerank fallback"
+        },
+        {
+          "expr": "rate(rag_fusion_partial_failure_total[5m])",
+          "legendFormat": "fusion partial failure"
+        }
+      ],
+      "title": "降级指标",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 400,
+      "panels": [],
+      "title": "业务指标",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(rag_pipeline_refusal_total[5m])) by (reason)",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "title": "拒答原因分布",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 32 },
+      "id": 10,
+      "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "rag_reconcile_missing_in_milvus",
+          "legendFormat": "{{tenant}}"
+        }
+      ],
+      "title": "Reconcile: missing_in_milvus (per tenant)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 32 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(rag_acl_filter_dropped_total[5m])",
+          "legendFormat": "{{channel}}"
+        }
+      ],
+      "title": "ACL 过滤丢弃速率",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["rag", "hybrid-retrieval"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RAG Hybrid Retrieval",
+  "uid": "rag-hybrid-retrieval",
+  "version": 1,
+  "weekStart": ""
+}

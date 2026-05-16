@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,13 +81,22 @@ public class PromptConstructionService {
 
     public LlmGatewayRequest buildPrompt(String query, List<CitationDto> citations,
                                           List<SessionService.Turn> sessionHistory) {
-        return buildPromptWithBudget(query, citations, sessionHistory).request();
+        return buildPromptWithBudget(query, citations, sessionHistory, null).request();
     }
 
     public BuildResult buildPromptWithBudget(String query, List<CitationDto> citations,
                                              List<SessionService.Turn> sessionHistory) {
+        return buildPromptWithBudget(query, citations, sessionHistory, null);
+    }
+
+    public BuildResult buildPromptWithBudget(String query, List<CitationDto> citations,
+                                             List<SessionService.Turn> sessionHistory,
+                                             String systemPromptOverride) {
+        String systemPrompt = StringUtils.hasText(systemPromptOverride)
+                ? systemPromptOverride
+                : SYSTEM_PROMPT;
         PromptBudgetPlanner.PromptPlan promptPlan = promptBudgetPlanner.plan(
-                SYSTEM_PROMPT, query, citations, sessionHistory, maxTokens);
+                systemPrompt, query, citations, sessionHistory, maxTokens);
 
         StringBuilder userContent = new StringBuilder();
         userContent.append("问题：").append(query).append("\n\n");
@@ -107,7 +117,7 @@ public class PromptConstructionService {
         List<LlmGatewayRequest.Message> messages = new ArrayList<>();
         messages.add(LlmGatewayRequest.Message.builder()
                 .role("system")
-                .content(SYSTEM_PROMPT)
+                .content(systemPrompt)
                 .build());
 
         if (promptPlan.history() != null) {

@@ -41,10 +41,12 @@ public class FeedbackService {
         String traceId = request.getTraceId();
         String uid = devContext.getUserId();
 
-        // Look up context from pipeline trace
-        Optional<RagPipelineTrace> traceOpt = traceRepository.findByTraceId(traceId);
-        String tenantId = traceOpt.map(RagPipelineTrace::getTenantId).orElse("default");
-        String sessionId = traceOpt.map(RagPipelineTrace::getSessionId).orElse(null);
+        // Look up context from pipeline trace - MUST exist
+        RagPipelineTrace trace = traceRepository.findByTraceId(traceId)
+                .orElseThrow(() -> new IllegalArgumentException("Trace not found: " + traceId));
+
+        String tenantId = trace.getTenantId();
+        String sessionId = trace.getSessionId();
 
         // Find the assistant message for this trace
         List<RagMessage> messages = messageRepository.findByTraceIdOrderByCreatedAtAsc(traceId);
@@ -54,20 +56,14 @@ public class FeedbackService {
                 .orElse(null);
         Long messageId = assistantMsg != null ? assistantMsg.getId() : null;
 
-        // Effectively final copies for lambda
-        final String finalTenantId = tenantId;
-        final String finalUid = uid;
-        final String finalSessionId = sessionId;
-        final Long finalMessageId = messageId;
-
         // Upsert feedback (one per trace)
         RagFeedback feedback = feedbackRepository.findByTraceId(traceId)
                 .orElseGet(() -> RagFeedback.builder()
                         .traceId(traceId)
-                        .tenantId(finalTenantId)
-                        .uid(finalUid)
-                        .sessionId(finalSessionId)
-                        .messageId(finalMessageId)
+                        .tenantId(tenantId)
+                        .uid(uid)
+                        .sessionId(sessionId)
+                        .messageId(messageId)
                         .build());
 
         feedback.setFeedbackType(request.getFeedbackType());
@@ -78,7 +74,7 @@ public class FeedbackService {
 
         // Auto-archive badcase for DISLIKE/REPORT
         if ("DISLIKE".equals(request.getFeedbackType()) || "REPORT".equals(request.getFeedbackType())) {
-            archiveBadcase(saved, traceOpt.orElse(null), assistantMsg);
+            archiveBadcase(saved, trace, assistantMsg);
         }
 
         log.info("Feedback saved traceId={} type={} reason={}",
@@ -94,15 +90,10 @@ public class FeedbackService {
 
     private void archiveBadcase(RagFeedback feedback, RagPipelineTrace trace, RagMessage assistantMsg) {
         try {
-            String queryText = "";
-            String rewrittenQuery = null;
-            String traceSummaryJson = null;
-
-            if (trace != null) {
-                queryText = trace.getQueryText() != null ? trace.getQueryText() : "";
-                rewrittenQuery = trace.getRewrittenQuery();
-                traceSummaryJson = buildTraceSummary(trace);
-            }
+            // trace is guaranteed non-null now (from submit method)
+            String queryText = trace.getQueryText() != null ? trace.getQueryText() : "";
+            String rewrittenQuery = trace.getRewrittenQuery();
+            String traceSummaryJson = buildTraceSummary(trace);
 
             String answer = "";
             String citationsJson = null;

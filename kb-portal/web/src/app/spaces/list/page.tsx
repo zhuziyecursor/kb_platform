@@ -6,12 +6,10 @@ import { Button } from '@/components/ui';
 import { App } from 'antd';
 import {
   PlusOutlined,
-  CloudUploadOutlined,
   FolderOutlined,
   FileTextOutlined,
   WarningOutlined,
   ClockCircleOutlined,
-  FileMarkdownOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
 } from '@ant-design/icons';
@@ -93,27 +91,13 @@ export default function SpaceListPage() {
         title="知识空间"
         description="管理不同的知识库分区，支持多层分类和独立切片规则"
         actions={
-          <>
-            <Button
-              icon={<CloudUploadOutlined />}
-              onClick={() => router.push('/documents/upload')}
-            >
-              上传文档
-            </Button>
-            <Button
-              icon={<FileMarkdownOutlined />}
-              onClick={() => router.push('/spaces/import')}
-            >
-              从大纲导入
-            </Button>
-            <Button
-              variant="primary"
-              icon={<PlusOutlined />}
-              onClick={() => router.push('/spaces/create')}
-            >
-              新建空间
-            </Button>
-          </>
+          <Button
+            variant="primary"
+            icon={<PlusOutlined />}
+            onClick={() => router.push('/spaces/create')}
+          >
+            新建空间
+          </Button>
         }
       />
 

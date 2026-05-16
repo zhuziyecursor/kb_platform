@@ -16,6 +16,9 @@ import {
   MoreOutlined,
   QuestionCircleOutlined,
   SafetyOutlined,
+  MonitorOutlined,
+  BarChartOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -28,8 +31,11 @@ const { Title, Text } = Typography;
 const NAV_ITEMS = [
   { key: 'home', icon: <FileTextOutlined />, label: '工作台', path: '/' },
   { key: 'spaces', icon: <FolderOutlined />, label: '知识空间', path: '/spaces/list' },
-  { key: 'chat', icon: <RobotOutlined />, label: '知识问答', path: '/rag' },
-  { key: 'extensions', icon: <AppstoreOutlined />, label: '扩展管理', path: '/extensions' },
+  { key: 'skills', icon: <AppstoreOutlined />, label: '技能广场', path: '/skills' },
+  { key: 'experts', icon: <RobotOutlined />, label: '专家中心', path: '/experts' },
+  { key: 'monitor', icon: <MonitorOutlined />, label: '监控日志', path: '/monitor' },
+  { key: 'evaluation', icon: <BarChartOutlined />, label: '评测看板', path: '/evaluation' },
+  { key: 'datasets', icon: <ExperimentOutlined />, label: '数据测评', path: '/evaluation/datasets' },
 ];
 
 const SIDEBAR_WIDTH = 200;
@@ -70,6 +76,9 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
 
   const isActive = (itemKey: string) => {
     if (itemKey === 'home') return pathname === '/';
+    if (itemKey === 'experts') return pathname.startsWith('/experts') || pathname.startsWith('/agent') || pathname.startsWith('/rag');
+    if (itemKey === 'evaluation') return pathname === '/evaluation';
+    if (itemKey === 'datasets') return pathname.startsWith('/evaluation/datasets');
     return pathname.startsWith(`/${itemKey}`);
   };
 
@@ -133,7 +142,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
             {!collapsed && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                 <Image src="/logo.png" alt="logo" width={28} height={28} style={{ borderRadius: 6, flexShrink: 0 }} />
-                <Title level={5} style={{ margin: 0, color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <Title level={5} style={{ margin: 0, color: 'var(--sidebar-foreground)', fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                   知识智库
                 </Title>
               </div>
@@ -142,7 +151,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
-              style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}
+              style={{ fontSize: 16, color: 'var(--sidebar-muted)' }}
             />
           </div>
 
@@ -181,11 +190,12 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
 
           {/* User Footer */}
           <div style={{
-            padding: collapsed ? '8px 0' : '8px 12px',
+            padding: collapsed ? '8px 0' : '8px 10px',
             flexShrink: 0,
-            background: 'rgba(255,255,255,0.08)',
+            background: 'transparent',
             margin: 8,
-            borderRadius: 'var(--radius-md)',
+            borderTop: '1px solid var(--sidebar-border)',
+            paddingTop: 12,
           }}>
             <div style={{
               display: 'flex',
@@ -198,14 +208,14 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                 <Avatar
                   size={collapsed ? 28 : 32}
                   icon={<UserOutlined />}
-                  style={{ background: 'rgba(255,255,255,0.2)', cursor: 'pointer', flexShrink: 0 }}
+                  style={{ background: 'var(--sidebar-hover-bg)', color: 'var(--sidebar-foreground)', cursor: 'pointer', flexShrink: 0 }}
                 />
               </Dropdown>
 
               {!collapsed && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', flex: 1 }}>
                   <div style={{ overflow: 'hidden', flex: 1 }}>
-                    <Text style={{ fontSize: 13, display: 'block', color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                    <Text style={{ fontSize: 13, display: 'block', color: 'var(--sidebar-foreground)', fontWeight: 500 }}>
                       {username}
                     </Text>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -214,10 +224,9 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                         height: 6,
                         borderRadius: '50%',
                         background: 'var(--color-success)',
-                        boxShadow: '0 0 6px var(--color-success)',
                         display: 'inline-block',
                       }} />
-                      <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
+                      <Text style={{ fontSize: 11, color: 'var(--sidebar-muted)' }}>
                         {roleLabel}
                       </Text>
                     </div>
@@ -230,7 +239,7 @@ export default function AppLayout({ children, contentStyle }: AppLayoutProps) {
                 <Button
                   type="text"
                   icon={<MoreOutlined />}
-                  style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', flexShrink: 0 }}
+                  style={{ fontSize: 16, color: 'var(--sidebar-muted)', flexShrink: 0 }}
                 />
               </Dropdown>
             </div>

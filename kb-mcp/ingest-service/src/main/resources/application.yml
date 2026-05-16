@@ -10,6 +10,14 @@ spring:
     username: ${DB_USERNAME:kb_ingest}
     password: ${DB_PASSWORD:kb_ingest}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT:600000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION:60000}
+      pool-name: ingest-pool
 
   jpa:
     hibernate:
@@ -51,8 +59,21 @@ spring:
           issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080/auth}
 
 app:
+  cors:
+    allowed-origins: ${KB_CORS_ALLOWED_ORIGINS:http://localhost:3105}
   dev-context:
     tenant-id: ${KB_DEV_TENANT_ID:dev-tenant-001}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
 
 logging:
   level:

@@ -4,8 +4,10 @@ import com.kb.vector.dto.EmbedTaskMessage;
 import com.kb.vector.repository.EmbedTaskRepository;
 import com.kb.vector.repository.KnowledgeDocRepository;
 import com.kb.vector.repository.KnowledgeVersionRepository;
+import com.kb.vector.util.TraceLogHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,10 @@ public class EmbedTaskConsumer {
     private final EmbedTaskRepository embedTaskRepository;
     private final KnowledgeVersionRepository versionRepository;
     private final KnowledgeDocRepository docRepository;
+    private final SearchIndexWriter searchIndexWriter;
+
+    @Value("${app.search-index.write-enabled:true}")
+    private boolean searchIndexWriteEnabled;
 
     @KafkaListener(
         topics = "${app.kafka.embed-task-topic:embed-task}",
@@ -45,10 +51,25 @@ public class EmbedTaskConsumer {
         }
 
         EmbedTaskMessage first = messages.get(0);
+        String traceId = first.getTraceId();
+        TraceLogHelper.setTraceId(traceId);
+        TraceLogHelper.setEventType("trace");
         log.info("Received batch of {} embed-task messages: docId={}, traceId={}",
-                messages.size(), first.getDocId(), first.getTraceId());
+                messages.size(), first.getDocId(), traceId);
 
         try {
+            // Write order: PG first, Milvus second (per design doc §3.3).
+            // PG failure throws → Kafka retries everything.
+            // Milvus failure throws → Kafka retries, PG upsert is idempotent.
+            if (searchIndexWriteEnabled) {
+                TraceLogHelper.setSpan("bm25_index");
+                for (EmbedTaskMessage msg : messages) {
+                    searchIndexWriter.write(msg);
+                }
+                log.debug("BM25 search index updated: {} chunks", messages.size());
+            }
+
+            TraceLogHelper.setSpan("milvus_upsert");
             List<Long> milvusPks = milvusService.upsert(messages);
             log.info("Milvus upsert completed: {} rows", milvusPks.size());
 
@@ -74,6 +95,8 @@ public class EmbedTaskConsumer {
             }
             markDocumentFailed(first, "MILVUS_UPSERT_FAILED", e.getMessage());
             ack.acknowledge();
+        } finally {
+            TraceLogHelper.clear();
         }
     }
 

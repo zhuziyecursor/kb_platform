@@ -24,10 +24,11 @@ class EmbedTaskConsumerTest {
         EmbedTaskRepository embedTaskRepository = mock(EmbedTaskRepository.class);
         KnowledgeVersionRepository versionRepository = mock(KnowledgeVersionRepository.class);
         KnowledgeDocRepository docRepository = mock(KnowledgeDocRepository.class);
+        SearchIndexWriter searchIndexWriter = mock(SearchIndexWriter.class);
         Acknowledgment ack = mock(Acknowledgment.class);
 
         EmbedTaskConsumer consumer = new EmbedTaskConsumer(
-                milvusService, embedTaskRepository, versionRepository, docRepository);
+                milvusService, embedTaskRepository, versionRepository, docRepository, searchIndexWriter);
 
         EmbedTaskMessage msg = new EmbedTaskMessage();
         msg.setTenantId("tenant-1");

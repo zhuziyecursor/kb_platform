@@ -382,8 +382,53 @@ restart_portal() {
 }
 
 # -----------------------------------------------------------------------------
+# Promtail — 日志采集 Agent (宿主机进程, 无端口)
+# -----------------------------------------------------------------------------
+
+start_promtail() {
+  local promtail_config="$SCRIPT_DIR/kb-infra/configs/promtail/promtail-config.yaml"
+
+  if ! command -v promtail &>/dev/null; then
+    log_skip "[promtail] 未安装 (brew install promtail)"
+    return
+  fi
+
+  if pgrep -f "promtail.*promtail-config" > /dev/null 2>&1; then
+    log_skip "[promtail] 已在运行，跳过"
+    return
+  fi
+
+  log_info "[promtail] 启动 Promtail..."
+  nohup promtail -config.file="$promtail_config" \
+    > "$SCRIPT_DIR/kb-infra/configs/promtail/promtail.log" 2>&1 &
+  log_ok "[promtail] 已启动 (PID $!)"
+}
+
+restart_promtail() {
+  local pid
+  pid=$(pgrep -f "promtail.*promtail-config" 2>/dev/null)
+  if [ -n "$pid" ]; then
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+  fi
+  start_promtail
+}
+
+# -----------------------------------------------------------------------------
 # 状态检查
 # -----------------------------------------------------------------------------
+
+check_promtail() {
+  if pgrep -f "promtail.*promtail-config" > /dev/null 2>&1; then
+    log_ok "  promtail - 运行中"
+  else
+    if command -v promtail &>/dev/null; then
+      log_fail "  promtail - 未运行"
+    else
+      log_warn "  promtail - 未安装 (brew install promtail)"
+    fi
+  fi
+}
 
 check_status() {
   echo ""
@@ -409,6 +454,7 @@ check_status() {
   check_one "llm-gateway"   31004
   check_one "rag"           31005
   check_one "portal"        3105
+  check_promtail
 
   echo ""
   echo "========================================"
@@ -466,6 +512,8 @@ restart_all() {
   echo ""
   restart_portal
   echo ""
+  restart_promtail
+  echo ""
 
   echo "========================================"
   echo "  全部服务启动完成"
@@ -503,6 +551,9 @@ case "${1:-}" in
   portal)
     restart_portal
     ;;
+  promtail)
+    restart_promtail
+    ;;
   --help|-h)
     echo "用法: $0 [服务名|选项]"
     echo ""
@@ -515,6 +566,7 @@ case "${1:-}" in
     echo "llm-gateway  只重启 llm-gateway (LLM 网关)"
     echo "rag          只重启 rag-service (RAG 检索服务)"
     echo "portal       只重启 kb-portal 前端"
+    echo "promtail     只重启 Promtail (日志采集)"
     echo "--help, -h  显示此帮助"
     echo ""
     echo "前提条件:"

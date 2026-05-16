@@ -10,6 +10,7 @@ from src.app import init_app, get_config
 from src.config import load_config
 from src.kafka_consumer import KafkaConsumer
 from src.kafka_producer import KafkaProducer
+from src.logging_config import setup_logging
 from src.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
@@ -43,10 +44,7 @@ def _create_kafka_consumer(config, pipeline: Pipeline) -> KafkaConsumer:
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    setup_logging(level=logging.INFO)
 
     config = load_config()
     init_app(config)
@@ -62,8 +60,8 @@ def main():
         CORSMiddleware,
         allow_origins=config.cors.allowed_origins.split(","),
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Trace-Id"],
     )
     from src.api import router
     app.include_router(router)

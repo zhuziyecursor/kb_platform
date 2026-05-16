@@ -1,0 +1,377 @@
+/* ── Apple-style Model Configuration Panel ── */
+/* Design language: iOS Settings inset-grouped + macOS frosted glass */
+
+/* ── Inset Grouped Section (iOS Settings-style) ── */
+.insetGroup {
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--color-surface);
+  /* Single continuous surface — rows are separated by hairlines */
+}
+
+.sectionLabel {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted-foreground);
+  padding: 0 4px 8px 4px;
+}
+
+/* ── Inset Row ── */
+.insetRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  transition: background 0.15s ease;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.insetRow + .insetRow {
+  border-top: 0.5px solid var(--color-border);
+}
+
+.insetRow:hover {
+  background: var(--color-muted);
+}
+
+.insetRow:active {
+  background: var(--color-muted);
+  transform: scale(0.995);
+  transition: transform 0.1s ease;
+}
+
+/* Row children layout */
+.rowIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  /* Each provider gets a custom bg via inline style */
+}
+
+.rowContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--color-foreground);
+  line-height: 1.3;
+}
+
+.rowSubtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted-foreground);
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+.rowTrailing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.chevron {
+  font-size: 13px;
+  color: var(--color-border);
+  transition: transform 0.3s var(--ease-out);
+}
+
+.chevronExpanded {
+  transform: rotate(90deg);
+}
+
+/* ── Status Dot ── */
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px currentColor;
+  opacity: 0.9;
+}
+
+.statusConnected {
+  color: #34C759;
+  background: #34C759;
+}
+
+.statusDisconnected {
+  color: #FF3B30;
+  background: #FF3B30;
+}
+
+.statusUntested {
+  color: #AEAEB2;
+  background: #AEAEB2;
+}
+
+/* ── Expandable Model List ── */
+.modelList {
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease;
+  max-height: 0;
+  opacity: 0;
+}
+
+.modelListExpanded {
+  max-height: 600px;
+  opacity: 1;
+}
+
+.modelListInner {
+  border-top: 0.5px solid var(--color-border);
+  background: var(--color-muted);
+}
+
+.modelRow {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px 10px 48px;
+  gap: 10px;
+  font-size: var(--font-size-sm);
+  transition: background 0.15s ease;
+}
+
+.modelRow:hover {
+  background: var(--color-fill);
+}
+
+.modelRow + .modelRow {
+  border-top: 0.5px solid rgba(0,0,0,0.04);
+}
+
+.modelRowName {
+  flex: 1;
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+
+.modelRowMeta {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted-foreground);
+  margin-right: 12px;
+}
+
+/* ── Default Badge ── */
+.defaultBadge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Glass Header ── */
+.glassHeader {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(250, 250, 249, 0.72);
+  border-bottom: 0.5px solid transparent;
+  padding: 20px 0 12px 0;
+  margin-bottom: 20px;
+}
+
+[data-theme='dark'] .glassHeader {
+  background: rgba(11, 13, 16, 0.72);
+  border-bottom-color: rgba(255,255,255,0.06);
+}
+
+.glassTitle {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--color-foreground);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+/* ── Add Provider Sheet (Modal) ── */
+.sheet {
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.sheetHeader {
+  text-align: center;
+  padding: 24px 24px 8px;
+}
+
+.sheetTitle {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.sheetSubtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted-foreground);
+  margin-top: 4px;
+}
+
+.sheetBody {
+  padding: 16px 24px 24px;
+}
+
+/* ── Provider Type Grid ── */
+.providerGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.providerTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.providerTile:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.providerTileActive {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.providerTileIcon {
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-muted);
+}
+
+.providerTileLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-foreground);
+  line-height: 1.3;
+}
+
+/* ── Category Labels ── */
+.categoryLabel {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+  margin-top: 4px;
+  grid-column: 1 / -1;
+}
+
+/* ── Test Connection Button ── */
+.testBtn {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.testBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.testBtnSuccess {
+  border-color: #34C759;
+  color: #34C759;
+  background: color-mix(in srgb, #34C759 8%, transparent);
+}
+
+.testBtnFailed {
+  border-color: #FF3B30;
+  color: #FF3B30;
+  background: color-mix(in srgb, #FF3B30 8%, transparent);
+}
+
+/* ── Empty State ── */
+.emptyState {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-muted-foreground);
+}
+
+.emptyIcon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.emptyTitle {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--color-foreground);
+  margin-bottom: 4px;
+}
+
+.emptyDesc {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted-foreground);
+}
+
+/* ── Action Buttons (inside expanded row) ── */
+.actionBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  font-size: 13px;
+}
+
+.actionBtn:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.actionBtnDanger:hover {
+  background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+  color: var(--color-destructive);
+}

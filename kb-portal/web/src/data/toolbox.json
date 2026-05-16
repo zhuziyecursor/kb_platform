@@ -1,0 +1,27 @@
+[
+  {
+    "id": "default-dify-agent-001",
+    "name": "Dify 智能助手",
+    "description": "Dify 智能体问答，支持知识库检索与智能对话",
+    "icon": "🤖",
+    "category": "智能体",
+    "toolType": "dify-agent",
+    "redirectUrl": "http://193.134.211.121/chat/ZZnSGKRHPIUXBHtk",
+    "enabled": true,
+    "status": "ENABLED",
+    "createdAt": "2026-05-15T00:00:00.000Z",
+    "updatedAt": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "id": "default-file-compare-001",
+    "name": "文件对比",
+    "description": "上传两个文件，逐行或逐词对比内容差异，支持 txt / md / json / xml / 代码文件等纯文本格式",
+    "icon": "📄",
+    "category": "文档工具",
+    "toolType": "file-compare",
+    "enabled": true,
+    "status": "ENABLED",
+    "createdAt": "2026-05-15T00:00:00.000Z",
+    "updatedAt": "2026-05-15T00:00:00.000Z"
+  }
+]

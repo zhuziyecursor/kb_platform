@@ -14,6 +14,8 @@ docs/
 │   ├── space-hierarchy.md             ← 知识空间层级化（自引用树）
 │   ├── tags-and-chunk-type.md         ← tags + chunk_type 检索增强
 │   ├── smart-chunking.md              ← 智能分片（规则引擎 + LLM 精修）
+│   ├── hybrid-retrieval.md            ← 多路召回设计方案（Dense/Sparse/Structured/Metadata/FAQ）
+│   ├── hybrid-retrieval-impl.md       ← 多路召回落地实施手册（Sprint/Task/Runbook）
 │   └── extension-management.md        ← 扩展管理（提示词/Skills/MCP）
 └── planning/                          ← 排期 & 计划
     ├── feature-progress.md             ← 功能进度总览：已完成/部分完成/未完成
@@ -43,6 +45,8 @@ docs/
 
 - [智能分片](features/smart-chunking.md) — kb-doc-processor 分片策略改造
 - [标签与分片类型](features/tags-and-chunk-type.md) — Milvus 检索维度增强
+- [多路召回设计方案](features/hybrid-retrieval.md) — Dense + Sparse + Structured + Metadata + FAQ 五路融合
+- [多路召回落地手册](features/hybrid-retrieval-impl.md) — 按 Sprint/Task 分解的可执行方案 + 兜底 + Runbook
 - [扩展管理](features/extension-management.md) — 前端扩展配置管理
 
 ## 文档间关系

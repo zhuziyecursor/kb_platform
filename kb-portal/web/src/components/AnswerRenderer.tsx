@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { Tooltip } from 'antd';
+import { FileTextOutlined } from '@ant-design/icons';
 import { cn } from '@/lib/utils';
+import type { Citation } from '@/types';
 
 interface FollowUpQuestion {
   text: string;
@@ -10,6 +13,37 @@ interface FollowUpQuestion {
 interface ParsedAnswer {
   mainContent: string;
   followUps: FollowUpQuestion[];
+}
+
+function trustLevelOf(score: number): 'high' | 'medium' | 'low' {
+  if (score >= 0.8) return 'high';
+  if (score >= 0.5) return 'medium';
+  return 'low';
+}
+
+function CitationPreview({ citation, index }: { citation: Citation; index: number }) {
+  const trust = trustLevelOf(citation.score);
+  const trustLabel = trust === 'high' ? '高可信' : trust === 'medium' ? '中可信' : '低可信';
+  return (
+    <div className="cite-preview">
+      <div className="cite-preview__head">
+        <span className={`cite-preview__num cite-preview__num--${trust}`}>{index}</span>
+        <div className="cite-preview__title">
+          <FileTextOutlined style={{ fontSize: 12, marginRight: 6, opacity: 0.7 }} />
+          {citation.title || '未命名文档'}
+        </div>
+      </div>
+      <div className="cite-preview__meta">
+        <span className={`cite-preview__trust cite-preview__trust--${trust}`}>{trustLabel} {citation.score.toFixed(2)}</span>
+        <span className="cite-preview__sep">·</span>
+        <span>v{citation.version}</span>
+        <span className="cite-preview__sep">·</span>
+        <span>第 {citation.page} 页</span>
+      </div>
+      <p className="cite-preview__quote">{citation.text}</p>
+      <div className="cite-preview__hint">点击查看原文</div>
+    </div>
+  );
 }
 
 /**
@@ -60,89 +94,94 @@ function parseAnswer(raw: string): ParsedAnswer {
   return { mainContent, followUps };
 }
 
-/**
- * Render a single line of markdown-like text into JSX.
- * Handles: ### headings, **bold**, `code`, [N] citations.
- */
-function renderLine(line: string, lineIdx: number, onCitationClick?: (citationIndex: number) => void): React.ReactNode {
-  // H3 heading
+interface RenderContext {
+  onCitationClick?: (citationIndex: number) => void;
+  citations?: Citation[];
+}
+
+function renderLine(line: string, lineIdx: number, ctx: RenderContext): React.ReactNode {
   if (line.startsWith('### ')) {
     return (
       <h3 key={lineIdx} className="answer-h3">
-        {renderInline(line.slice(4), onCitationClick)}
+        {renderInline(line.slice(4), ctx)}
       </h3>
     );
   }
-  // H2 heading (not "你可能还想了解" which is already stripped)
   if (line.startsWith('## ')) {
     return (
       <h2 key={lineIdx} className="answer-h2">
-        {renderInline(line.slice(3), onCitationClick)}
+        {renderInline(line.slice(3), ctx)}
       </h2>
     );
   }
-  // Bold-only line (section labels without heading marker)
   if (/^\*\*.+\*\*$/.test(line.trim())) {
     return (
       <p key={lineIdx} className="answer-bold-label">
-        {renderInline(line.trim(), onCitationClick)}
+        {renderInline(line.trim(), ctx)}
       </p>
     );
   }
-
   return (
     <p key={lineIdx} className="answer-p">
-      {renderInline(line, onCitationClick)}
+      {renderInline(line, ctx)}
     </p>
   );
 }
 
-/**
- * Render inline markdown: **bold**, `code`, [N] citations.
- * Citation numbers are rendered as clickable superscripts when onCitationClick is provided.
- */
-function renderInline(text: string, onCitationClick?: (citationIndex: number) => void): React.ReactNode {
+function renderInline(text: string, ctx: RenderContext): React.ReactNode {
+  const { onCitationClick, citations } = ctx;
   const parts: React.ReactNode[] = [];
-  // Pattern matches: **bold**, `code`, [N]
   const regex = /(\*\*(.+?)\*\*)|(`(.+?)`)|(\[(\d+)\])/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
-    // Add text before this match
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
 
     if (match[1]) {
-      // **bold**
-      parts.push(
-        <strong key={`b-${match.index}`}>{match[2]}</strong>
-      );
+      parts.push(<strong key={`b-${match.index}`}>{match[2]}</strong>);
     } else if (match[3]) {
-      // `code`
-      parts.push(
-        <code key={`c-${match.index}`} className="answer-code">{match[4]}</code>
-      );
+      parts.push(<code key={`c-${match.index}`} className="answer-code">{match[4]}</code>);
     } else if (match[5]) {
-      // [N] citation
       const citeIndex = parseInt(match[6], 10);
-      parts.push(
-        <sup
+      const cite = citations?.[citeIndex - 1];
+      const trust = cite ? trustLevelOf(cite.score) : 'high';
+      const pill = (
+        <button
           key={`cite-${match.index}`}
-          className={onCitationClick ? 'answer-cite answer-cite--clickable' : 'answer-cite'}
+          type="button"
+          className={cn(
+            'answer-cite-pill',
+            `answer-cite-pill--${trust}`,
+            onCitationClick && 'answer-cite-pill--clickable',
+          )}
           onClick={onCitationClick ? () => onCitationClick(citeIndex - 1) : undefined}
-          title={onCitationClick ? '点击跳转到原文' : undefined}
+          aria-label={cite ? `引用 ${citeIndex}：${cite.title}` : `引用 ${citeIndex}`}
         >
-          [{match[6]}]
-        </sup>
+          {citeIndex}
+        </button>
+      );
+      parts.push(
+        cite ? (
+          <Tooltip
+            key={`cite-tip-${match.index}`}
+            title={<CitationPreview citation={cite} index={citeIndex} />}
+            placement="top"
+            color="#fff"
+            overlayClassName="cite-tooltip"
+            mouseEnterDelay={0.15}
+          >
+            {pill}
+          </Tooltip>
+        ) : pill,
       );
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Remaining text
   if (lastIndex < text.length) {
     parts.push(text.slice(lastIndex));
   }
@@ -152,12 +191,13 @@ function renderInline(text: string, onCitationClick?: (citationIndex: number) =>
 
 interface AnswerRendererProps {
   content: string;
+  citations?: Citation[];
   onFollowUpClick?: (question: string) => void;
   onCitationClick?: (citationIndex: number) => void;
   className?: string;
 }
 
-export default function AnswerRenderer({ content, onFollowUpClick, onCitationClick, className }: AnswerRendererProps) {
+export default function AnswerRenderer({ content, citations, onFollowUpClick, onCitationClick, className }: AnswerRendererProps) {
   const parsed = useMemo(() => parseAnswer(content), [content]);
 
   const mainLines = useMemo(() => {
@@ -168,11 +208,11 @@ export default function AnswerRenderer({ content, onFollowUpClick, onCitationCli
     const elements: React.ReactNode[] = [];
     let codeBlockLines: string[] = [];
     let inCodeBlock = false;
+    const ctx: RenderContext = { onCitationClick, citations };
 
     for (let i = 0; i < mainLines.length; i++) {
       const line = mainLines[i];
 
-      // Code block handling
       if (line.trim().startsWith('```')) {
         if (inCodeBlock) {
           elements.push(
@@ -193,17 +233,16 @@ export default function AnswerRenderer({ content, onFollowUpClick, onCitationCli
         continue;
       }
 
-      // Skip empty lines
       if (line.trim() === '') {
         elements.push(<div key={i} className="answer-spacer" />);
         continue;
       }
 
-      elements.push(renderLine(line, i, onCitationClick));
+      elements.push(renderLine(line, i, ctx));
     }
 
     return elements;
-  }, [mainLines]);
+  }, [mainLines, onCitationClick, citations]);
 
   return (
     <div className={cn('answer-rendered', className)}>

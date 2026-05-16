@@ -6,6 +6,7 @@ import com.kb.rag.dto.CitationDto;
 import com.kb.rag.dto.RagPipelineTraceResponse;
 import com.kb.rag.entity.RagPipelineTrace;
 import com.kb.rag.repository.RagPipelineTraceRepository;
+import com.kb.rag.util.TraceLogHelper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -61,6 +62,7 @@ public class PipelineTraceService {
                     .citationsCount(ctx.citationsCount)
                     .hitDocs(objectMapper.writeValueAsString(ctx.hitDocs))
                     .promptBudget(objectMapper.writeValueAsString(ctx.promptBudget))
+                    .channelHits(objectMapper.writeValueAsString(ctx.channelHits))
                     .errorMessage(ctx.errorMessage)
                     .createdAt(Instant.now())
                     .build();
@@ -192,6 +194,9 @@ public class PipelineTraceService {
         private final List<Map<String, Object>> hitDocs = new ArrayList<>();
         private Map<String, Object> promptBudget = new LinkedHashMap<>();
         private boolean cacheHit;
+        private boolean clauseMatched;
+        private boolean rerankFallback;
+        private Map<String, Object> channelHits = new LinkedHashMap<>();
         private String result = "IN_PROGRESS";
         private String refusalReason;
         private String rewrittenQuery;
@@ -222,6 +227,7 @@ public class PipelineTraceService {
 
         public <T> T stage(String stage, Map<String, Object> metadata, Supplier<T> supplier) {
             long started = System.nanoTime();
+            TraceLogHelper.setSpan(stage);
             try {
                 T value = supplier.get();
                 recordStage(stage, "SUCCESS", started, null, metadata);
@@ -239,8 +245,31 @@ public class PipelineTraceService {
             });
         }
 
+        public void stage(String stage, Map<String, Object> metadata, Runnable runnable) {
+            stage(stage, metadata, () -> {
+                runnable.run();
+                return null;
+            });
+        }
+
         public void setCacheHit(boolean cacheHit) {
             this.cacheHit = cacheHit;
+        }
+
+        public void setClauseMatched(boolean clauseMatched) {
+            this.clauseMatched = clauseMatched;
+        }
+
+        public void setRerankFallback(boolean rerankFallback) {
+            this.rerankFallback = rerankFallback;
+        }
+
+        public boolean isRerankFallback() {
+            return rerankFallback;
+        }
+
+        public void setChannelHits(Map<String, Object> channelHits) {
+            this.channelHits = channelHits != null ? channelHits : new LinkedHashMap<>();
         }
 
         public void setResult(String result) {
@@ -277,6 +306,12 @@ public class PipelineTraceService {
                 doc.put("version", c.getVersion());
                 doc.put("page", c.getPage());
                 doc.put("spacePath", c.getSpacePath());
+                if (c.getSourceChannels() != null && !c.getSourceChannels().isEmpty()) {
+                    doc.put("sourceChannels", c.getSourceChannels());
+                }
+                if (c.getChannelRanks() != null && !c.getChannelRanks().isEmpty()) {
+                    doc.put("channelRanks", c.getChannelRanks());
+                }
                 hitDocs.add(doc);
             });
         }
@@ -328,6 +363,7 @@ public class PipelineTraceService {
             if (metadata != null && !metadata.isEmpty()) item.put("metadata", metadata);
             stageTimings.add(item);
             recordStageMetric(stage, status, durationMs);
+            TraceLogHelper.setSpan(stage);
             log.info("RAG_PIPELINE traceId={} stage={} costMs={} status={}",
                     traceId, stage, durationMs, status);
         }
@@ -352,6 +388,18 @@ public class PipelineTraceService {
 
         private long elapsedMs(long startedNs) {
             return (System.nanoTime() - startedNs) / 1_000_000;
+        }
+
+        /** Cumulative wall-clock ms since this trace started. */
+        public long elapsedMs() {
+            return elapsedMs(startNs);
+        }
+
+        /** Duration of the most recently recorded stage in ms, or 0 if none. */
+        public long getLastStageDurationMs() {
+            if (stageTimings.isEmpty()) return 0L;
+            Object v = stageTimings.get(stageTimings.size() - 1).get("durationMs");
+            return v instanceof Number ? ((Number) v).longValue() : 0L;
         }
     }
 }

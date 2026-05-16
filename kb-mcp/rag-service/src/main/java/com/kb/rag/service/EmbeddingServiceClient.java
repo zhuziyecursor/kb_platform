@@ -10,7 +10,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -37,6 +36,7 @@ public class EmbeddingServiceClient {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<EmbeddingRequest> entity = new HttpEntity<>(request, headers);
 
+        Exception lastException = null;
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
                 ResponseEntity<EmbeddingResponse> response = restTemplate.postForEntity(
@@ -47,7 +47,8 @@ public class EmbeddingServiceClient {
                     return response.getBody().getData().get(0).getEmbedding();
                 }
                 throw new RuntimeException("Empty embedding response");
-            } catch (RestClientException e) {
+            } catch (Exception e) {
+                lastException = e;
                 log.warn("Embedding attempt {}/{} failed: {}", attempt + 1, maxRetries, e.getMessage());
                 if (attempt == maxRetries - 1) {
                     throw new RuntimeException("Embedding service error after " + maxRetries + " retries", e);
@@ -55,7 +56,7 @@ public class EmbeddingServiceClient {
                 sleep(1L << attempt);
             }
         }
-        throw new RuntimeException("Embedding service unreachable");
+        throw new RuntimeException("Embedding service unreachable", lastException);
     }
 
     private void sleep(long seconds) {

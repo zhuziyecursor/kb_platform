@@ -83,6 +83,90 @@ export interface UploadFormValues {
   acl: DocACL[];
 }
 
+// ============== Evaluation Types ==============
+
+export type EvalDatasetStatus = 'DRAFT' | 'GENERATING' | 'COMPLETED' | 'FAILED';
+export type QaType = 'FACTUAL' | 'COMPARISON' | 'MULTI_HOP' | 'UNANSWERABLE';
+export type QaDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
+export type EvalRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export interface EvalDataset {
+  datasetId: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  sourceType: string;
+  sourcePath?: string;
+  fileCount: number;
+  totalChunks: number;
+  totalQaPairs: number;
+  qaConfig?: Record<string, unknown>;
+  status: EvalDatasetStatus;
+  progress?: Record<string, unknown>;
+  traceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EvalQaPair {
+  pairId: string;
+  datasetId: string;
+  question: string;
+  answer: string;
+  qaType: QaType;
+  sourceChunkIds: string[];
+  sourceDocPath?: string;
+  difficulty: QaDifficulty;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface EvalRun {
+  runId: string;
+  datasetId: string;
+  tenantId: string;
+  status: EvalRunStatus;
+  config?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+  progress?: Record<string, unknown>;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface EvalQaResult {
+  id: number;
+  runId: string;
+  pairId: string;
+  ragAnswer?: string;
+  ragTraceId?: string;
+  exactMatch?: boolean;
+  f1Score?: number;
+  recall?: number;
+  llmJudgeScore?: number;
+  llmJudgeReason?: string;
+  citationsCount?: number;
+  latencyMs?: number;
+  createdAt: string;
+}
+
+export interface CreateDatasetRequest {
+  name: string;
+  description?: string;
+  sourceType: string;
+  sourcePath?: string;
+  fileList?: string[];
+  tenantId?: string;
+  qaConfig?: Record<string, unknown>;
+}
+
+export interface CreateEvalRunRequest {
+  datasetId: string;
+  tenantId?: string;
+  config?: Record<string, unknown>;
+}
+
 /** Pipeline step definition */
 export interface PipelineStep {
   title: string;
@@ -102,6 +186,9 @@ export interface PipelineSubStep {
 
 // ============== RAG / Chat Types ==============
 
+/** 召回通道 */
+export type RetrievalChannel = 'DENSE' | 'SPARSE' | 'STRUCTURED' | 'METADATA' | 'FAQ';
+
 /** Citation / reference source */
 export interface Citation {
   docId: string;
@@ -118,6 +205,10 @@ export interface Citation {
   text: string;
   knowledgeSpaceId?: string;
   spacePath?: string;
+  /** 召回来源通道列表（Sprint 2+） */
+  sourceChannels?: RetrievalChannel[];
+  /** 各通道内排名（Sprint 2+） */
+  channelRanks?: Record<string, number>;
 }
 
 /** 反馈类型 */
@@ -160,6 +251,24 @@ export interface ChatMessage {
   feedbackType?: FeedbackType;
   /** 模型自评置信度 */
   confidence?: string;
+  /** 意图分类 (A.6) */
+  intent?: string;
+  /** 检索模式 (A.4) */
+  searchMode?: string;
+  /** 各通道命中统计 (Sprint 2+) */
+  channelStats?: Record<string, number>;
+  /** 检索思维链阶段事件 (流式追加) */
+  thinkingStages?: StageEvent[];
+  /** LLM 开始吐字后置 true，用于动画状态切换 */
+  thinkingDone?: boolean;
+}
+
+export interface StageEvent {
+  stage: string;
+  status: 'SUCCESS' | 'ERROR' | 'SKIPPED';
+  durationMs: number;
+  elapsedMs: number;
+  summary?: Record<string, unknown>;
 }
 
 /** Chat session */
@@ -174,7 +283,15 @@ export interface ChatSession {
 // ============== LLM Model Types ==============
 
 /** LLM 提供商 */
-export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'volcengine' | 'ali' | 'minimax';
+export type LLMProvider =
+  // 国内模型
+  | 'minimax' | 'glm' | 'deepseek' | 'moonshot' | 'qwen' | 'doubao' | 'xunfei'
+  // 国外模型
+  | 'openai' | 'anthropic' | 'gemini' | 'grok'
+  // 本地模型
+  | 'ollama' | 'vllm' | 'custom'
+  // 保留旧代码兼容
+  | 'google' | 'volcengine' | 'ali';
 
 /** LLM 模型配置 */
 export interface LLMModelConfig {
@@ -337,6 +454,31 @@ export interface StatsOverview {
   pendingCount: number;
   failedCount: number;
   totalVectorCount: number | null;
+}
+
+// ============== Evaluation Types ==============
+
+/** Evaluation metric */
+export interface EvalMetric {
+  name: string;
+  value: number;
+  target: number;
+  trend: 'up' | 'down' | 'stable';
+  unit: string;
+}
+
+/** Evaluation report */
+export interface EvalReport {
+  id: number;
+  spaceId: string;
+  datasetVersion: string;
+  recallAt5: number;
+  recallAt10: number;
+  mrr: number;
+  ndcg: number;
+  faithfulness: number;
+  groundingRate: number;
+  createdAt: string;
 }
 
 /** 更新知识空间请求 */

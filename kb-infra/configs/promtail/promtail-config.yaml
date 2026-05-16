@@ -1,0 +1,169 @@
+# Promtail 配置 — kb-platform 日志采集
+# 安装: brew install promtail
+# 启动: promtail -config.file=kb-infra/configs/promtail/promtail-config.yaml
+#
+# 设计:
+#   - 应用服务日志: static_configs tail 每个服务的 .dev.log + JSON 文件
+#   - Docker 容器日志: docker_sd_configs 自动发现 kb-* 容器
+#   - 标签: service/level/event_type/span 做索引, trace_id/user_id/doc_id 做 metadata
+server:
+  http_listen_port: 0
+  grpc_listen_port: 0
+  log_level: info
+
+clients:
+  - url: http://localhost:31008/loki/api/v1/push
+    external_labels:
+      source: promtail
+
+# ─── 采集源 1: 应用服务 JSON 日志文件 (结构化) ─────────────────────────
+scrape_configs:
+  - job_name: kb-app-json
+    static_configs:
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/rag-service/logs/rag-service.json"
+          service: rag-service
+          source: json-file
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/ingest-service/logs/ingest-service.json"
+          service: ingest-service
+          source: json-file
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/vector-service/logs/vector-service.json"
+          service: vector-service
+          source: json-file
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/llm-gateway/logs/llm-gateway.json"
+          service: llm-gateway
+          source: json-file
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/public-api/logs/public-api.json"
+          service: public-api
+          source: json-file
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-doc-processor/logs/doc-processor.json"
+          service: kb-doc-processor
+          source: json-file
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/rerank-service/logs/rerank-service.json"
+          service: rerank-service
+          source: json-file
+    pipeline_stages:
+      - json:
+          expressions:
+            ts: ts
+            level: level
+            message: message
+            trace_id: trace_id
+            event_type: event_type
+            span: span
+            duration_ms: duration_ms
+            user_id: user_id
+            doc_id: doc_id
+            error_code: error_code
+            status_code: status_code
+            model: model
+            logger_name: logger_name
+            thread_name: thread_name
+      - timestamp:
+          source: ts
+          format: RFC3339
+      - labels:
+          level: ""
+          event_type: ""
+          span: ""
+      - structured_metadata:
+          trace_id: ""
+          user_id: ""
+          doc_id: ""
+          error_code: ""
+          status_code: ""
+          model: ""
+
+  # ─── 采集源 2: 应用服务 .dev.log (兜底, 纯文本) ─────────────────
+  - job_name: kb-app-plaintext
+    static_configs:
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/rag-service/.dev.log"
+          service: rag-service
+          source: dev-log
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/ingest-service/.dev.log"
+          service: ingest-service
+          source: dev-log
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/vector-service/.dev.log"
+          service: vector-service
+          source: dev-log
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-mcp/llm-gateway/.dev.log"
+          service: llm-gateway
+          source: dev-log
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-doc-processor/.dev.log"
+          service: kb-doc-processor
+          source: dev-log
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/rerank-service/.dev.log"
+          service: rerank-service
+          source: dev-log
+      - targets: [localhost]
+        labels:
+          __path__: "/Users/apple/project/kb-platform/kb-portal/web/.dev.log"
+          service: kb-portal
+          source: dev-log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ts_raw>\S+\s+\S+)\s+\[(?P<thread_raw>[^\]]+)\]\s+(?P<level_raw>\w+)\s+(?P<logger_raw>\S+)\s*[-:]\s*(?P<msg_raw>.*)$'
+      - timestamp:
+          source: ts_raw
+          format: "2006-01-02 15:04:05.000"
+      - labels:
+          level: level_raw
+      - static_labels:
+          event_type: app
+
+  # ─── 采集源 3: Docker 容器日志 (infra) ─────────────────────────
+  - job_name: kb-infra-docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+        filters:
+          - name: name
+            values:
+              - kb-postgres
+              - kb-redis
+              - kb-minio
+              - kb-milvus
+              - kb-kafka
+              - kb-tika
+              - kb-loki
+              - kb-grafana
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      - source_labels: ["__meta_docker_container_name"]
+        target_label: "service"
+        replacement: "${1}"
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(kb-postgres|kb-redis|kb-minio|kb-milvus|kb-kafka|kb-tika)"
+        target_label: "event_type"
+        replacement: "infra"
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(kb-loki|kb-grafana)"
+        target_label: "event_type"
+        replacement: "app"

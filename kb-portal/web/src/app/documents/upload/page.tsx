@@ -8,8 +8,6 @@ import {
   Form,
   Input,
   Select,
-  DatePicker,
-  InputNumber,
   Button,
   Typography,
   Space,
@@ -18,12 +16,10 @@ import {
   Alert,
   Descriptions,
   Divider,
-  Modal,
   Collapse,
   Slider,
   Switch,
   Radio,
-  Spin,
 } from 'antd';
 import {
   InboxOutlined,
@@ -32,11 +28,8 @@ import {
   LoadingOutlined,
   DownOutlined,
   SettingOutlined,
-  GlobalOutlined,
-  LockOutlined,
-  SafetyOutlined,
-  SecurityScanOutlined,
-  SafetyCertificateOutlined,
+  TagsOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import type { UploadFile, RcFile } from 'antd/es/upload';
 import type { UploadProps } from 'antd';
@@ -45,9 +38,6 @@ import type {
   DocType,
   SecLevel,
   PipelineStep,
-  PipelineSubStep,
-  DocACL,
-  KnowledgeDoc,
   KnowledgeSpace,
   ChunkConfig,
   ChunkMode,
@@ -60,6 +50,7 @@ import {
   ingestDoc,
   getDocStatus,
   uploadFile,
+  getErrorMessage,
   InitUploadRequest,
   CommitRequest,
 } from '@/api/http-client';
@@ -69,15 +60,140 @@ import PageHeader from '@/components/PageHeader';
 import type { LUIAction } from '@/types';
 import { useRouter } from 'next/navigation';
 
-const { Text, Paragraph } = Typography;
-const { RangePicker } = DatePicker;
-const { TextArea } = Input;
+const { Text } = Typography;
 const { Dragger } = Upload;
 
 
 // ============== 常量 ==============
 const EMBEDDING_MODEL = 'BGE-zh-v1.5';
 const EMBEDDING_DIM = 1024;
+
+type AutoUploadMetadata = {
+  filename: string;
+  docType: DocType;
+  bizDomain: string;
+  regionCode: string;
+  secLevel: SecLevel;
+  effectiveFrom: dayjs.Dayjs;
+  ownerUid: string;
+  deptId: string;
+  labelTags: string[];
+};
+
+const DEFAULT_AUTO_METADATA: Omit<AutoUploadMetadata, 'filename' | 'labelTags'> = {
+  docType: 'REGULATION',
+  bizDomain: 'COMPLIANCE',
+  regionCode: 'CN-NATIONAL',
+  secLevel: 1,
+  effectiveFrom: dayjs(),
+  ownerUid: 'current-user',
+  deptId: 'D01',
+};
+
+const DOC_TYPE_LABELS: Record<DocType, string> = {
+  REGULATION: '制度',
+  POLICY: '政策',
+  AUDIT: '审计',
+  CONTRACT: '合同',
+  MANUAL: '手册',
+};
+
+const BIZ_DOMAIN_LABELS: Record<string, string> = {
+  COMPLIANCE: '合规',
+  HR: '人力资源',
+  FINANCE: '财务',
+  IT: '信息技术',
+  OPS: '运营',
+};
+
+const SEC_LEVEL_LABELS: Record<SecLevel, string> = {
+  1: '公开',
+  2: '内部',
+  3: '机密',
+  4: '秘密',
+  5: '绝密',
+};
+
+const FILE_TYPE_TAGS: Record<string, string> = {
+  pdf: 'PDF',
+  doc: 'Word',
+  docx: 'Word',
+  ppt: 'PPT',
+  pptx: 'PPT',
+  xls: 'Excel',
+  xlsx: 'Excel',
+  txt: 'TXT',
+  md: 'Markdown',
+  html: 'HTML',
+  htm: 'HTML',
+};
+
+const getFileExtension = (filename: string) => {
+  const match = filename.toLowerCase().match(/\.([^.]+)$/);
+  return match?.[1] || '';
+};
+
+const stripFileExtension = (filename: string) => filename.replace(/\.[^.]+$/, '');
+
+const inferDocType = (filename: string): DocType => {
+  if (/合同|协议|契约|订单/.test(filename)) return 'CONTRACT';
+  if (/审计|内控|检查|整改|问题/.test(filename)) return 'AUDIT';
+  if (/手册|指南|指引|流程|说明|操作/.test(filename)) return 'MANUAL';
+  if (/政策|办法|意见|通知/.test(filename)) return 'POLICY';
+  return 'REGULATION';
+};
+
+const inferBizDomain = (filename: string) => {
+  if (/财务|资金|预算|报销|会计|税务|投资/.test(filename)) return 'FINANCE';
+  if (/人力|人事|员工|招聘|薪酬|绩效/.test(filename)) return 'HR';
+  if (/信息|系统|数据|网络|安全|技术|IT/i.test(filename)) return 'IT';
+  if (/运营|服务|仓储|采购|供应链|贸易|项目/.test(filename)) return 'OPS';
+  return 'COMPLIANCE';
+};
+
+const inferSecLevel = (filename: string): SecLevel => {
+  if (/绝密/.test(filename)) return 5;
+  if (/秘密/.test(filename)) return 4;
+  if (/机密/.test(filename)) return 3;
+  if (/内部/.test(filename)) return 2;
+  return 1;
+};
+
+const inferTags = (filename: string, docType: DocType, bizDomain: string) => {
+  const baseName = stripFileExtension(filename);
+  const extension = getFileExtension(filename);
+  const keywordTags = baseName
+    .split(/[\s,，、_\-—–/\\()[\]（）【】《》]+/)
+    .map(tag => tag.trim())
+    .filter(tag => tag.length >= 2 && tag.length <= 12)
+    .slice(0, 4);
+
+  return Array.from(new Set([
+    DOC_TYPE_LABELS[docType],
+    BIZ_DOMAIN_LABELS[bizDomain] || bizDomain,
+    FILE_TYPE_TAGS[extension],
+    ...keywordTags,
+  ].filter(Boolean)));
+};
+
+const buildAutoMetadata = (
+  file: File,
+  currentValues: Record<string, any> = {},
+): AutoUploadMetadata => {
+  const docType = inferDocType(file.name);
+  const bizDomain = inferBizDomain(file.name);
+  const autoTags = inferTags(file.name, docType, bizDomain);
+  const manualTags = Array.isArray(currentValues.labelTags) ? currentValues.labelTags : [];
+
+  return {
+    ...DEFAULT_AUTO_METADATA,
+    filename: file.name,
+    docType,
+    bizDomain,
+    secLevel: inferSecLevel(file.name),
+    labelTags: Array.from(new Set([...manualTags, ...autoTags])),
+  };
+};
 
 // 详细流水线进度（带子步骤）
 const MOCK_PIPELINE_STEPS: PipelineStep[] = [
@@ -146,7 +262,6 @@ export default function UploadPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<PipelineStep[]>(MOCK_PIPELINE_STEPS);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [spaces, setSpaces] = useState<KnowledgeSpace[]>([]);
   const [selectedSpace, setSelectedSpace] = useState<string>('DEFAULT');
   const [useCustomChunk, setUseCustomChunk] = useState(false);
@@ -160,8 +275,6 @@ export default function UploadPage() {
   // 实际上传流程状态
   const [docId, setDocId] = useState<string>('');
   const [version, setVersion] = useState<number>(1);
-  const [presignedUrl, setPresignedUrl] = useState<string>('');
-  const [sha256, setSha256] = useState<string>('');
   const [tenantId] = useState<string>('dev-tenant-001');
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [overwriteExisting, setOverwriteExisting] = useState(false);
@@ -179,7 +292,12 @@ export default function UploadPage() {
   // 加载知识空间列表
   useEffect(() => {
     listSpaces()
-      .then(setSpaces)
+      .then((items) => {
+        setSpaces(items);
+        if (!items.some(space => space.id === selectedSpace) && items.length > 0) {
+          setSelectedSpace(items[0].id);
+        }
+      })
       .catch(() => message.error('加载知识空间失败'));
   }, []);
 
@@ -221,7 +339,7 @@ export default function UploadPage() {
     if (action.type === 'CALL_SKILL') {
       const skillId = action.payload.skillId as string;
       if (skillId === 'skill-upload') {
-        message.success('已调用「文档上传」技能，请选择文件并填写元数据');
+        message.success('已调用「文档上传」技能，请选择知识空间并上传文件');
         setCurrentStep(0);
       }
     }
@@ -247,10 +365,12 @@ export default function UploadPage() {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'text/plain',
         'text/markdown',
+        'text/html',
       ];
-      const isAllowed = allowedTypes.includes(file.type);
+      const allowedExtensions = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'md', 'html', 'htm'];
+      const isAllowed = allowedTypes.includes(file.type) || allowedExtensions.includes(getFileExtension(file.name));
       if (!isAllowed) {
-        message.error('暂不支持该文件类型，仅支持 PDF/Word/PPT/Excel/TXT/MD');
+        message.error('暂不支持该文件类型，仅支持 PDF/Word/PPT/Excel/TXT/MD/HTML');
         return false;
       }
       // 重要：保留 originFileObj 引用，这是 antd 内部访问实际 File 对象的途径
@@ -263,6 +383,12 @@ export default function UploadPage() {
         size: file.size,
         originFileObj: file as any,
       };
+      const autoMetadata = buildAutoMetadata(file, form.getFieldsValue(true));
+      form.setFieldsValue({
+        filename: autoMetadata.filename,
+        labelTags: autoMetadata.labelTags,
+      });
+      setFormValues(prev => ({ ...prev, ...autoMetadata }));
       setFileList([uploadFile]);
       return false; // prevent auto upload
     },
@@ -316,7 +442,11 @@ export default function UploadPage() {
     try {
       const file = fileList[0].originFileObj as File;
       const fileHash = await computeFileHash(file);
-      setSha256(fileHash);
+      const uploadMetadata = buildAutoMetadata(file, {
+        ...formValues,
+        ...form.getFieldsValue(true),
+      });
+      setFormValues(uploadMetadata);
 
       // 1. 调用 init-upload 获取 presigned URL
       setUploadProgress(prev => {
@@ -331,15 +461,15 @@ export default function UploadPage() {
         filename: file.name,
         fileSize: file.size,
         fileHash: fileHash,
-        docType: formValues.docType || 'REGULATION',
-        bizDomain: formValues.bizDomain || 'COMPLIANCE',
-        regionCode: formValues.regionCode || 'CN-NATIONAL',
-        secLevel: formValues.secLevel || 1,
-        effectiveFrom: formValues.effectiveFrom?.isValid() ? formValues.effectiveFrom.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
-        ownerUid: formValues.ownerUid || 'current-user',
-        deptId: formValues.deptId || 'D01',
+        docType: uploadMetadata.docType,
+        bizDomain: uploadMetadata.bizDomain,
+        regionCode: uploadMetadata.regionCode,
+        secLevel: uploadMetadata.secLevel,
+        effectiveFrom: uploadMetadata.effectiveFrom.format('YYYY-MM-DD'),
+        ownerUid: uploadMetadata.ownerUid,
+        deptId: uploadMetadata.deptId,
         knowledgeSpaceId: selectedSpace,
-        labelTags: Array.isArray(formValues.labelTags) ? formValues.labelTags.join(',') : (formValues.labelTags || undefined),
+        labelTags: uploadMetadata.labelTags.join(',') || undefined,
         chunkConfig: {
           useSpaceConfig: !useCustomChunk,
           chunkSize: chunkConfig.chunkSize,
@@ -351,7 +481,6 @@ export default function UploadPage() {
 
       const initResp = await initUpload(initReq);
       setDocId(initResp.docId);
-      setPresignedUrl(initResp.presignedUrl);
       setVersion(1);
 
       // 更新步骤：获取 presigned URL 完成
@@ -383,7 +512,7 @@ export default function UploadPage() {
       });
 
       // 3. 调用 verify-upload
-      const verifyResp = await verifyUpload(initResp.docId, version);
+      await verifyUpload(initResp.docId, version);
 
       // 4. 调用 commit
       const commitReq: CommitRequest = {
@@ -391,7 +520,7 @@ export default function UploadPage() {
         sha256: fileHash,
         acl: [{
           accessorType: 'USER',
-          accessorId: formValues.ownerUid || 'current-user',
+          accessorId: uploadMetadata.ownerUid,
           permission: 'WRITE',
         }],
       };
@@ -405,11 +534,9 @@ export default function UploadPage() {
       // 进入状态轮询
       startStatusPolling(initResp.docId, version, file.size);
 
-    } catch (err: any) {
-      const serverMsg = err.response?.data?.message;
-      const serverCode = err.response?.data?.code;
-      const detail = serverMsg ? `[${serverCode}] ${serverMsg}` : err.message;
-      console.error('上传失败详情:', err.response?.data || err);
+    } catch (err) {
+      const detail = getErrorMessage(err, '未知错误');
+      console.error('上传失败详情:', err);
       message.error(`上传失败: ${detail}`);
       setIsProcessing(false);
 
@@ -493,12 +620,14 @@ export default function UploadPage() {
         description="上传文档到知识库，系统自动完成解析、切片、向量化入库，5分钟内可检索"
         actions={
           <Space>
-            <Button onClick={() => setCurrentStep(Math.max(0, currentStep - 1))} disabled={currentStep === 0}>
+            <Button onClick={() => setCurrentStep(Math.max(0, currentStep - 1))} disabled={currentStep === 0 || isProcessing}>
               上一步
             </Button>
-            <Button type="primary" onClick={() => setCurrentStep(Math.min(2, currentStep + 1))} disabled={currentStep === 2}>
-              下一步
-            </Button>
+            {currentStep === 0 && (
+              <Button type="primary" onClick={handleMetadataConfirm}>
+                进入文件选择
+              </Button>
+            )}
           </Space>
         }
       />
@@ -508,19 +637,19 @@ export default function UploadPage() {
         <Steps
           current={currentStep}
           items={[
-            { title: '填写元数据' },
+            { title: '选择空间与标签' },
             { title: '选择文件' },
             { title: '流水线进度' },
           ]}
           style={{ marginBottom: 32 }}
         />
 
-        {/* ========== Step 0: 填写元数据 ========== */}
+        {/* ========== Step 0: 选择空间与标签 ========== */}
         {currentStep === 0 && (
           <div>
             <Alert
-              message="元数据填写说明"
-              description="以下信息将用于文档分类、权限分配和检索过滤。请确保信息准确。"
+              message="只需要选择知识空间和标签"
+              description="文档类型、业务域、密级、生效日期、上传者、部门和文件信息会在选择文件后自动识别或按默认规则填充。"
               type="info"
               showIcon
               style={{ marginBottom: 24 }}
@@ -529,96 +658,15 @@ export default function UploadPage() {
               form={form}
               layout="vertical"
               initialValues={{
-                docType: 'REGULATION',
-                bizDomain: 'COMPLIANCE',
-                regionCode: 'CN-NATIONAL',
-                secLevel: 1,
-                effectiveFrom: dayjs(),
-                ownerUid: 'current-user',
-                deptId: 'D01',
+                overwriteExisting: false,
               }}
             >
-              <Form.Item
-                name="filename"
-                label="文件名（自动填充）"
-                tooltip="选择文件后将自动填充"
-              >
-                <Input placeholder="请先在下一步选择文件" disabled />
-              </Form.Item>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <Form.Item name="docType" label="文档类型" rules={[{ required: true }]}>
-                  <Select>
-                    <Select.Option value="REGULATION">制度</Select.Option>
-                    <Select.Option value="POLICY">政策</Select.Option>
-                    <Select.Option value="AUDIT">审计</Select.Option>
-                    <Select.Option value="CONTRACT">合同</Select.Option>
-                    <Select.Option value="MANUAL">手册</Select.Option>
-                  </Select>
-                </Form.Item>
-
-                <Form.Item name="bizDomain" label="业务域" rules={[{ required: true }]}>
-                  <Select>
-                    <Select.Option value="COMPLIANCE">合规</Select.Option>
-                    <Select.Option value="HR">人力资源</Select.Option>
-                    <Select.Option value="FINANCE">财务</Select.Option>
-                    <Select.Option value="IT">信息技术</Select.Option>
-                    <Select.Option value="OPS">运营</Select.Option>
-                  </Select>
-                </Form.Item>
-
-                <Form.Item name="regionCode" label="适用地域" rules={[{ required: true }]}>
-                  <Select>
-                    <Select.Option value="CN-NATIONAL">全国</Select.Option>
-                    <Select.Option value="CN-EAST">华东</Select.Option>
-                    <Select.Option value="CN-SOUTH">华南</Select.Option>
-                    <Select.Option value="CN-NORTH">华北</Select.Option>
-                  </Select>
-                </Form.Item>
-
-                <Form.Item name="secLevel" label="密级" rules={[{ required: true }]}>
-                  <Select>
-                    <Select.Option value={1}><GlobalOutlined /> 公开 (1)</Select.Option>
-                    <Select.Option value={2}><LockOutlined /> 内部 (2)</Select.Option>
-                    <Select.Option value={3}><SafetyOutlined /> 机密 (3)</Select.Option>
-                    <Select.Option value={4}><SecurityScanOutlined /> 秘密 (4)</Select.Option>
-                    <Select.Option value={5}><SafetyCertificateOutlined /> 绝密 (5)</Select.Option>
-                  </Select>
-                </Form.Item>
-
-                <Form.Item name="effectiveFrom" label="生效日期" rules={[{ required: true }]}>
-                  <DatePicker style={{ width: '100%' }} />
-                </Form.Item>
-
-                <Form.Item name="effectiveTo" label="失效日期（选填）">
-                  <DatePicker style={{ width: '100%' }} />
-                </Form.Item>
-
-                <Form.Item name="ownerUid" label="上传者">
-                  <Input disabled />
-                </Form.Item>
-
-                <Form.Item name="deptId" label="所属部门">
-                  <Select>
-                    <Select.Option value="D01">技术部</Select.Option>
-                    <Select.Option value="D02">合规部</Select.Option>
-                    <Select.Option value="D03">财务部</Select.Option>
-                    <Select.Option value="D04">人力资源部</Select.Option>
-                  </Select>
-                </Form.Item>
-              </div>
-
-              <Form.Item name="labelTags" label="标签（选填）">
-                <Select mode="tags" placeholder="输入标签后回车添加" />
-              </Form.Item>
-
-              <Divider><SettingOutlined /> 切片规则配置</Divider>
-
-              <Form.Item label="知识空间" required>
+              <Form.Item label={<Space><DatabaseOutlined />知识空间</Space>} required>
                 <Select
                   value={selectedSpace}
                   onChange={handleSpaceChange}
                   placeholder="请选择知识空间"
+                  size="large"
                 >
                   {spaces.map(space => (
                     <Select.Option key={space.id} value={space.id}>
@@ -629,91 +677,100 @@ export default function UploadPage() {
                 </Select>
               </Form.Item>
 
-              <Form.Item label="切片规则">
-                <Radio.Group
-                  value={useCustomChunk}
-                  onChange={(e) => handleChunkConfigToggle(e.target.value)}
-                >
-                  <Radio value={false}>继承知识空间配置</Radio>
-                  <Radio value={true}>自定义配置</Radio>
-                </Radio.Group>
+              <Form.Item name="labelTags" label={<Space><TagsOutlined />标签</Space>}>
+                <Select mode="tags" placeholder="输入标签后回车添加，选择文件后还会自动补充标签" size="large" />
               </Form.Item>
 
-              {useCustomChunk && (
-                <Card size="small" style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
-                  <Form.Item label="段长度" style={{ marginBottom: 12 }}>
-                    <Slider
-                      min={100}
-                      max={2000}
-                      step={50}
-                      value={chunkConfig.chunkSize}
-                      onChange={(val) => setChunkConfig({ ...chunkConfig, chunkSize: val })}
-                      marks={{ 100: '100', 512: '512', 1000: '1000', 2000: '2000' }}
-                    />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      当前: {chunkConfig.chunkSize} 字符
-                    </Text>
-                  </Form.Item>
+              <Collapse
+                style={{ marginBottom: 24 }}
+                items={[
+                  {
+                    key: 'advanced',
+                    label: <Space><SettingOutlined />高级选项</Space>,
+                    children: (
+                      <>
+                        <Form.Item label="切片规则">
+                          <Radio.Group
+                            value={useCustomChunk}
+                            onChange={(e) => handleChunkConfigToggle(e.target.value)}
+                          >
+                            <Radio value={false}>继承知识空间配置</Radio>
+                            <Radio value={true}>自定义配置</Radio>
+                          </Radio.Group>
+                        </Form.Item>
 
-                  <Form.Item label="重叠率" style={{ marginBottom: 12 }}>
-                    <Slider
-                      min={0}
-                      max={50}
-                      step={5}
-                      value={chunkConfig.overlapRatio}
-                      onChange={(val) => setChunkConfig({ ...chunkConfig, overlapRatio: val })}
-                      marks={{ 0: '0%', 10: '10%', 25: '25%', 50: '50%' }}
-                    />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      当前: {chunkConfig.overlapRatio}%
-                    </Text>
-                  </Form.Item>
+                        {useCustomChunk && (
+                          <Card size="small" style={{ background: 'var(--color-muted)', marginBottom: 16 }}>
+                            <Form.Item label="段长度" style={{ marginBottom: 12 }}>
+                              <Slider
+                                min={100}
+                                max={2000}
+                                step={50}
+                                value={chunkConfig.chunkSize}
+                                onChange={(val) => setChunkConfig({ ...chunkConfig, chunkSize: val })}
+                                marks={{ 100: '100', 512: '512', 1000: '1000', 2000: '2000' }}
+                              />
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                当前: {chunkConfig.chunkSize} 字符
+                              </Text>
+                            </Form.Item>
 
-                  <Form.Item label="切片模式" style={{ marginBottom: 0 }}>
-                    <Select
-                      value={chunkConfig.chunkMode}
-                      onChange={(val) => setChunkConfig({ ...chunkConfig, chunkMode: val as ChunkMode })}
-                      style={{ width: 280 }}
-                    >
-                      <Select.Option value="SMART">智能切分 (SMART)</Select.Option>
-                      <Select.Option value="SMART_LLM">智能切分 + LLM增强 (SMART_LLM)</Select.Option>
-                      <Select.Option value="HEAD_FIRST">固定长度 — 从前到后</Select.Option>
-                      <Select.Option value="TAIL_FIRST">固定长度 — 从后到前</Select.Option>
-                      <Select.Option value="UNIFORM">固定长度 — 均匀切分</Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Card>
-              )}
+                            <Form.Item label="重叠率" style={{ marginBottom: 12 }}>
+                              <Slider
+                                min={0}
+                                max={50}
+                                step={5}
+                                value={chunkConfig.overlapRatio}
+                                onChange={(val) => setChunkConfig({ ...chunkConfig, overlapRatio: val })}
+                                marks={{ 0: '0%', 10: '10%', 25: '25%', 50: '50%' }}
+                              />
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                当前: {chunkConfig.overlapRatio}%
+                              </Text>
+                            </Form.Item>
 
-              <Form.Item label="覆盖重名文档">
-                <Switch
-                  checkedChildren="开"
-                  unCheckedChildren="关"
-                  onChange={(checked) => setOverwriteExisting(checked)}
-                />
-                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                  开启后，如存在同名文档将自动覆盖
-                </Text>
-              </Form.Item>
+                            <Form.Item label="切片模式" style={{ marginBottom: 0 }}>
+                              <Select
+                                value={chunkConfig.chunkMode}
+                                onChange={(val) => setChunkConfig({ ...chunkConfig, chunkMode: val as ChunkMode })}
+                                style={{ width: 280 }}
+                              >
+                                <Select.Option value="SMART">智能切分 (SMART)</Select.Option>
+                                <Select.Option value="SMART_LLM">智能切分 + LLM增强 (SMART_LLM)</Select.Option>
+                                <Select.Option value="HEAD_FIRST">固定长度 - 从前到后</Select.Option>
+                                <Select.Option value="TAIL_FIRST">固定长度 - 从后到前</Select.Option>
+                                <Select.Option value="UNIFORM">固定长度 - 均匀切分</Select.Option>
+                              </Select>
+                            </Form.Item>
+                          </Card>
+                        )}
 
-              <Divider>权限配置 (ACL)</Divider>
+                        <Form.Item name="overwriteExisting" label="覆盖重名文档" valuePropName="checked">
+                          <Switch
+                            checkedChildren="开"
+                            unCheckedChildren="关"
+                            onChange={(checked) => setOverwriteExisting(checked)}
+                          />
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                            开启后，如存在同名文档将自动覆盖
+                          </Text>
+                        </Form.Item>
+                      </>
+                    ),
+                  },
+                ]}
+              />
 
               <Alert
-                message="MVP 阶段使用简化的权限配置。详细权限管理将在阶段二实现。"
+                message="权限将默认设置为仅上传者可写，空间权限和文档权限后续可在文档管理页调整。"
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}
               />
 
-              <Form.Item label="可见范围">
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  当前选中：仅本人可见。多人/多部门权限配置可在文档列表页编辑。
-                </Text>
-              </Form.Item>
-
               <Form.Item>
                 <Button type="primary" size="large" block onClick={handleMetadataConfirm}>
-                  确认元数据，进入文件选择
+                  进入文件选择
                 </Button>
               </Form.Item>
             </Form>
@@ -725,7 +782,7 @@ export default function UploadPage() {
           <div>
             <Alert
               message="文件要求"
-              description="支持格式：PDF / Word / PPT / Excel / TXT / MD，单个文件 ≤ 5MB。MVP 阶段暂不支持扫描件（OCR）。"
+              description="支持格式：PDF / Word / PPT / Excel / TXT / MD，单个文件 <= 50MB。选择文件后会自动识别文档类型、业务域、密级和标签。"
               type="info"
               showIcon
               style={{ marginBottom: 24 }}
@@ -742,13 +799,30 @@ export default function UploadPage() {
 
             {fileList.length > 0 && (
               <div style={{ marginTop: 24 }}>
-                <Descriptions title="待上传文件" column={2} bordered size="small">
+                <Descriptions title="自动识别结果" column={2} bordered size="small">
                   <Descriptions.Item label="文件名">{fileList[0].name}</Descriptions.Item>
                   <Descriptions.Item label="文件大小">
                     {(fileList[0].size! / 1024).toFixed(1)} KB
                   </Descriptions.Item>
-                  <Descriptions.Item label="文档类型">{formValues.docType || 'REGULATION'}</Descriptions.Item>
-                  <Descriptions.Item label="知识空间">{selectedSpace}</Descriptions.Item>
+                  <Descriptions.Item label="文档类型">
+                    {DOC_TYPE_LABELS[formValues.docType as DocType] || formValues.docType || DOC_TYPE_LABELS.REGULATION}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="业务域">
+                    {BIZ_DOMAIN_LABELS[formValues.bizDomain as string] || formValues.bizDomain || BIZ_DOMAIN_LABELS.COMPLIANCE}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="密级">
+                    {SEC_LEVEL_LABELS[formValues.secLevel as SecLevel] || SEC_LEVEL_LABELS[1]}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="知识空间">
+                    {spaces.find(space => space.id === selectedSpace)?.name || selectedSpace}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="标签" span={2}>
+                    <Space size={[4, 4]} wrap>
+                      {Array.isArray(formValues.labelTags) && formValues.labelTags.length > 0
+                        ? formValues.labelTags.map((tag: string) => <Tag key={tag}>{tag}</Tag>)
+                        : <Text type="secondary">无标签</Text>}
+                    </Space>
+                  </Descriptions.Item>
                 </Descriptions>
 
                 <Button
@@ -766,7 +840,7 @@ export default function UploadPage() {
             )}
 
             <div style={{ marginTop: 24, textAlign: 'center' }}>
-              <Button onClick={() => setCurrentStep(0)}>返回修改元数据</Button>
+              <Button onClick={() => setCurrentStep(0)}>返回调整空间和标签</Button>
             </div>
           </div>
         )}
@@ -914,11 +988,24 @@ export default function UploadPage() {
                   <Descriptions.Item label="处理耗时">
                     {elapsedSeconds != null ? `${elapsedSeconds} 秒` : '—'}
                   </Descriptions.Item>
+                  <Descriptions.Item label="文档类型">
+                    {DOC_TYPE_LABELS[formValues.docType as DocType] || formValues.docType || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="业务域">
+                    {BIZ_DOMAIN_LABELS[formValues.bizDomain as string] || formValues.bizDomain || '—'}
+                  </Descriptions.Item>
                   <Descriptions.Item label="文档密级">
-                    {formValues.secLevel === 1 ? '公开' :
-                     formValues.secLevel === 2 ? '内部' :
-                     formValues.secLevel === 3 ? '机密' :
-                     formValues.secLevel === 4 ? '秘密' : '绝密'}
+                    {SEC_LEVEL_LABELS[formValues.secLevel as SecLevel] || '公开'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="知识空间">
+                    {spaces.find(space => space.id === selectedSpace)?.name || selectedSpace}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="标签" span={2}>
+                    <Space size={[4, 4]} wrap>
+                      {Array.isArray(formValues.labelTags) && formValues.labelTags.length > 0
+                        ? formValues.labelTags.map((tag: string) => <Tag key={tag}>{tag}</Tag>)
+                        : <Text type="secondary">无标签</Text>}
+                    </Space>
                   </Descriptions.Item>
                   <Descriptions.Item label="切片规则">
                     段长 {chunkConfig.chunkSize}，重叠 {chunkConfig.overlapRatio}%

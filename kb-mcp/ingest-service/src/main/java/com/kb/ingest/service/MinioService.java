@@ -68,18 +68,26 @@ public class MinioService {
      * 生成用于 GET 下载/预览的 presigned URL。
      *
      * @param objectPath MinIO 对象路径（不含 bucket 前缀）
+     * @param contentType 文件 Content-Type（用于为文本类文件强制指定 charset=UTF-8）
      * @return presigned URL，可直接用于浏览器 iframe 或下载
      */
-    public String generateGetPresignedUrl(String objectPath) {
+    public String generateGetPresignedUrl(String objectPath, String contentType) {
         try {
-            String presignedUrl = minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
-                            .bucket(bucket)
-                            .object(objectPath)
-                            .expiry(presignedUrlExpiry)
-                            .build()
-            );
+            GetPresignedObjectUrlArgs.Builder builder = GetPresignedObjectUrlArgs.builder()
+                    .method(Method.GET)
+                    .bucket(bucket)
+                    .object(objectPath)
+                    .expiry(presignedUrlExpiry);
+
+            // 文本类文件通过 response-content-type 强制指定 UTF-8 编码，
+            // 避免浏览器因缺少 charset 而使用平台默认编码导致中文乱码。
+            if (contentType != null && contentType.startsWith("text/")) {
+                builder.extraQueryParams(Map.of(
+                        "response-content-type", contentType + "; charset=UTF-8"
+                ));
+            }
+
+            String presignedUrl = minioClient.getPresignedObjectUrl(builder.build());
             log.debug("Generated GET presigned URL for object: {}, url: {}", objectPath, presignedUrl);
             return presignedUrl;
         } catch (Exception e) {

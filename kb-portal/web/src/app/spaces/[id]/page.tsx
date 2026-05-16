@@ -174,7 +174,7 @@ export default function SpaceDetailPage() {
         <div className="space-detail-page__left">
           <div className="space-meta-card">
             <div className={`space-meta-card__icon ${space.id === 'DEFAULT' ? 'space-meta-card__icon--default' : ''}`}>
-              <FolderOutlined style={{ fontSize: 32, color: '#fff' }} />
+              <FolderOutlined style={{ fontSize: 32, color: 'currentColor' }} />
             </div>
 
             <Title level={3} style={{ margin: '16px 0 8px', fontSize: 22, fontWeight: 600 }}>
