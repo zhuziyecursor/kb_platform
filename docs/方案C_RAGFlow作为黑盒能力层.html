@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>方案C：RAGFlow 作为黑盒能力层 — API 可调用能力分析</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        h1 { text-align: center; font-size: 30px; font-weight: 700; margin-bottom: 8px; color: #f0f6fc; }
+        .subtitle { text-align: center; color: #8b949e; font-size: 14px; margin-bottom: 4px; }
+        .meta { text-align: center; color: #6e7681; font-size: 12px; margin-bottom: 36px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+
+        /* Architecture diagram */
+        .arch-diagram {
+            background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px 20px; margin-bottom: 32px;
+        }
+        .arch-diagram h2 { text-align: center; color: #f0f6fc; font-size: 16px; margin-bottom: 20px; }
+        .arch-layers { display: flex; flex-direction: column; gap: 2px; max-width: 800px; margin: 0 auto; }
+        .arch-layer {
+            border-radius: 8px; padding: 14px 20px; text-align: center; font-size: 13px;
+        }
+        .arch-layer.top {
+            background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3);
+            color: #c9d1d9;
+        }
+        .arch-layer.mid {
+            background: rgba(139,92,246,0.10); border: 1px dashed rgba(139,92,246,0.35);
+            color: #8b949e; font-size: 12px; padding: 10px;
+        }
+        .arch-layer.bottom {
+            background: rgba(63,185,80,0.10); border: 1px solid rgba(63,185,80,0.3);
+            color: #c9d1d9;
+        }
+        .arch-label { font-weight: 700; color: #58a6ff; }
+        .arch-label.green { color: #3fb950; }
+        .arch-arrow { text-align: center; color: #484f58; font-size: 20px; padding: 4px 0; }
+        .arch-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+        .arch-box {
+            background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 6px; padding: 8px 6px; font-size: 11px; text-align: center;
+        }
+        .arch-box.green { background: rgba(63,185,80,0.08); border-color: rgba(63,185,80,0.2); }
+
+        /* Section title */
+        .section-title {
+            font-size: 18px; font-weight: 600; color: #f0f6fc; margin: 40px 0 16px; padding-bottom: 8px;
+            border-bottom: 1px solid #21262d; display: flex; align-items: center; gap: 10px;
+        }
+        .section-num {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; border-radius: 6px; font-size: 13px; font-weight: 700;
+            color: #f0f6fc; flex-shrink: 0;
+        }
+        .section-num.green { background: #238636; }
+
+        /* Three-column table */
+        .triple-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+        .triple-card { border-radius: 10px; padding: 20px; border: 1px solid; }
+        .triple-card.keep { background: rgba(59,130,246,0.06); border-color: rgba(59,130,246,0.25); }
+        .triple-card.keep h3 { color: #58a6ff; font-size: 14px; margin-bottom: 10px; }
+        .triple-card.use { background: rgba(63,185,80,0.06); border-color: rgba(63,185,80,0.25); }
+        .triple-card.use h3 { color: #3fb950; font-size: 14px; margin-bottom: 10px; }
+        .triple-card.sync { background: rgba(210,153,34,0.06); border-color: rgba(210,153,34,0.25); }
+        .triple-card.sync h3 { color: #d29922; font-size: 14px; margin-bottom: 10px; }
+        .triple-card ul { list-style: none; font-size: 12px; }
+        .triple-card ul li { padding: 4px 0; color: #8b949e; }
+        .triple-card ul li::before { content: "▸ "; color: #484f58; }
+
+        /* Capability cards */
+        .cap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); gap: 14px; margin-bottom: 28px; }
+        .cap-card {
+            background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 18px;
+            transition: border-color 0.15s;
+        }
+        .cap-card:hover { border-color: #58a6ff; }
+        .cap-card .cap-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+        .cap-icon {
+            width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 18px; flex-shrink: 0;
+        }
+        .cap-icon.blue { background: rgba(59,130,246,0.15); }
+        .cap-icon.green { background: rgba(63,185,80,0.15); }
+        .cap-icon.purple { background: rgba(139,92,246,0.15); }
+        .cap-icon.orange { background: rgba(245,158,11,0.15); }
+        .cap-icon.red { background: rgba(248,81,73,0.15); }
+        .cap-icon.cyan { background: rgba(56,139,253,0.15); }
+        .cap-name { font-weight: 600; font-size: 14px; color: #f0f6fc; }
+        .cap-endpoint {
+            font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
+            font-size: 11px; color: #58a6ff; background: rgba(88,166,255,0.08);
+            padding: 2px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;
+        }
+        .cap-desc { font-size: 12px; color: #8b949e; margin-bottom: 8px; }
+        .cap-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .cap-tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: #21262d; color: #8b949e; }
+
+        /* API method table */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+        th { background: #161b22; color: #f0f6fc; font-weight: 600; padding: 10px 14px; text-align: left; border-bottom: 1px solid #30363d; }
+        td { padding: 10px 14px; border-bottom: 1px solid #21262d; vertical-align: top; }
+        tr:hover td { background: rgba(56, 139, 253, 0.04); }
+        code {
+            font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
+            font-size: 11px; background: rgba(88,166,255,0.08); color: #58a6ff;
+            padding: 2px 6px; border-radius: 3px;
+        }
+        .method { font-weight: 700; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+        .method.get { background: rgba(63,185,80,0.15); color: #3fb950; }
+        .method.post { background: rgba(59,130,246,0.15); color: #58a6ff; }
+        .method.put { background: rgba(245,158,11,0.15); color: #d29922; }
+        .method.delete { background: rgba(248,81,73,0.15); color: #f85149; }
+        .method.patch { background: rgba(139,92,246,0.15); color: #a371f7; }
+
+        /* Call flow */
+        .flow-horiz {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+            background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+            padding: 20px; justify-content: center; margin-bottom: 16px;
+        }
+        .flow-step {
+            background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+            padding: 10px 16px; font-size: 12px; white-space: nowrap; text-align: center;
+        }
+        .flow-step.ours { border-color: #58a6ff; background: rgba(59,130,246,0.08); }
+        .flow-step.ragflow { border-color: #3fb950; background: rgba(63,185,80,0.08); }
+        .flow-arrow { color: #484f58; font-size: 16px; }
+
+        /* Integration cards */
+        .integration-item {
+            background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; margin-bottom: 10px;
+        }
+        .integration-item h4 { color: #f0f6fc; font-size: 13px; margin-bottom: 4px; }
+        .integration-item p { color: #8b949e; font-size: 12px; }
+
+        /* Summary box */
+        .summary-box {
+            background: linear-gradient(135deg, rgba(63,185,80,0.1), rgba(59,130,246,0.06));
+            border: 1px solid rgba(63,185,80,0.3); border-radius: 12px; padding: 28px; margin: 30px 0;
+        }
+        .summary-box h2 { color: #3fb950; font-size: 20px; margin-bottom: 12px; }
+        .summary-box p { font-size: 13px; color: #8b949e; margin-bottom: 8px; }
+
+        .note { background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.25); border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-size: 12px; color: #d29922; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+<h1>方案C：RAGFlow 作为黑盒能力层</h1>
+<p class="subtitle">不 Fork 不侵入 — 通过 REST API / Python SDK / MCP 调用 RAGFlow 的全部能力</p>
+<p class="meta">分析日期：2026-05-19 · 基于 RAGFlow v0.25.x · kb-platform</p>
+
+<!-- ===== 核心思路 ===== -->
+<div class="arch-diagram">
+    <h2>核心思路</h2>
+    <div class="arch-layers">
+        <div class="arch-layer top">
+            <span class="arch-label">kb-platform</span>（你的项目 — 保留上层应用）
+            <div class="arch-boxes">
+                <div class="arch-box">前端 Portal</div>
+                <div class="arch-box">ACL 权限</div>
+                <div class="arch-box">反馈系统</div>
+                <div class="arch-box">Pipeline Trace</div>
+                <div class="arch-box">业务编排</div>
+                <div class="arch-box">审计日志</div>
+            </div>
+        </div>
+        <div class="arch-arrow">▼ ▼ ▼ HTTP API / SDK 调用 ▼ ▼ ▼</div>
+        <div class="arch-layer mid">
+            通过 <code>ragflow-sdk</code> / REST API / OpenAI 兼容接口 / MCP 协议 四种方式调用
+        </div>
+        <div class="arch-arrow">▼ ▼ ▼</div>
+        <div class="arch-layer bottom">
+            <span class="arch-label green">RAGFlow</span>（黑盒底层引擎 — 不修改代码）
+            <div class="arch-boxes">
+                <div class="arch-box green">文档解析<br>(MinerU)</div>
+                <div class="arch-box green">智能切片</div>
+                <div class="arch-box green">向量检索</div>
+                <div class="arch-box green">知识图谱</div>
+                <div class="arch-box green">元数据提取</div>
+                <div class="arch-box green">对话问答</div>
+                <div class="arch-box green">Agent 工作流</div>
+                <div class="arch-box green">长期记忆</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 职责划分 ===== -->
+<div class="section-title"><span class="section-num green">1</span> 职责划分</div>
+<div class="triple-grid">
+    <div class="triple-card keep">
+        <h3>kb-platform 保留</h3>
+        <ul>
+            <li>前端 Portal (React)</li>
+            <li>用户认证 (OIDC)</li>
+            <li>ACL 细粒度权限</li>
+            <li>反馈系统 (点赞/点踩/评语)</li>
+            <li>Pipeline Trace 全链路追踪</li>
+            <li>审计日志 / Badcase 归档</li>
+            <li>业务编排逻辑</li>
+            <li>Kafka 消息驱动</li>
+            <li>JWT Gateway 路由</li>
+        </ul>
+    </div>
+    <div class="triple-card use">
+        <h3>RAGFlow 提供（黑盒调用）</h3>
+        <ul>
+            <li>文档解析 (MinerU 引擎)</li>
+            <li>智能切片 (12 种策略)</li>
+            <li>向量化 + 混合检索</li>
+            <li>Rerank 重排序</li>
+            <li>知识图谱构建与检索</li>
+            <li>元数据自动提取</li>
+            <li>LLM 对话 (SSE 流式)</li>
+            <li>Agent 工作流编排</li>
+            <li>长期记忆管理</li>
+            <li>数据源连接器</li>
+        </ul>
+    </div>
+    <div class="triple-card sync">
+        <h3>需要对接的部分</h3>
+        <ul>
+            <li>API Token 认证</li>
+            <li>知识库 ID 映射</li>
+            <li>文档 ID / Chunk ID 映射</li>
+            <li>回调 / Webhook 通知</li>
+            <li>Metric 监控集成</li>
+            <li>错误处理与重试</li>
+            <li>状态同步 (解析进度)</li>
+        </ul>
+    </div>
+</div>
+
+<!-- ===== 可调用能力清单 ===== -->
+<div class="section-title"><span class="section-num green">2</span> RAGFlow 对外暴露的 14 类能力</div>
+
+<!-- 1. 知识库管理 -->
+<div class="cap-grid">
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon blue">📁</div>
+        <div>
+            <div class="cap-name">1. 知识库管理</div>
+            <span class="cap-endpoint">CRUD /api/v1/datasets</span>
+        </div>
+    </div>
+    <div class="cap-desc">创建、删除、列出、更新知识库配置（嵌入模型、分块策略、权限）</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SDK: rag.create_dataset()</span>
+        <span class="cap-tag">SDK: rag.list_datasets()</span>
+        <span class="cap-tag">支持元数据配置</span>
+    </div>
+</div>
+
+<!-- 2. 文档解析 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon green">📄</div>
+        <div>
+            <div class="cap-name">2. 文档接入与解析 ★核心能力</div>
+            <span class="cap-endpoint">POST /api/v1/datasets/{id}/documents</span>
+        </div>
+    </div>
+    <div class="cap-desc">上传 PDF/DOCX/EXCEL/MD/图片 → 自动解析（MinerU 引擎：OCR + 版式识别 + 表格/公式提取）</div>
+    <div class="cap-tags">
+        <span class="cap-tag">12种分块策略</span>
+        <span class="cap-tag">SDK: dataset.parse_documents()</span>
+        <span class="cap-tag">支持远程URL</span>
+        <span class="cap-tag">文档预览/下载</span>
+    </div>
+</div>
+
+<!-- 3. 切块管理 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon purple">✂️</div>
+        <div>
+            <div class="cap-name">3. 切块管理</div>
+            <span class="cap-endpoint">CRUD /api/v1/datasets/{id}/documents/{id}/chunks</span>
+        </div>
+    </div>
+    <div class="cap-desc">列出、添加、更新、删除文档切块，手动修正解析结果，补充关键词/问题/标签</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SDK: document.add_chunk()</span>
+        <span class="cap-tag">批量启用/禁用</span>
+        <span class="cap-tag">图片切块支持</span>
+    </div>
+</div>
+
+<!-- 4. 语义检索 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon orange">🔍</div>
+        <div>
+            <div class="cap-name">4. 语义检索 ★核心能力</div>
+            <span class="cap-endpoint">POST /api/v1/datasets/search</span>
+        </div>
+    </div>
+    <div class="cap-desc">向量 + 关键词混合检索 + Rerank + 知识图谱增强 + 跨语言 + 元数据过滤</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SDK: rag.retrieve()</span>
+        <span class="cap-tag">top_k=1024</span>
+        <span class="cap-tag">use_kg=true</span>
+        <span class="cap-tag">cross_languages</span>
+    </div>
+</div>
+
+<!-- 5. 对话问答 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon cyan">💬</div>
+        <div>
+            <div class="cap-name">5. 对话问答 ★核心能力</div>
+            <span class="cap-endpoint">POST /api/v1/chats/{id}/completions</span>
+        </div>
+    </div>
+    <div class="cap-desc">创建 Chat 机器人 → 绑定知识库 → SSE 流式问答，返回带参考文献引用的答案</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SDK: session.ask()</span>
+        <span class="cap-tag">SSE 流式</span>
+        <span class="cap-tag">消息反馈</span>
+        <span class="cap-tag">TTS语音合成</span>
+        <span class="cap-tag">ASR语音识别</span>
+    </div>
+</div>
+
+<!-- 6. Agent -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon red">🤖</div>
+        <div>
+            <div class="cap-name">6. Agent 工作流</div>
+            <span class="cap-endpoint">POST /api/v1/agents/chat/completions</span>
+        </div>
+    </div>
+    <div class="cap-desc">DSL 定义工作流画布，组件调试，版本管理，Webhook 触发，支持文件输入的多步 LLM 编排</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SDK: rag.create_agent()</span>
+        <span class="cap-tag">Webhook</span>
+        <span class="cap-tag">组件调试</span>
+        <span class="cap-tag">版本管理</span>
+    </div>
+</div>
+
+<!-- 7. 记忆 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon blue">🧠</div>
+        <div>
+            <div class="cap-name">7. 长期记忆</div>
+            <span class="cap-endpoint">POST /api/v1/messages</span>
+        </div>
+    </div>
+    <div class="cap-desc">独立于知识库的记忆存储，语义搜索历史消息，支持遗忘策略，按 agent/session/user 过滤</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SDK: rag.add_message()</span>
+        <span class="cap-tag">SDK: rag.search_message()</span>
+        <span class="cap-tag">遗忘策略</span>
+    </div>
+</div>
+
+<!-- 8. 知识图谱 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon purple">🕸️</div>
+        <div>
+            <div class="cap-name">8. 知识图谱</div>
+            <span class="cap-endpoint">GET /api/v1/datasets/{id}/graph</span>
+        </div>
+    </div>
+    <div class="cap-desc">获取知识库的知识图谱数据，检索时设置 use_kg=true 启用 KG 增强语义理解</div>
+    <div class="cap-tags">
+        <span class="cap-tag">实体关系抽取</span>
+        <span class="cap-tag">KG索引</span>
+        <span class="cap-tag">检索增强</span>
+    </div>
+</div>
+
+<!-- 9. OpenAI兼容 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon green">🔄</div>
+        <div>
+            <div class="cap-name">9. OpenAI 兼容接口</div>
+            <span class="cap-endpoint">POST /api/v1/openai/{chat_id}/chat/completions</span>
+        </div>
+    </div>
+    <div class="cap-desc">完全兼容 OpenAI SDK，改 base_url 即可用，支持 streaming、参考文献返回、元数据过滤</div>
+    <div class="cap-tags">
+        <span class="cap-tag">零代码切换</span>
+        <span class="cap-tag">extra_body.reference</span>
+        <span class="cap-tag">metadata_condition</span>
+    </div>
+</div>
+
+<!-- 10. MCP -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon orange">🔌</div>
+        <div>
+            <div class="cap-name">10. MCP Server</div>
+            <span class="cap-endpoint">MCP Tool: ragflow_retrieval</span>
+        </div>
+    </div>
+    <div class="cap-desc">将检索能力以 MCP 协议暴露给 Claude Code 等客户端，支持 SSE 和 Streamable HTTP</div>
+    <div class="cap-tags">
+        <span class="cap-tag">SSE 传输</span>
+        <span class="cap-tag">Streamable HTTP</span>
+        <span class="cap-tag">即插即用</span>
+    </div>
+</div>
+
+<!-- 11. 连接器 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon cyan">🔗</div>
+        <div>
+            <div class="cap-name">11. 数据源连接器</div>
+            <span class="cap-endpoint">POST /api/v1/connectors</span>
+        </div>
+    </div>
+    <div class="cap-desc">Google Drive / Gmail / Box / REST API 自动同步文档到知识库，OAuth 授权 + 同步日志</div>
+    <div class="cap-tags">
+        <span class="cap-tag">Google Drive</span>
+        <span class="cap-tag">Gmail</span>
+        <span class="cap-tag">OAuth</span>
+    </div>
+</div>
+
+<!-- 12. 索引嵌入 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon purple">⚙️</div>
+        <div>
+            <div class="cap-name">12. 索引与嵌入管理</div>
+            <span class="cap-endpoint">POST /api/v1/datasets/{id}/index</span>
+        </div>
+    </div>
+    <div class="cap-desc">触发生成 KG 索引、重新向量化、检查嵌入配置，跟踪索引进度（chunk/KG/token 计数）</div>
+    <div class="cap-tags">
+        <span class="cap-tag">索引进度跟踪</span>
+        <span class="cap-tag">重新嵌入</span>
+        <span class="cap-tag">配置检查</span>
+    </div>
+</div>
+
+<!-- 13. 搜索App -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon blue">🔎</div>
+        <div>
+            <div class="cap-name">13. 轻量搜索应用</div>
+            <span class="cap-endpoint">POST /api/v1/searches/{id}/completions</span>
+        </div>
+    </div>
+    <div class="cap-desc">比完整 Chat 更简单的搜索问答配置，适合快速部署搜索型问答页面</div>
+    <div class="cap-tags">
+        <span class="cap-tag">轻量配置</span>
+        <span class="cap-tag">流式问答</span>
+    </div>
+</div>
+
+<!-- 14. 系统管理 -->
+<div class="cap-card">
+    <div class="cap-header">
+        <div class="cap-icon red">🛠️</div>
+        <div>
+            <div class="cap-name">14. 系统管理</div>
+            <span class="cap-endpoint">GET /api/v1/system/healthz</span>
+        </div>
+    </div>
+    <div class="cap-desc">健康检查、版本、系统状态（doc_engine/存储/DB/Redis/任务执行器）、API Token 管理、Langfuse 集成</div>
+    <div class="cap-tags">
+        <span class="cap-tag">健康检查</span>
+        <span class="cap-tag">Token管理</span>
+        <span class="cap-tag">日志级别</span>
+    </div>
+</div>
+</div>
+
+<!-- ===== 四种调用方式对比 ===== -->
+<div class="section-title"><span class="section-num green">3</span> 四种调用方式</div>
+<table>
+    <thead>
+        <tr>
+            <th style="width:14%">调用方式</th>
+            <th style="width:28%">适用场景</th>
+            <th style="width:14%">难度</th>
+            <th style="width:30%">关键特征</th>
+            <th>代码示例</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Python SDK</strong><br><code>ragflow-sdk</code></td>
+            <td>后端 Python 服务调用（如 kb-doc-processor、rerank-service）</td>
+            <td><span class="tag ok">低</span></td>
+            <td>封装了 CRUD + 解析等待轮询，API Key 认证，文档齐全</td>
+            <td><code>rag = RAGFlow(api_key, base_url)<br>ds = rag.create_dataset(name)</code></td>
+        </tr>
+        <tr>
+            <td><strong>REST API</strong><br><code>/api/v1/*</code></td>
+            <td>Java 服务调用（如 ingest-service、rag-service），或跨语言调用</td>
+            <td><span class="tag ok">低</span></td>
+            <td>100+ 端点，Bearer Token 认证，标准 RESTful，SSE 流式</td>
+            <td><code>curl -H "Authorization: Bearer $TOKEN"<br>-X POST /api/v1/datasets/search</code></td>
+        </tr>
+        <tr>
+            <td><strong>OpenAI 兼容</strong><br><code>/api/v1/openai/*</code></td>
+            <td>前端直接调用，或已有 OpenAI SDK 的代码</td>
+            <td><span class="tag ok">极低</span></td>
+            <td>改 base_url 即可，零代码切换，支持 streaming</td>
+            <td><code>openai.base_url = "http://ragflow:9380/api/v1/openai/chat_id"</code></td>
+        </tr>
+        <tr>
+            <td><strong>MCP 协议</strong><br><code>ragflow_retrieval</code></td>
+            <td>Claude Code 等 MCP 客户端使用</td>
+            <td><span class="tag ok">极低</span></td>
+            <td>即插即用，SSE / Streamable HTTP 双模式</td>
+            <td>配置 MCP Server URL 即可</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- ===== 典型调用链路 ===== -->
+<div class="section-title"><span class="section-num green">4</span> 两条典型调用链路</div>
+
+<h3 style="color:#f0f6fc;font-size:14px;margin-bottom:10px;">链路 B — 入库（kb-platform 上传 → RAGFlow 解析）</h3>
+<div class="flow-horiz">
+    <div class="flow-step ours">kb-portal<br>上传文档</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ours">ingest-service<br>记录元数据</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow SDK<br>upload_documents()</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow<br>MinerU 解析</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow<br>切片 + 向量化</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow<br>ES/Infinity 索引</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ours">ingest-service<br>记录完成状态</div>
+</div>
+
+<h3 style="color:#f0f6fc;font-size:14px;margin-bottom:10px;">链路 A — 检索（kb-platform 问答 → RAGFlow 检索 + LLM）</h3>
+<div class="flow-horiz">
+    <div class="flow-step ours">kb-portal<br>用户提问</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ours">rag-service<br>接收请求</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow REST API<br>POST /datasets/search</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow<br>混合检索 + Rerank</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ragflow">RAGFlow<br>LLM 生成答案</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ours">rag-service<br>记录 Trace + 反馈</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step ours">kb-portal<br>SSE 流式展示</div>
+</div>
+
+<!-- ===== 关键集成问题 ===== -->
+<div class="section-title"><span class="section-num green">5</span> 关键集成问题与解决方案</div>
+
+<div class="integration-item">
+    <h4>1. 认证 — API Token 管理</h4>
+    <p>RAGFlow 使用 Bearer Token 认证（<code>POST /api/v1/system/tokens</code> 创建）。建议在 kb-platform 的 llm-gateway 或 rag-service 中集中管理 Token，定期轮换，错误时自动重试。</p>
+</div>
+<div class="integration-item">
+    <h4>2. ID 映射 — kb-platform 知识库/文档 ID ↔ RAGFlow ID</h4>
+    <p>kb-platform 在 ingest-service 的 <code>knowledge_doc</code> 表中新增 <code>ragflow_dataset_id</code>、<code>ragflow_doc_id</code> 字段，或新建一张映射表。检索时通过 kb-platform 知识库 ID 查映射表获取 RAGFlow dataset_id。</p>
+</div>
+<div class="integration-item">
+    <h4>3. 异步状态同步 — 解析进度通知</h4>
+    <p>RAGFlow 文档解析是异步的（Redis 任务队列）。方案：SDK 的 parse_documents() 自带阻塞轮询；REST API 可以轮询 <code>GET /api/v1/datasets/{id}/documents</code> 的 run 状态字段。高级方案：RAGFlow Agent DSL 在解析完成后调用 kb-platform Webhook。</p>
+</div>
+<div class="integration-item">
+    <h4>4. 基础设施重叠 — 是否保留 kb-platform 的 Milvus/PostgreSQL</h4>
+    <p>如果完全委托 RAGFlow 做检索，RAGFlow 自带 ES/Infinity 索引，kb-platform 的 Milvus 可以逐步停用。但 PostgreSQL 仍需保留（ACL、反馈、Trace 等业务数据）。建议短期双写，长期评估是否只用 RAGFlow 的检索后端。</p>
+</div>
+<div class="integration-item">
+    <h4>5. 错误处理与降级 — RAGFlow 不可用时的 fallback</h4>
+    <p>如果 RAGFlow 宕机，问答和检索功能直接中断。建议 kb-platform 保留基础的 Milvus 检索作为降级方案，或在 rag-service 中加入 circuit breaker（如 Resilience4j），检测 RAGFlow 健康状态后切换。</p>
+</div>
+<div class="integration-item">
+    <h4>6. 网络延迟 — 每次问答调用两次 RAGFlow（search + completions）</h4>
+    <p>检索 + LLM 生成需要两次 HTTP 往返（约 100-500ms 额外延迟）。优化：使用 RAGFlow 的 Chat completions 接口（一次调用完成检索+生成），或在前端用 SSE 掩盖延迟。</p>
+</div>
+
+<!-- ===== 优势与风险 ===== -->
+<div class="section-title"><span class="section-num green">6</span> 方案C 优势与风险</div>
+<table>
+    <thead>
+        <tr><th style="width:50%;color:#3fb950;">优势</th><th style="width:50%;color:#f85149;">风险与限制</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>✅ <strong>零侵入</strong> — 不修改 RAGFlow 一行代码，升级不受影响</td>
+            <td>⚠️ <strong>网络依赖</strong> — RAGFlow 宕机直接影响核心功能</td>
+        </tr>
+        <tr>
+            <td>✅ <strong>快速集成</strong> — SDK/REST API 开箱即用，数天可跑通主链路</td>
+            <td>⚠️ <strong>性能开销</strong> — 每次检索+问答 2 次 HTTP 往返</td>
+        </tr>
+        <tr>
+            <td>✅ <strong>能力最全</strong> — 一次获得 MinerU 解析 + KG + Agent + Memory 全部能力</td>
+            <td>⚠️ <strong>定制受限</strong> — 切片策略/检索逻辑只能通过参数调优，不能改内部实现</td>
+        </tr>
+        <tr>
+            <td>✅ <strong>社区红利</strong> — RAGFlow 持续更新，自动获得新功能</td>
+            <td>⚠️ <strong>两层运维</strong> — 需同时运维 kb-platform + RAGFlow 两套系统</td>
+        </tr>
+        <tr>
+            <td>✅ <strong>保留差异化</strong> — ACL、Trace、反馈、审计等核心能力仍由 kb-platform 控制</td>
+            <td>⚠️ <strong>ID 映射复杂</strong> — 需维护 kb-platform 与 RAGFlow 之间的资源映射关系</td>
+        </tr>
+        <tr>
+            <td>✅ <strong>基础设施解耦</strong> — RAGFlow 自管 ES/Infinity/MySQL/Redis，不侵入 kb-platform 的 PG/Milvus/Kafka</td>
+            <td>⚠️ <strong>API 版本兼容</strong> — RAGFlow 大版本升级可能导致 API 不兼容</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- ===== 对 kb-platform 各服务的影响 ===== -->
+<div class="section-title"><span class="section-num green">7</span> 对 kb-platform 各服务的影响</div>
+<table>
+    <thead>
+        <tr><th>服务</th><th>影响程度</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>kb-doc-processor</strong></td>
+            <td><span class="tag risk">大幅简化</span></td>
+            <td>现有 Tika 解析 → 清洗 → 切片管道可替换为 RAGFlow SDK 调用。解析/切片/向量化全部委托给 RAGFlow，processor 退化为"上传代理 + 状态管理"</td>
+        </tr>
+        <tr>
+            <td><strong>rag-service</strong></td>
+            <td><span class="tag warn">中等改造</span></td>
+            <td>ChatServiceImpl 中的 Milvus 检索改为调用 RAGFlow search API，LLM 生成改为调用 RAGFlow completions。保留 trace_id、反馈、降级逻辑</td>
+        </tr>
+        <tr>
+            <td><strong>ingest-service</strong></td>
+            <td><span class="tag warn">中等改造</span></td>
+            <td>新增 ragflow_dataset_id/ragflow_doc_id 映射字段，管理文档在两套系统中的生命周期</td>
+        </tr>
+        <tr>
+            <td><strong>vector-service</strong></td>
+            <td><span class="tag risk">可下线</span></td>
+            <td>向量化写入由 RAGFlow 接管，Milvus 写入逻辑可逐步下线</td>
+        </tr>
+        <tr>
+            <td><strong>llm-gateway</strong></td>
+            <td><span class="tag ok">小幅调整</span></td>
+            <td>新增 RAGFlow API Token 管理，llm-gateway 或可兼任 RAGFlow 的认证代理</td>
+        </tr>
+        <tr>
+            <td><strong>rerank-service</strong></td>
+            <td><span class="tag risk">可下线</span></td>
+            <td>RAGFlow 内置 Rerank 能力，外部 rerank 服务不再需要</td>
+        </tr>
+        <tr>
+            <td><strong>kb-portal</strong></td>
+            <td><span class="tag ok">小幅调整</span></td>
+            <td>前端界面保持不变，后端 API 调用目标切换为 RAGFlow</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- ===== 总结 ===== -->
+<div class="summary-box">
+    <h2>总结</h2>
+    <p><strong>RAGFlow 作为黑盒能力层是一个务实的选择。</strong>它提供了 14 大类、100+ 个 REST API 端点，覆盖从文档解析到知识问答的完整 RAG 链路。kb-platform 通过 SDK/REST API 调用这些能力，可以在<strong>数天内</strong>跑通核心链路（上传 → 解析 → 检索 → 问答），同时保留 ACL、Trace、反馈、审计等差异化能力。</p>
+    <p><strong>最大收益：</strong>文档解析（MinerU）和智能检索（混合检索 + Rerank + KG）两个最复杂的模块直接由 RAGFlow 提供，kb-platform 无需自研，vector-service 和 rerank-service 可以下线。</p>
+    <p><strong>主要代价：</strong>多一套系统运维 + 网络延迟 + ID 映射维护。但这些代价远小于方案A（Fork 二次开发）的代码量和技术债风险。</p>
+</div>
+
+</div>
+</body>
+</html>

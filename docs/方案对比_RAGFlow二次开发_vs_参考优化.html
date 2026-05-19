@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>方案对比：RAGFlow 二次开发 vs 参考 RAGFlow 优化 kb-platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        h1 { text-align: center; font-size: 30px; font-weight: 700; margin-bottom: 8px; color: #f0f6fc; }
+        .subtitle { text-align: center; color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+        .meta { text-align: center; color: #6e7681; font-size: 12px; margin-bottom: 40px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .overview-card { border-radius: 12px; padding: 24px; border: 1px solid; }
+        .overview-card.plan-a { background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.02)); border-color: rgba(245, 158, 11, 0.3); }
+        .overview-card.plan-b { background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.02)); border-color: rgba(59, 130, 246, 0.3); }
+        .overview-card h2 { font-size: 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .plan-a h2 { color: #f59e0b; }
+        .plan-b h2 { color: #3b82f6; }
+        .overview-card .desc { font-size: 14px; color: #8b949e; margin-bottom: 16px; line-height: 1.7; }
+        .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-right: 6px; margin-bottom: 6px; }
+        .tag.risk { background: rgba(248, 81, 73, 0.15); color: #f85149; }
+        .tag.ok { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+        .tag.warn { background: rgba(210, 153, 34, 0.15); color: #d29922; }
+
+        .section-title { font-size: 18px; font-weight: 600; color: #f0f6fc; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #21262d; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+        th { background: #161b22; color: #f0f6fc; font-weight: 600; padding: 10px 14px; text-align: left; border-bottom: 1px solid #30363d; }
+        th.col-plan-a { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        th.col-plan-b { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+        td { padding: 10px 14px; border-bottom: 1px solid #21262d; vertical-align: top; }
+        tr:hover td { background: rgba(56, 139, 253, 0.04); }
+
+        .flow-section { margin: 30px 0; }
+        .flow-section h3 { font-size: 15px; color: #f0f6fc; margin-bottom: 12px; }
+        .flow-horiz { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; justify-content: center; }
+        .flow-step { background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 10px 16px; font-size: 12px; white-space: nowrap; }
+        .flow-step.good { border-color: #3fb950; background: rgba(63,185,80,0.08); }
+        .flow-step.bad { border-color: #f85149; background: rgba(248,81,73,0.08); }
+        .flow-step.warn { border-color: #d29922; background: rgba(210,153,34,0.08); }
+        .flow-arrow { color: #484f58; font-size: 16px; }
+
+        .recommendation { background: linear-gradient(135deg, rgba(63, 185, 80, 0.1), rgba(59, 130, 246, 0.08)); border: 1px solid rgba(63, 185, 80, 0.3); border-radius: 12px; padding: 28px; margin: 30px 0; }
+        .recommendation h2 { color: #3fb950; font-size: 22px; margin-bottom: 16px; }
+        .recommendation p { font-size: 14px; color: #8b949e; margin-bottom: 10px; }
+
+        .roadmap { margin: 30px 0; }
+        .roadmap-phase { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; gap: 16px; align-items: flex-start; }
+        .roadmap-num { min-width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+        .roadmap-num.s1 { background: rgba(59,130,246,0.2); color: #3b82f6; }
+        .roadmap-num.s2 { background: rgba(139,92,246,0.2); color: #8b5cf6; }
+        .roadmap-num.s3 { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .roadmap-num.s4 { background: rgba(63,185,80,0.2); color: #3fb950; }
+        .roadmap-info { flex: 1; }
+        .roadmap-info h4 { color: #f0f6fc; font-size: 14px; margin-bottom: 4px; }
+        .roadmap-info p { color: #8b949e; font-size: 12px; }
+        .roadmap-effort { color: #6e7681; font-size: 11px; white-space: nowrap; }
+
+        .radar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+        .radar-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; text-align: center; }
+        .radar-box h3 { font-size: 14px; margin-bottom: 12px; }
+        .plan-a .radar-box h3 { color: #f59e0b; }
+        .plan-b .radar-box h3 { color: #3b82f6; }
+        .score-bar { display: flex; align-items: center; margin-bottom: 8px; gap: 10px; font-size: 12px; }
+        .score-bar .label { width: 100px; text-align: right; color: #8b949e; }
+        .score-bar .bar { flex: 1; height: 8px; background: #21262d; border-radius: 4px; overflow: hidden; }
+        .score-bar .bar .fill { height: 100%; border-radius: 4px; }
+        .score-bar .val { width: 36px; font-weight: 600; font-size: 12px; text-align: left; }
+
+        .verdict { background: #161b22; border: 2px solid #3fb950; border-radius: 12px; padding: 28px; margin: 30px 0; text-align: center; }
+        .verdict h2 { color: #3fb950; font-size: 20px; margin-bottom: 12px; }
+        .verdict .big-reason { font-size: 16px; color: #f0f6fc; font-weight: 600; padding: 12px 20px; background: rgba(63,185,80,0.08); border-radius: 8px; display: inline-block; }
+
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .procon { background: #161b22; border-radius: 8px; padding: 16px; border: 1px solid #30363d; }
+        .procon h4 { font-size: 13px; margin-bottom: 8px; }
+        .procon.pro h4 { color: #3fb950; }
+        .procon.con h4 { color: #f85149; }
+        .procon li { font-size: 12px; color: #8b949e; margin-left: 16px; margin-bottom: 4px; }
+
+        @media (max-width: 900px) {
+            .overview-grid, .radar-grid, .two-col { grid-template-columns: 1fr; }
+            .flow-horiz { flex-direction: column; }
+            .flow-arrow { transform: rotate(90deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>方案对比分析</h1>
+        <p class="subtitle">方案A：RAGFlow 二次开发 &nbsp;vs&nbsp; 方案B：参考 RAGFlow 设计优化 kb-platform</p>
+        <p class="meta">评估日期：2026-05-19 &nbsp;|&nbsp; 基于 RAGFlow v0.25.4 源码分析 &nbsp;|&nbsp; kb-platform main 分支</p>
+
+        <!-- 方案概述 -->
+        <div class="overview-grid">
+            <div class="overview-card plan-a">
+                <h2>方案 A：Fork RAGFlow 二次开发</h2>
+                <div class="desc">
+                    Fork RAGFlow 仓库，在其基础上添加 kb-platform 的差异化能力（精细 ACL、Pipeline Trace、反馈闭环），
+                    将向量存储从 ES/Infinity 替换为 Milvus，用 RAGFlow 的 React 前端替换 kb-portal。
+                </div>
+                <span class="tag risk">需维护 Go 31K+ 行</span>
+                <span class="tag risk">大规模重构</span>
+                <span class="tag risk">ES→Milvus 替换</span>
+                <span class="tag risk">ACL 反向移植</span>
+                <span class="tag warn">放弃已有投资</span>
+            </div>
+            <div class="overview-card plan-b">
+                <h2>方案 B：参考 RAGFlow 设计，渐进优化 kb-platform</h2>
+                <div class="desc">
+                    用 MinerU API 替换文档解析层，参考 RAGFlow 的元数据提取/知识图谱/自动标签来增强现有管道。
+                    保留 kb-platform 的 ACL、混合检索、Trace、反馈闭环体系，分 4 步渐进交付。
+                </div>
+                <span class="tag ok">低风险，渐进式</span>
+                <span class="tag ok">无需新语言</span>
+                <span class="tag ok">保留 ACL 体系</span>
+                <span class="tag ok">约 200 行就能接入 MinerU</span>
+                <span class="tag warn">知识图谱需自建</span>
+            </div>
+        </div>
+
+        <!-- 核心差异一览 -->
+        <div class="section-title">一、核心差异总览</div>
+        <table>
+            <thead>
+                <tr><th style="width:18%">对比维度</th><th class="col-plan-a" style="width:41%">方案 A：Fork RAGFlow</th><th class="col-plan-b" style="width:41%">方案 B：参考优化 kb-platform</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>代码量</strong></td>
+                    <td>需全量维护 200K+ 行（Python 804 + Go 249 + TS 1100 文件）</td>
+                    <td style="color:#3fb950">现有 27K 行基础上增量 ~5-8K 行</td>
+                </tr>
+                <tr>
+                    <td><strong>编程语言</strong></td>
+                    <td>Python + <span style="color:#f85149">Go（新增）</span> + TypeScript</td>
+                    <td style="color:#3fb950">Java + Python（现有技术栈不变）</td>
+                </tr>
+                <tr>
+                    <td><strong>文档解析</strong></td>
+                    <td>MinerU 开箱即用 + DeepDoc + Docling + PaddleOCR 多引擎</td>
+                    <td style="color:#3fb950">接入 MinerU API（~2 天开发），PDF 用 MinerU，其他格式保留 Tika</td>
+                </tr>
+                <tr>
+                    <td><strong>知识图谱</strong></td>
+                    <td style="color:#3fb950">GraphRAG / LightRAG 已内置（实体提取 + 关系 + Leiden 社区检测）</td>
+                    <td>需从零构建（~3-4 周），但可复用 RAGFlow graphrag/ Python 模块</td>
+                </tr>
+                <tr>
+                    <td><strong>向量存储</strong></td>
+                    <td>ES/Infinity 原生支持，<span style="color:#f85149">需实现 Milvus DocStoreConnection（1-2 周）</span></td>
+                    <td style="color:#3fb950">Milvus 已深度集成，无需改动</td>
+                </tr>
+                <tr>
+                    <td><strong>ACL 权限</strong></td>
+                    <td>仅基础 tenant 隔离，<span style="color:#f85149">需反向移植精细 ACL（2-4 周）</span></td>
+                    <td style="color:#3fb950">已有 sec_level x perm_group x region_code x effective_to + doc_acl 二次校验</td>
+                </tr>
+                <tr>
+                    <td><strong>混合检索</strong></td>
+                    <td>BM25 + 稠密向量加权融合（内置，成熟）</td>
+                    <td style="color:#3fb950"><strong>已实现</strong>（Sprint 3）：多通道 z-score + RRF + MMR 多样性</td>
+                </tr>
+                <tr>
+                    <td><strong>可观测性</strong></td>
+                    <td>基础日志，Langfuse 可选</td>
+                    <td style="color:#3fb950"><strong>已实现</strong>：pipeline_trace 全阶段计时 + 反馈闭环 + badcase 自动归档</td>
+                </tr>
+                <tr>
+                    <td><strong>LLM 网关</strong></td>
+                    <td>30+ 厂商内置适配，单体内调</td>
+                    <td style="color:#3fb950"><strong>已有</strong>：独立 llm-gateway 代理层（流式 + 重试 + trace 传递）</td>
+                </tr>
+                <tr>
+                    <td><strong>迁移风险</strong></td>
+                    <td><span style="color:#f85149">高</span>：全量一次性迁移，数据/用户/权限全部切换</td>
+                    <td style="color:#3fb950"><strong>低</strong>：渐进式，每步独立交付，随时可停</td>
+                </tr>
+                <tr>
+                    <td><strong>后续维护</strong></td>
+                    <td>3 语言 + 需跟上 RAGFlow 上游更新 + 维护 fork 差异</td>
+                    <td style="color:#3fb950">2 语言，完全自主可控</td>
+                </tr>
+                <tr>
+                    <td><strong>总工作量</strong></td>
+                    <td><span style="color:#f85149">6-12 周</span>（含学习 + 移植 + 验证）</td>
+                    <td style="color:#3fb950"><strong>4-8 周</strong>（分步交付，每步独立上线）</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- 方案 A 详解 -->
+        <div class="section-title">二、方案 A：Fork RAGFlow 后必须做的改造</div>
+        <div class="flow-section">
+            <h3>迁移链条（每一步都是硬依赖，无法跳过）</h3>
+            <div class="flow-horiz" style="flex-direction:column; align-items:stretch; gap:8px;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center">
+                    <div class="flow-step bad">Fork RAGFlow</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step bad">实现 Milvus DocStoreConnection<br><small>search/get/insert/delete/sql 全套 ABC</small></div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step bad">反向移植精细 ACL<br><small>Dealer.retrieval() 全部改造</small></div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step warn">重写 pipeline trace</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center">
+                    <div class="flow-step warn">重写反馈闭环</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step warn">迁移 llm-gateway 逻辑</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step bad">迁移前端（kb-portal → RAGFlow UI）</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step bad">数据迁移（PG → MySQL）</div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step warn">全量回归测试</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin: 16px 0;">
+            <h3 style="font-size:14px;color:#f0f6fc;margin-bottom:8px;">RAGFlow 代码质量风险点</h3>
+            <table>
+                <thead><tr><th style="width:25%">问题</th><th style="width:40%">位置</th><th>影响</th></tr></thead>
+                <tbody>
+                    <tr><td>1624 行 service 含重复函数定义</td><td><code>api/db/services/dialog_service.py</code></td><td>修改聊天逻辑极易引入 bug</td></tr>
+                    <tr><td>1780 行任务编排器，异步信号量复杂</td><td><code>rag/svr/task_executor.py</code></td><td>添加管道步骤风险高</td></tr>
+                    <tr><td>Go 服务不可剥离，~31K 行必须维护</td><td><code>internal/</code> 全部</td><td>必须招募/培训 Go 开发者</td></tr>
+                    <tr><td>无插件系统，扩展需改源码</td><td>全局</td><td>每次上游更新都需要 re-merge</td></tr>
+                    <tr><td>基础设施依赖重，与现有并存成本高</td><td><code>docker/docker-compose.yml</code></td><td>MySQL+ES+Redis+MinIO vs PG+Milvus+Kafka</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 方案 B 详解 -->
+        <div class="section-title">三、方案 B：渐进优化 kb-platform 路线图</div>
+        <div class="flow-section">
+            <h3>核心思路：只在 kb-doc-processor 内替换解析层，下游零改动</h3>
+            <div class="flow-horiz">
+                <div class="flow-step">ingest-service</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step">Kafka<br>file-ingest</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step good" style="border:2px solid #3fb950;">kb-doc-processor<br><small>← 唯一改动范围</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step">Kafka<br>embed-task</div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step">vector-service<br><small>零改动</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-step">rag-service<br><small>零改动</small></div>
+            </div>
+            <p style="font-size:12px;color:#6e7681;margin-top:10px;text-align:center;">
+                关键：只要 embed-task Kafka 消息 schema 不变，vector-service 和 rag-service 完全不受影响
+            </p>
+        </div>
+
+        <div class="roadmap">
+            <div class="roadmap-phase">
+                <div class="roadmap-num s1">1</div>
+                <div class="roadmap-info">
+                    <h4>接入 MinerU 文档解析</h4>
+                    <p>新增 MinerUParser，调用 MinerU API 解析 PDF，利用其结构化 JSON（布局框、表格、公式）填充 knowledge_structured。其他格式保留 Tika 降级。</p>
+                </div>
+                <div class="roadmap-effort">~2 天<br>+300 行</div>
+            </div>
+            <div class="roadmap-phase">
+                <div class="roadmap-num s2">2</div>
+                <div class="roadmap-info">
+                    <h4>增强元数据提取 & 自动标签</h4>
+                    <p>参考 RAGFlow auto_metadata / auto_keyword / tag_set：LLM 驱动字段提取 + 闭合标签集匹配 + 切片类型自动分类，在 MetadataExtractor 中扩展。</p>
+                </div>
+                <div class="roadmap-effort">~1 周<br>+800 行</div>
+            </div>
+            <div class="roadmap-phase">
+                <div class="roadmap-num s3">3</div>
+                <div class="roadmap-info">
+                    <h4>知识图谱构建 & 检索</h4>
+                    <p>新增 kb-graph-service：实体提取(NER) + 关系抽取 + 图存储(Neo4j/PostgreSQL) + GraphChannel。rag-service 新增图谱通道。可复用 RAGFlow graphrag/ Python 模块。</p>
+                </div>
+                <div class="roadmap-effort">~3-4 周<br>+3500 行</div>
+            </div>
+            <div class="roadmap-phase">
+                <div class="roadmap-num s4">4</div>
+                <div class="roadmap-info">
+                    <h4>BM25 升级：PG tsvector → OpenSearch</h4>
+                    <p>在现有 SparseChannel 抽象下替换实现。HybridFusionService 已有 ChannelExecutor 框架，无需改动融合逻辑。</p>
+                </div>
+                <div class="roadmap-effort">~1 周<br>+800 行</div>
+            </div>
+        </div>
+
+        <!-- 能力评分对比 -->
+        <div class="section-title">四、关键能力评分对比</div>
+        <div class="radar-grid">
+            <div class="plan-a">
+                <div class="radar-box">
+                    <h3>方案 A — RAGFlow 二次开发</h3>
+                    <div class="score-bar"><span class="label">文档解析</span><div class="bar"><div class="fill" style="width:95%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.5</span></div>
+                    <div class="score-bar"><span class="label">知识图谱</span><div class="bar"><div class="fill" style="width:90%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.0</span></div>
+                    <div class="score-bar"><span class="label">ACL 权限</span><div class="bar"><div class="fill" style="width:20%;background:#f85149"></div></div><span class="val" style="color:#f85149">2.0</span></div>
+                    <div class="score-bar"><span class="label">可观测性</span><div class="bar"><div class="fill" style="width:30%;background:#f85149"></div></div><span class="val" style="color:#f85149">3.0</span></div>
+                    <div class="score-bar"><span class="label">混合检索</span><div class="bar"><div class="fill" style="width:80%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">8.0</span></div>
+                    <div class="score-bar"><span class="label">LLM 灵活性</span><div class="bar"><div class="fill" style="width:70%;background:#d29922"></div></div><span class="val" style="color:#d29922">7.0</span></div>
+                    <div class="score-bar"><span class="label">维护成本</span><div class="bar"><div class="fill" style="width:85%;background:#f85149"></div></div><span class="val" style="color:#f85149">8.5</span></div>
+                    <div class="score-bar"><span class="label">团队适配</span><div class="bar"><div class="fill" style="width:25%;background:#f85149"></div></div><span class="val" style="color:#f85149">2.5</span></div>
+                </div>
+            </div>
+            <div class="plan-b">
+                <div class="radar-box">
+                    <h3>方案 B — 参考优化 kb-platform</h3>
+                    <div class="score-bar"><span class="label">文档解析</span><div class="bar"><div class="fill" style="width:90%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.0</span></div>
+                    <div class="score-bar"><span class="label">知识图谱</span><div class="bar"><div class="fill" style="width:60%;background:#d29922"></div></div><span class="val" style="color:#d29922">6.0</span></div>
+                    <div class="score-bar"><span class="label">ACL 权限</span><div class="bar"><div class="fill" style="width:95%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.5</span></div>
+                    <div class="score-bar"><span class="label">可观测性</span><div class="bar"><div class="fill" style="width:95%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.5</span></div>
+                    <div class="score-bar"><span class="label">混合检索</span><div class="bar"><div class="fill" style="width:85%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">8.5</span></div>
+                    <div class="score-bar"><span class="label">LLM 灵活性</span><div class="bar"><div class="fill" style="width:95%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.5</span></div>
+                    <div class="score-bar"><span class="label">维护成本</span><div class="bar"><div class="fill" style="width:30%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">3.0</span></div>
+                    <div class="score-bar"><span class="label">团队适配</span><div class="bar"><div class="fill" style="width:95%;background:#3fb950"></div></div><span class="val" style="color:#3fb950">9.5</span></div>
+                </div>
+            </div>
+        </div>
+        <p style="font-size:12px;color:#6e7681;margin-top:-12px;text-align:center;">
+            注：评分基于方案实施后的预期状态。维护成本越高越差（反向量化）&nbsp;|&nbsp; 知识图谱评分体现当前缺口，方案 B 实施 Step 3 后可提升至 8+
+        </p>
+
+        <!-- 优劣势拆解 -->
+        <div class="section-title">五、优劣势拆解</div>
+        <div class="two-col">
+            <div>
+                <div class="procon pro"><h4>方案 A 优势</h4><ul>
+                    <li>文档解析能力最强：MinerU + DeepDoc + Docling + PaddleOCR 四引擎</li>
+                    <li>知识图谱/GraphRAG 开箱即用</li>
+                    <li>RAPTOR 多粒度树形检索内置</li>
+                    <li>社区活跃，持续有新特性</li>
+                    <li>有现成的 React 前端</li>
+                </ul></div>
+                <div class="procon con" style="margin-top:12px;"><h4>方案 A 劣势</h4><ul>
+                    <li>必须维护 Go 后端 ~31K 行，需新技能</li>
+                    <li>ACL 需从零反向移植，RAGFlow 仅有基础 tenant 隔离</li>
+                    <li>管道追踪 & 反馈闭环需重写</li>
+                    <li>Milvus 不在支持列表，需完整实现 DocStoreConnection ABC</li>
+                    <li>全量一次性迁移，风险高，回滚困难</li>
+                    <li>Python 代码有技术债（重复函数、超长方法、混合关注点）</li>
+                    <li>每次上游更新需重新 merge + 验证 fork 差异</li>
+                    <li>基础设施不兼容（ES vs Milvus, MySQL vs PG）</li>
+                </ul></div>
+            </div>
+            <div>
+                <div class="procon pro"><h4>方案 B 优势</h4><ul>
+                    <li>kb-doc-processor 仅 ~2900 行，Kafka 契约边界清晰，精确替换</li>
+                    <li>保留 ACL 体系，零改动</li>
+                    <li>保留混合检索（Sprint 3 已实现），零改动</li>
+                    <li>保留 Pipeline Trace + 反馈闭环，零改动</li>
+                    <li>保留 llm-gateway，零改动</li>
+                    <li>渐进式交付，每步独立上线，随时可停</li>
+                    <li>无需学习新语言</li>
+                    <li>可复用 RAGFlow Python 模块（NER/图/标签逻辑可直接引用）</li>
+                </ul></div>
+                <div class="procon con" style="margin-top:12px;"><h4>方案 B 劣势</h4><ul>
+                    <li>知识图谱需从零构建（最大单项工作量，~3-4 周）</li>
+                    <li>RAPTOR 树形检索不内置，需独立实现</li>
+                    <li>没有现成前端组件库</li>
+                    <li>BM25 仍是 PG tsvector 原型，需自行升级</li>
+                    <li>MinerU 仅解决 PDF，其他格式仍需 Tika（合理的分工）</li>
+                </ul></div>
+            </div>
+        </div>
+
+        <!-- 最终结论 -->
+        <div class="section-title">六、最终结论</div>
+        <div class="verdict">
+            <h2>推荐方案 B：参考 RAGFlow 设计，渐进优化 kb-platform</h2>
+            <div class="big-reason">
+                kb-platform 的核心瓶颈是"文档解析质量"，不是"检索架构"<br>
+                用一个 200K+ 行的全栈项目替换 2900 行的解析服务，投入产出比极差
+            </div>
+        </div>
+
+        <div style="font-size:14px; color:#8b949e; margin-top:16px; padding: 0 20px;">
+            <p><strong>核心决策逻辑：</strong></p>
+            <ol style="margin-left:20px; line-height:2;">
+                <li><strong>唯一真正的短板是文档解析</strong> — Apache Tika 对复杂 PDF（表格、多栏、公式）的解析质量远不如 MinerU。而 kb-doc-processor 通过 Kafka 契约与下游完全解耦，替换它只需 200-400 行新代码。</li>
+                <li><strong>ACL、混合检索、Trace、反馈闭环是真正的差异化资产</strong> — RAGFlow 在这些方面不如 kb-platform。方案 A 需要把这些全部反向移植，工作量大且没有价值创造。</li>
+                <li><strong>知识图谱是唯一的"新构建"项</strong> — 方案 A 开箱即用，方案 B 需自建。但 RAGFlow 的 graphrag/ 是纯 Python，可直接参考复用其 NER + 社区检测逻辑。这不是从零开始。</li>
+                <li><strong>Go 31K 行是不可忽视的维护负债</strong> — RAGFlow 的 Go API 层不可剥离，团队必须长期维护 Go 代码并跟上上游更新。</li>
+            </ol>
+        </div>
+
+        <!-- 可复用清单 -->
+        <div class="section-title">七、方案 B 可直接复用的 RAGFlow 模块</div>
+        <table>
+            <thead><tr><th style="width:32%">RAGFlow 文件</th><th style="width:25%">用途</th><th>复用方式</th></tr></thead>
+            <tbody>
+                <tr><td><code>deepdoc/parser/mineru_parser.py</code></td><td>MinerU API 调用、内容块映射</td><td>直接参考 _run_mineru_api() 和 _transfer_to_sections()</td></tr>
+                <tr><td><code>rag/graphrag/general/</code></td><td>实体提取、Leiden 社区检测、报告生成</td><td>复用 entity_extraction + community_report 逻辑</td></tr>
+                <tr><td><code>rag/graphrag/ner/</code></td><td>命名实体识别</td><td>参考 prompt 设计和提取流程</td></tr>
+                <tr><td><code>rag/nlp/search.py</code> (Dealer)</td><td>混合检索融合公式</td><td>参考 fusion 权重和 rerank 触发逻辑</td></tr>
+                <tr><td><code>rag/prompts/generator.py</code></td><td>关键词、标签、metadata 提取 prompt</td><td>直接参考 prompt 模板</td></tr>
+                <tr><td><code>rag/llm/ocr_model.py</code> (MinerUOcrModel)</td><td>MinerU 作为 LLMBundle 适配模式</td><td>参考配置解耦和 check_available 设计</td></tr>
+            </tbody>
+        </table>
+
+        <div style="text-align:center; margin-top:50px; padding:20px; color:#484f58; font-size:12px;">
+            kb-platform 方案评估报告 &nbsp;·&nbsp; 2026-05-19 &nbsp;·&nbsp; 基于 RAGFlow v0.25.4 源码分析
+        </div>
+    </div>
+</body>
+</html>
