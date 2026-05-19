@@ -95,6 +95,9 @@ info "========== 启动核心服务 =========="
 
 $COMPOSE_CMD up -d
 
+# Docker Compose 文件在 docker-compose/ 子目录，后续所有 docker compose 命令需在此目录执行
+cd docker-compose
+
 echo ""
 
 # =============================================================================

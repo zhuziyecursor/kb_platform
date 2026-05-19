@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "knowledge_search_idx", schema = "kb_knowledge")
@@ -48,7 +49,7 @@ public class KnowledgeSearchIdx {
     private long permGroupId;
 
     @Column(name = "effective_to")
-    private String effectiveTo;
+    private LocalDate effectiveTo;
 
     @Column(name = "region_code", nullable = false, length = 32)
     private String regionCode;

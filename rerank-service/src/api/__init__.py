@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 
@@ -61,7 +62,9 @@ async def rerank(request: RerankRequest):
         set_trace_context(trace_id=trace_id, span="rerank_inference")
         reranker_instance = get_reranker()
         texts = [doc.text for doc in request.documents]
-        scores = reranker_instance.rerank(request.query, texts)
+        # Offload CPU-intensive CrossEncoder.predict to a thread pool
+        # to avoid blocking the FastAPI event loop.
+        scores = await asyncio.to_thread(reranker_instance.rerank, request.query, texts)
 
         results = sorted(
             [RerankResult(index=i, score=s) for i, s in enumerate(scores)],

@@ -1,7 +1,7 @@
 import requests
 import time
 
-EMBEDDING_URL = "http://192.168.30.47:31296/embeddings"
+EMBEDDING_URL = "http://192.168.30.47:31296/v1/embeddings"
 
 
 def test_connectivity():
@@ -13,7 +13,7 @@ def test_connectivity():
     print("1. TCP 连通性测试 ...", end=" ")
     try:
         resp = requests.get(
-            "http://192.168.30.47:31296/", timeout=5
+            "http://192.168.30.47:31296/v1/", timeout=5
         )
         print(f"OK (HTTP {resp.status_code})")
     except requests.exceptions.ConnectionError as e:

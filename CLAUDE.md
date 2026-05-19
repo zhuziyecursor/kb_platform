@@ -32,9 +32,59 @@ kb-infra/          # Docker Compose: PostgreSQL / Redis / MinIO / Kafka / Milvus
 
 **链路A — 检索**：Portal → rag-service → Milvus → rerank → llm-gateway → Portal
 
+### 端口分配
+
+| 端口 | 服务 |
+|------|------|
+| 3105 | kb-portal (Next.js 前端) |
+| 8081 | ingest-service |
+| 31001 | kb-doc-processor (Python) |
+| 31002 | vector-service |
+| 31003 | rerank-service (Python) |
+| 31004 | llm-gateway |
+| 31005 | rag-service |
+| 25432 | PostgreSQL (Docker → 宿主机映射) |
+| 29000 | MinIO API (Docker → 宿主机映射) |
+| 29092 | Kafka (Docker → 宿主机映射) |
+| 26379 | Redis (Docker → 宿主机映射) |
+| 19530 | Milvus (Docker → 宿主机映射) |
+
+### Kafka Topics
+
+| Topic | 生产者 | 消费者 | 消息契约 |
+|-------|--------|--------|---------|
+| `file-ingest` | ingest-service | kb-doc-processor | `contracts/kafka-schemas/file-ingest-message.json` |
+| `embed-task` | kb-doc-processor | vector-service | `contracts/kafka-schemas/embed-task-message.json` |
+
+Kafka 控制台命令：
+```bash
+# 列出所有 topic
+docker exec kb-kafka kafka-topics --bootstrap-server localhost:9092 --list
+# 查看消费者组 lag
+docker exec kb-kafka kafka-consumer-groups --bootstrap-server localhost:9092 --group kb-doc-processor --describe
+# 查看 topic 消息
+docker exec kb-kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic file-ingest --from-beginning --max-messages 1
+```
+
+### MinIO / S3 路径规范
+
+原始文件存储 bucket: `kb-raw`。文档路径格式：`kb-raw/{tenant}/{biz_domain}/{source_type}/{yyyy}/{mm}/{doc_id}/文件名`。
+
+处理器从 Kafka 消息的 `srcPath` 字段获取路径，通过 MinIO client 下载文件。
+
 ### 契约目录 (`contracts/`)
 
 所有接口/消息格式的**唯一真实来源**。REST 接口在 `contracts/openapi/`、Kafka 消息在 `contracts/kafka-schemas/`、Milvus Collection 定义在 `contracts/milvus/`。实现与契约不一致时，以契约为准修改代码。
+
+### Gateway 路由
+
+| 路由前缀 | 目标服务 | 所需 scope |
+|---------|---------|-----------|
+| `/kb/v1/**` | ingest-service | kb:upload |
+| `/rag/v1/**` | rag-service | kb:search |
+| `/user/v1/**` | user-service | openid |
+
+Gateway 只做 JWT 校验（iss/aud/scope/tenant），不执行任何业务逻辑。所有自定义 HTTP 头（`x-user-id`、`x-tenant-id`、`x-roles` 等）在 Gateway 层剥离，下游服务从 OBO token JWT claims 解析用户上下文。
 
 ### 禁止的跨服务调用
 
@@ -60,7 +110,7 @@ kb-infra/          # Docker Compose: PostgreSQL / Redis / MinIO / Kafka / Milvus
 ### Java 服务 (kb-mcp/)
 
 ```bash
-# 构建（每个服务目录下）
+# 构建单个服务
 cd kb-mcp/ingest-service && mvn clean package -DskipTests
 
 # 运行
@@ -68,19 +118,28 @@ cd kb-mcp/ingest-service && mvn clean package -DskipTests
 DB_HOST=localhost DB_PORT=25432 DB_NAME=kb_knowledge \
 DB_USERNAME=kb_ingest DB_PASSWORD=kb_ingest \
 java -jar target/ingest-service-0.0.1-SNAPSHOT.jar
+
+# 运行全部测试
+mvn test
+
+# 运行单个测试类或方法
+mvn test -Dtest=IngestServiceTest
+mvn test -Dtest=IngestServiceTest#testCreateDoc
 ```
 
-### Python 服务 (kb-doc-processor / rerank-service)
+### Python 服务
 
 ```bash
-# 安装依赖
+# kb-doc-processor
 cd kb-doc-processor && python -m venv .venv && .venv/bin/pip install -e .
-
-# 运行
 .venv/bin/python -m src.main
+.venv/bin/pytest tests/                          # 全部测试
+.venv/bin/pytest tests/test_semantic_chunker.py -v  # 单个测试文件
 
-# 测试
-.venv/bin/pytest tests/
+# rerank-service
+cd rerank-service && python -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/python -m src.main
+.venv/bin/pytest tests/ -v
 ```
 
 ### 前端 (kb-portal/web)
@@ -126,20 +185,49 @@ cd kb-infra/docker-compose && docker compose up -d
 
 每个服务只能写入自己拥有的表。跨服务写表是架构错误。
 
-| 表 | Schema | 拥有服务 |
-|----|--------|---------|
-| `knowledge_doc` | kb_knowledge | ingest-service |
-| `knowledge_version` | kb_knowledge | ingest-service(INSERT) / vector-service(UPDATE) |
-| `doc_acl` | kb_knowledge | ingest-service |
-| `knowledge_space` | kb_knowledge | ingest-service |
-| `knowledge_clean` | kb_knowledge | kb-doc-processor |
-| `knowledge_structured` | kb_knowledge | kb-doc-processor |
-| `embed_task` | kb_knowledge | kb-doc-processor(INSERT) / vector-service(UPDATE) |
-| `rag_session` | kb_knowledge | rag-service |
-| `rag_message` | kb_knowledge | rag-service |
-| `rag_pipeline_trace` | kb_audit | rag-service |
-| `rag_feedback` | kb_audit | rag-service |
-| `badcase_archive` | kb_audit | rag-service |
+### kb_knowledge (12 表 + 1 视图)
+
+| 表 | 拥有服务 | 说明 |
+|----|---------|------|
+| `knowledge_doc` | ingest-service | 文档元数据主表 |
+| `knowledge_version` | ingest-service(INSERT) / vector-service(UPDATE) / kb-doc-processor(UPDATE) | 文档版本状态机 |
+| `doc_acl` | ingest-service | 文档级 ACL |
+| `doc_perm_group` | ingest-service | 文档与权限组关联，Milvus 预过滤 |
+| `knowledge_space` | ingest-service | 知识空间管理 |
+| `space_acl` | ingest-service | 空间级 ACL（角色/用户/部门） |
+| `knowledge_clean` | kb-doc-processor | 清洗层：统一文本 + 页码锚点 |
+| `knowledge_structured` | kb-doc-processor | 结构化层：标题层级/表格/实体 |
+| `embed_task` | kb-doc-processor(INSERT) / vector-service(UPDATE) | 嵌入任务队列，Milvus upsert 幂等 |
+| `knowledge_search_idx` | vector-service | BM25 全文检索索引（tsvector） |
+| `rag_session` | rag-service | RAG 会话主表 |
+| `rag_message` | rag-service | RAG 会话消息表 |
+| `faq_knowledge` | rag-service | FAQ 高频问题预置答案 |
+
+视图: `v_knowledge_structured_acl` — kb_rag 有 SELECT 权限
+
+### kb_audit (11 表)
+
+| 表 | 拥有服务 | 说明 |
+|----|---------|------|
+| `kb_doc_audit` | ingest-service | 文档操作审计（上传/入库/下架/删除/ACL变更） |
+| `acl_change_history` | ingest-service | ACL 变更历史，支持审计与回滚 |
+| `rag_pipeline_trace` | rag-service | RAG Pipeline 可观测性记录 |
+| `rag_feedback` | rag-service | 用户反馈（点赞/点踩/报错） |
+| `badcase_archive` | rag-service | Badcase 归档（点踩/报错自动归档） |
+| `alert_log` | rag-service | RAG 监控告警日志 |
+| `eval_dataset` | rag-service | 评测数据集主表 |
+| `eval_qa_pair` | rag-service | 评测 QA 对 |
+| `eval_run` | rag-service | 评测运行记录 |
+| `eval_qa_result` | rag-service | 单条评测结果 |
+| `reconcile_log` | vector-service | Milvus/PG 数据一致性对账日志 |
+
+### kb_user (1 表)
+
+| 表 | 拥有服务 | 说明 |
+|----|---------|------|
+| `user_context_cache` | user-service | 用户上下文缓存（Redis 优先，PG 备份） |
+
+> **注意**: `02_service_users.sql` 中 kb_ingest 被授予了 `ALL ON ALL TABLES IN SCHEMA kb_knowledge`，实际权限范围超过了逻辑所有权。上表反映的是逻辑所有权，`02_service_users.sql` 的 GRANT 应逐步收紧以对齐逻辑所有权。
 
 ---
 
@@ -175,10 +263,37 @@ cd kb-infra/docker-compose && docker compose up -d
 - 在运行依赖它们的任何操作之前，先安装依赖（`npm install`、`pip install -r requirements.txt`）。
 - 如果测试失败，在征求用户确认之前先修复它们。
 
+---
 
-## Service Configuration
-- 后端服务：kb-doc-processor (Python)、ingest-service (Java)、vector-service (Java)
-- MinIO 端点/凭据必须在 application.yml 和实际部署之间保持一致
-- 前端（端口 3105）连接后端 API 时，后端必须配置 CORS
-- 在编辑任何配置文件（application.yml、.env、next.config）之后，重启相关服务
-- 在代码中引用数据库列之前，先验证这些列是否存在
+## 配置规范
+
+### 环境变量
+
+所有服务通过环境变量注入配置，统一使用 `KB_` 前缀：
+
+| 变量 | 说明 |
+|------|------|
+| `KB_DB_HOST` / `KB_DB_PORT` / `KB_DB_NAME` | PostgreSQL 连接 |
+| `KB_DB_USERNAME` / `KB_DB_PASSWORD` | 数据库凭据（每个服务用自己的用户） |
+| `KB_MINIO_ENDPOINT` / `KB_MINIO_ACCESS_KEY` / `KB_MINIO_SECRET_KEY` | MinIO S3 |
+| `KB_KAFKA_BOOTSTRAP_SERVERS` | Kafka 地址 |
+| `KB_REDIS_HOST` / `KB_REDIS_PORT` / `KB_REDIS_PASSWORD` | Redis |
+| `KB_MILVUS_HOST` / `KB_MILVUS_PORT` | Milvus 向量库 |
+| `KB_EMBEDDING_SERVICE_URL` | 外部 Embedding 服务地址 |
+
+### 核心配置文件位置
+
+| 配置 | 路径 |
+|------|------|
+| Docker Compose 环境变量 | `kb-infra/.env` |
+| Java 服务配置 | `kb-mcp/{service}/src/main/resources/application.yml` |
+| kb-doc-processor 配置 | `kb-doc-processor/config/settings.yaml` |
+| rerank-service 配置 | `rerank-service/config/settings.yaml` |
+| 前端环境变量 | `kb-portal/web/.env.local` |
+
+### 配置修改原则
+
+- 编辑配置文件后必须重启对应服务
+- Java 服务数据库用户名禁止修改为其他服务的用户（每个服务使用专属 DB 用户）
+- 前端连接后端 API 时，后端需配置 CORS 允许 `localhost:3105`
+- 代码中引用数据库列之前，先通过 `docker exec kb-postgres psql ... -c "\d table_name"` 验证列存在

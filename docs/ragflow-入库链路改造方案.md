@@ -129,9 +129,29 @@ ragflow:
 
   # ── 解析配置 ──
   embedding_model: "${KB_RAGFLOW_EMBEDDING_MODEL:BAAI/bge-large-zh-v1.5}"
-  chunk_method: "${KB_RAGFLOW_CHUNK_METHOD:naive}"
+  # PDF 解析器: mineru / deepdoc / tika / naive
+  #   mineru  - 深度学习引擎（表格/公式/多栏版式最强，需独立部署 MinerU 服务）
+  #   deepdoc - RAGFlow 内置深度学习解析器（通用场景，无需额外部署）
+  #   tika    - Apache Tika（简单文档文字提取）
+  #   naive   - 纯文本兜底
+  parser_method: "${KB_RAGFLOW_PARSER_METHOD:naive}"
+  # 降级链：当前解析器失败时自动尝试下一个（如 mineru→deepdoc→naive）
+  parser_fallback_chain: ${KB_RAGFLOW_PARSER_FALLBACK_CHAIN:true}
   parse_timeout_seconds: ${KB_RAGFLOW_PARSE_TIMEOUT:600}
   poll_interval_seconds: ${KB_RAGFLOW_POLL_INTERVAL:5}
+
+  # 切片策略映射：根据 kb-platform doc_type 自动选择 RAGFlow chunk_method
+  # RAGFlow 可选值: naive / book / paper / laws / manual / picture / one / qa / table / tag / email / presentation
+  chunk_method:
+    default: "${KB_RAGFLOW_CHUNK_METHOD_DEFAULT:naive}"
+    mapping:
+      REGULATION: "laws"      # 法规 → 法律文档模板（识别条款结构）
+      POLICY: "laws"          # 政策 → 同上
+      AUDIT: "paper"          # 审计报告 → 论文模板（摘要+正文+结论）
+      MANUAL: "manual"        # 操作手册
+      KNOWLEDGE: "book"       # 知识文章 → 书籍模板（章节层级）
+      # 未匹配到的 doc_type 使用 default
+
 
   # ── 子开关（仅在 enabled=true 时生效） ──
   pull_metadata: ${KB_RAGFLOW_PULL_METADATA:true}       # 文档元数据
@@ -157,9 +177,19 @@ class RagflowConfig(BaseModel):
 
     # ── 解析 ──
     embedding_model: str = "BAAI/bge-large-zh-v1.5"
-    chunk_method: str = "naive"
+    parser_method: str = "naive"
+    parser_fallback_chain: bool = True
     parse_timeout_seconds: int = 600
     poll_interval_seconds: int = 5
+    # 切片策略：dict[str, str]，key=doc_type，value=chunk_method
+    chunk_method_default: str = "naive"
+    chunk_method_mapping: dict = {
+        "REGULATION": "laws",
+        "POLICY": "laws",
+        "AUDIT": "paper",
+        "MANUAL": "manual",
+        "KNOWLEDGE": "book",
+    }
 
     # ── 子开关 ──
     pull_metadata: bool = True
@@ -315,9 +345,27 @@ vector = chunk["embedding"]  # list[float], len=1024
   ds = rag.create_dataset(
       name=f"kb-{tenant_id}-{space_id}",
       embedding_model="BAAI/bge-large-zh-v1.5",  # dim=1024
-      chunk_method=config.ragflow.chunk_method,    # 默认 "naive"
+      chunk_method=config.ragflow.chunk_method,
   )
   ```
+- 根据 `doc_type` 选择切片策略：
+  ```python
+  chunk_method = config.ragflow.chunk_method_mapping.get(
+      msg.doc_type, config.ragflow.chunk_method_default
+  )
+  # 例如 doc_type="REGULATION" → chunk_method="laws"
+  #     doc_type="AUDIT"       → chunk_method="paper"
+  #     未匹配                 → chunk_method="naive"
+  ```
+- 上传文档时指定解析器 + 切片策略：
+  ```python
+  dataset.upload_documents(
+      file_path=local_file,
+      parser_method=config.ragflow.parser_method,
+      chunk_method=chunk_method,  # 根据 doc_type 动态选择
+  )
+  ```
+- 降级策略：如果 `parser_fallback_chain=true`，上传失败时自动按 `mineru → deepdoc → naive` 降级重试
 
 #### 6.4 data/knowledge_structured 兼容性
 

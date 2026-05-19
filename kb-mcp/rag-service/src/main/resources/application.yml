@@ -50,11 +50,12 @@ app:
     collection-name: ${KB_MILVUS_COLLECTION:kb_documents}
 
   embedding:
-    url: ${KB_EMBEDDING_SERVICE_URL:http://192.168.30.47:31296}/embeddings
+    url: ${KB_EMBEDDING_SERVICE_URL:http://192.168.30.47:31296/v1}/embeddings
     timeout-seconds: ${KB_EMBEDDING_TIMEOUT_SECONDS:30}
     model-name: ${KB_EMBEDDING_MODEL_NAME:BGE-zh-v1.5}
     dim: ${KB_EMBEDDING_DIM:1024}
     max-retries: ${KB_EMBEDDING_MAX_RETRIES:3}
+    cache-ttl-minutes: ${KB_EMBEDDING_CACHE_TTL_MINUTES:30}
 
   rerank:
     url: ${KB_RERANK_SERVICE_URL:http://localhost:31003}/rerank/v1/rerank
@@ -77,7 +78,7 @@ app:
       input-budget-ratio: ${RAG_PROMPT_INPUT_BUDGET_RATIO:0.75}
       history-budget-ratio: ${RAG_PROMPT_HISTORY_BUDGET_RATIO:0.15}
       max-history-turns: ${RAG_PROMPT_MAX_HISTORY_TURNS:6}
-      max-citations: ${RAG_PROMPT_MAX_CITATIONS:8}
+      max-citations: ${RAG_PROMPT_MAX_CITATIONS:5}
       max-tokens-per-citation: ${RAG_PROMPT_MAX_TOKENS_PER_CITATION:900}
       min-tokens-per-citation: ${RAG_PROMPT_MIN_TOKENS_PER_CITATION:120}
       message-overhead-tokens: ${RAG_PROMPT_MESSAGE_OVERHEAD_TOKENS:8}
@@ -98,7 +99,7 @@ app:
     min-query-length-for-llm: ${RAG_QUERY_REWRITE_MIN_LENGTH:6}
     cache-ttl-minutes: ${RAG_QUERY_REWRITE_CACHE_TTL:30}
     temperature: ${RAG_QUERY_REWRITE_TEMPERATURE:0.1}
-    max-tokens: ${RAG_QUERY_REWRITE_MAX_TOKENS:512}
+    max-tokens: ${RAG_QUERY_REWRITE_MAX_TOKENS:128}
     max-keyword-length: ${RAG_QUERY_REWRITE_MAX_KEYWORD_LENGTH:25}
 
   bm25:

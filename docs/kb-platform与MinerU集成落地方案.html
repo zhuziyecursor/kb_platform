@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kb-platform 与 MinerU 集成落地方案</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.7; color: #333; background: #f0f2f5; padding: 40px 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.10); overflow: hidden; }
+        header { background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); color: white; padding: 44px 48px; }
+        header h1 { font-size: 2em; margin-bottom: 10px; letter-spacing: 1px; }
+        header .subtitle { opacity: 0.85; font-size: 1.05em; margin-bottom: 16px; }
+        header .meta { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 18px; }
+        header .meta-item { background: rgba(255,255,255,0.12); border-radius: 20px; padding: 5px 16px; font-size: 0.88em; }
+        nav { background: #1c3a4a; padding: 0 48px; display: flex; flex-wrap: wrap; gap: 0; }
+        nav a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 14px 18px; font-size: 0.9em; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
+        nav a:hover { color: #fff; border-bottom-color: #42a5f5; }
+        .content { padding: 48px; }
+        h2 { color: #1c3a4a; border-bottom: 2px solid #e3f2fd; padding-bottom: 12px; margin: 40px 0 22px 0; font-size: 1.45em; }
+        h2 .section-num { background: linear-gradient(135deg, #1565c0, #0288d1); color: white; border-radius: 6px; padding: 2px 10px; font-size: 0.8em; margin-right: 10px; vertical-align: middle; }
+        h3 { color: #1565c0; margin: 28px 0 14px 0; font-size: 1.12em; }
+        h4 { color: #444; margin: 20px 0 10px 0; font-size: 1em; }
+        p { margin-bottom: 14px; }
+
+        /* 架构图 */
+        .arch-diagram { background: #0d1b2a; color: #c8d8e8; padding: 28px 32px; border-radius: 10px; font-family: "Consolas", "JetBrains Mono", "Monaco", monospace; font-size: 13.5px; overflow-x: auto; margin: 20px 0; line-height: 1.9; }
+        .arch-diagram .hl-yellow { color: #ffd700; font-weight: bold; }
+        .arch-diagram .hl-green { color: #69d669; }
+        .arch-diagram .hl-blue { color: #64b5f6; }
+        .arch-diagram .hl-red { color: #ef9a9a; }
+        .arch-diagram .hl-orange { color: #ffcc80; }
+        .arch-diagram .comment { color: #546e7a; }
+
+        /* 代码块 */
+        .code-block { background: #0d1b2a; color: #c8d8e8; padding: 22px 26px; border-radius: 10px; overflow-x: auto; margin: 14px 0; font-family: "Consolas", "JetBrains Mono", "Monaco", monospace; font-size: 13px; line-height: 1.65; position: relative; }
+        .code-block .comment { color: #546e7a; }
+        .code-block .string { color: #a5d6a7; }
+        .code-block .keyword { color: #90caf9; }
+        .code-block .function { color: #fff176; }
+        .code-block .variable { color: #80cbc4; }
+        .code-block .number { color: #ffcc80; }
+        .code-block .decorator { color: #f48fb1; }
+        .code-block .cls { color: #ce93d8; }
+        .code-label { background: #1565c0; color: white; font-size: 0.75em; padding: 3px 10px; border-radius: 4px; position: absolute; top: 10px; right: 12px; font-family: sans-serif; }
+
+        /* 提示框 */
+        .note-box { padding: 16px 22px; margin: 18px 0; border-radius: 0 10px 10px 0; }
+        .note-box.info { background: #e3f2fd; border-left: 4px solid #1976d2; }
+        .note-box.warning { background: #fff8e1; border-left: 4px solid #f9a825; }
+        .note-box.danger { background: #fce4ec; border-left: 4px solid #c62828; }
+        .note-box.success { background: #e8f5e9; border-left: 4px solid #2e7d32; }
+        .note-box strong { display: block; margin-bottom: 5px; }
+
+        /* 步骤流 */
+        .flow-steps { margin: 20px 0; }
+        .flow-step { display: flex; margin: 18px 0; align-items: flex-start; }
+        .flow-step-num { min-width: 38px; height: 38px; background: linear-gradient(135deg, #1565c0, #0288d1); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1em; margin-right: 20px; flex-shrink: 0; }
+        .flow-step-content { flex: 1; padding-top: 4px; }
+        .flow-step-content h4 { margin-top: 0; color: #1565c0; }
+
+        /* 表格 */
+        table.data-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.95em; }
+        table.data-table th { background: #1565c0; color: white; padding: 12px 16px; text-align: left; font-weight: 600; }
+        table.data-table td { padding: 11px 16px; border-bottom: 1px solid #e0e0e0; }
+        table.data-table tr:nth-child(even) { background: #f5f9ff; }
+        table.data-table tr:hover { background: #e3f2fd; }
+        table.data-table .mono { font-family: monospace; color: #1565c0; font-weight: bold; }
+        table.data-table .tag-new { background: #e8f5e9; color: #2e7d32; border-radius: 4px; padding: 2px 8px; font-size: 0.8em; }
+        table.data-table .tag-mod { background: #fff3e0; color: #e65100; border-radius: 4px; padding: 2px 8px; font-size: 0.8em; }
+        table.data-table .tag-keep { background: #f3e5f5; color: #6a1b9a; border-radius: 4px; padding: 2px 8px; font-size: 0.8em; }
+
+        /* 卡片网格 */
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin: 20px 0; }
+        .card { background: #fff; border: 1.5px solid #e0e0e0; border-radius: 12px; padding: 22px; transition: all 0.25s; }
+        .card:hover { border-color: #1565c0; box-shadow: 0 4px 18px rgba(21,101,192,0.15); }
+        .card h4 { color: #1565c0; margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #eee; font-size: 1em; }
+        .card .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.8em; margin-left: 8px; }
+        .badge-cpu { background: #e3f2fd; color: #1565c0; }
+        .badge-gpu { background: #fce4ec; color: #c62828; }
+        .badge-recommend { background: #e8f5e9; color: #2e7d32; }
+
+        /* 文件树 */
+        .file-tree { background: #f8faff; border: 1px solid #dce8ff; border-radius: 10px; padding: 20px 24px; margin: 16px 0; font-family: monospace; font-size: 0.93em; line-height: 1.8; }
+        .file-tree .new-file { color: #2e7d32; font-weight: bold; }
+        .file-tree .mod-file { color: #e65100; font-weight: bold; }
+        .file-tree .old-file { color: #9e9e9e; }
+
+        /* 对比差异 */
+        .diff-container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+        .diff-before, .diff-after { border-radius: 10px; overflow: hidden; }
+        .diff-before .diff-title { background: #c62828; color: white; padding: 8px 16px; font-size: 0.88em; font-weight: bold; }
+        .diff-after .diff-title { background: #2e7d32; color: white; padding: 8px 16px; font-size: 0.88em; font-weight: bold; }
+        .diff-body { background: #1a1a2e; padding: 18px; font-family: monospace; font-size: 12.5px; color: #ccc; line-height: 1.7; }
+
+        /* 响应结构 */
+        .response-block { background: #f8faff; border: 1px solid #dce8ff; border-radius: 8px; padding: 16px 20px; margin: 12px 0; font-family: monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto; }
+
+        /* 标签 */
+        .tag-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+        .tag { background: linear-gradient(135deg, #1565c0, #0288d1); color: white; padding: 5px 14px; border-radius: 20px; font-size: 0.88em; }
+        .tag.tag-gray { background: #78909c; }
+        .tag.tag-orange { background: linear-gradient(135deg, #e65100, #f57c00); }
+
+        /* 时序图 */
+        .sequence { background: #0d1b2a; border-radius: 10px; padding: 24px 32px; margin: 16px 0; font-family: monospace; font-size: 13px; color: #adc4d8; line-height: 2; overflow-x: auto; }
+        .sequence .seq-step { color: #ffd700; font-weight: bold; }
+        .sequence .seq-actor { color: #64b5f6; }
+        .sequence .seq-arrow { color: #69d669; }
+        .sequence .seq-note { color: #f48fb1; }
+
+        /* 进度检查清单 */
+        .checklist { background: #f8faff; border: 1px solid #dce8ff; border-radius: 10px; padding: 20px 26px; margin: 16px 0; }
+        .checklist li { list-style: none; padding: 8px 0; border-bottom: 1px solid #eef2ff; display: flex; align-items: flex-start; gap: 12px; font-size: 0.95em; }
+        .checklist li:last-child { border-bottom: none; }
+        .checklist li .ck-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8em; flex-shrink: 0; margin-top: 1px; }
+        .ck-p0 { background: #1565c0; color: white; }
+        .ck-p1 { background: #2e7d32; color: white; }
+        .ck-p2 { background: #f9a825; color: white; }
+        .ck-p3 { background: #78909c; color: white; }
+
+        footer { background: #f5f7fa; padding: 20px 48px; text-align: center; color: #9e9e9e; font-size: 0.88em; border-top: 1px solid #e0e0e0; }
+        footer .footer-meta { display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; }
+
+        @media (max-width: 768px) {
+            .content { padding: 24px; }
+            header { padding: 28px 24px; }
+            nav { padding: 0 16px; }
+            .diff-container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>kb-platform × MinerU 集成落地方案</h1>
+        <p class="subtitle">将 MinerU 作为远程 PDF 解析服务，替换现有 Tika 解析器，打通高精度文档结构化能力</p>
+        <div class="meta">
+            <span class="meta-item">📦 项目: kb-doc-processor</span>
+            <span class="meta-item">🏗️ 模式: HTTP Client 调用</span>
+            <span class="meta-item">📅 版本: 2026-05-18</span>
+            <span class="meta-item">🎯 适配目标: MinerU FastAPI 服务</span>
+        </div>
+    </header>
+    <nav>
+        <a href="#overview">一、概述</a>
+        <a href="#arch">二、架构设计</a>
+        <a href="#changes">三、改造清单</a>
+        <a href="#code">四、核心代码</a>
+        <a href="#config">五、配置说明</a>
+        <a href="#deploy">六、部署方案</a>
+        <a href="#test">七、测试验证</a>
+        <a href="#fallback">八、降级策略</a>
+        <a href="#roadmap">九、实施路线</a>
+    </nav>
+
+    <div class="content">
+
+        <!-- ===== 一、概述 ===== -->
+        <h2 id="overview"><span class="section-num">一</span>概述与目标</h2>
+
+        <p>当前 <code>kb-doc-processor</code> 使用 <strong>Apache Tika</strong> 作为 PDF 解析引擎。Tika 对扫描版 PDF、复杂表格、数学公式、多栏布局的解析质量有限，尤其在审计行业文档（财务报表、法规文件等）场景下容易丢失结构信息。</p>
+
+        <p><strong>MinerU</strong> 是基于深度学习的高精度文档解析引擎，支持 OCR、表格还原、公式识别，并提供完整的 FastAPI 服务接口。本方案采用与 RAGFlow 相同的集成模式——<strong>不直接运行 MinerU，而是将 PDF 以 HTTP multipart 方式发送给 MinerU 服务端，读取返回的结构化结果后进行后续分块与索引</strong>。</p>
+
+        <div class="note-box info">
+            <strong>🎯 集成原则</strong>
+            1. 零侵入现有分块/嵌入/索引流程——仅替换 Parser 层<br>
+            2. 支持 Tika ↔ MinerU 运行时切换，保障降级安全<br>
+            3. 充分利用 MinerU 的结构化输出（类型、页码、坐标），丰富 chunk 元数据<br>
+            4. 配置驱动，不硬编码，通过 settings.yaml / 环境变量控制
+        </div>
+
+        <h3>与 RAGFlow 方案的差异</h3>
+        <table class="data-table">
+            <tr><th>维度</th><th>RAGFlow 方案</th><th>本项目适配方案</th></tr>
+            <tr><td>调用方式</td><td>HTTP POST /file_parse</td><td>相同，HTTP POST /file_parse</td></tr>
+            <tr><td>文件来源</td><td>用户上传直接传入</td><td>从 <strong>MinIO</strong> 下载后再发送</td></tr>
+            <tr><td>结果处理</td><td>转换为 sections 传给分块</td><td>转换为 <strong>ParseResult + PageInfo</strong>，接入现有 Pipeline</td></tr>
+            <tr><td>配置管理</td><td>Docker 环境变量</td><td>settings.yaml + 环境变量占位符（现有机制）</td></tr>
+            <tr><td>降级策略</td><td>无内置降级</td><td>MinerU 不可达时自动降级至 TikaParser</td></tr>
+            <tr><td>页码信息</td><td>提取坐标标签</td><td>按 page_idx 填充 PageInfo，保留页码供 chunk 使用</td></tr>
+        </table>
+
+        <!-- ===== 二、架构设计 ===== -->
+        <h2 id="arch"><span class="section-num">二</span>整体架构设计</h2>
+
+        <h3>2.1 集成后的 Pipeline 架构</h3>
+        <div class="arch-diagram">
+<span class="comment">┌─────────────────────── kb-doc-processor ──────────────────────────────────────────────┐</span>
+│                                                                                        │
+│  Kafka Consumer                                                                        │
+│       │  file-ingest 消息                                                               │
+│       ▼                                                                                │
+│  ┌─────────────┐                                                                       │
+│  │  Pipeline   │  process_message()                                                    │
+│  │             │                                                                       │
+│  │  ① PARSING  │─────▶  <span class="hl-yellow">ParserFactory</span>（新增）                                          │
+│  │             │              │                                                        │
+│  │             │      ┌───────┴────────┐                                               │
+│  │             │      │                │                                               │
+│  │             │   <span class="hl-green">MinerUParser</span>    <span class="hl-orange">TikaParser</span>                                         │
+│  │             │   （新增）         （现有）                                              │
+│  │             │      │                │                                               │
+│  │             │      └───────┬────────┘                                               │
+│  │             │              │ ParseResult（统一接口，不变）                              │
+│  │             │              ▼                                                        │
+│  │  ② CLEANING │─────▶  TextCleaner（不变）                                             │
+│  │  ③ CHUNKING │─────▶  FixedLength / Semantic / LLMChunker（不变）                    │
+│  │  ④ EMBEDDING│─────▶  EmbeddingClient（不变）                                        │
+│  │  ⑤ SAVING  │─────▶  DB + Kafka publish（不变）                                     │
+│  └─────────────┘                                                                       │
+│                                                                                        │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+           │  MinIO: 下载 PDF bytes                     ▲  上传时存入
+           │                                           │
+           ▼                                           │
+<span class="hl-blue">┌──────────────────────────────────┐</span>      <span class="hl-orange">┌──────────────────┐</span>
+<span class="hl-blue">│     MinerU FastAPI 服务           │</span>      <span class="hl-orange">│   MinIO (kb-raw)  │</span>
+<span class="hl-blue">│  POST /file_parse (multipart)     │</span>      <span class="hl-orange">│                  │</span>
+<span class="hl-blue">│  返回 ZIP (content_list.json)     │</span>      <span class="hl-orange">└──────────────────┘</span>
+<span class="hl-blue">└──────────────────────────────────┘</span>
+        </div>
+
+        <h3>2.2 MinerU 解析数据流</h3>
+        <div class="sequence">
+<span class="seq-step">Step 1</span>  <span class="seq-actor">Pipeline</span>        →  MinioClient.get_object(src_path)  →  <span class="seq-actor">MinIO</span>          <span class="comment"># 获取 PDF bytes</span>
+<span class="seq-step">Step 2</span>  <span class="seq-actor">Pipeline</span>        →  ParserFactory.create(config)      →  <span class="seq-actor">MinerUParser</span>   <span class="comment"># 根据配置选择解析器</span>
+<span class="seq-step">Step 3</span>  <span class="seq-actor">MinerUParser</span>    →  check_health()                     →  <span class="seq-actor">MinerU /health</span> <span class="comment"># 健康探测（可选，每次或定期）</span>
+<span class="seq-step">Step 4</span>  <span class="seq-actor">MinerUParser</span>    →  POST /file_parse (multipart)       →  <span class="seq-actor">MinerU</span>         <span class="comment"># 上传 PDF，请求 ZIP 返回</span>
+<span class="seq-step">Step 5</span>  <span class="seq-actor">MinerU</span>          →  ZIP (content_list.json + images)   →  <span class="seq-actor">MinerUParser</span>   <span class="comment"># 解析完成，返回结构化数据</span>
+<span class="seq-step">Step 6</span>  <span class="seq-actor">MinerUParser</span>    →  _extract_zip()                    →  <span class="seq-actor">tempdir</span>        <span class="comment"># 解压到临时目录</span>
+<span class="seq-step">Step 7</span>  <span class="seq-actor">MinerUParser</span>    →  _read_content_list()               →  <span class="seq-actor">JSON</span>           <span class="comment"># 读取 content_list.json</span>
+<span class="seq-step">Step 8</span>  <span class="seq-actor">MinerUParser</span>    →  _to_parse_result()                 →  <span class="seq-actor">ParseResult</span>    <span class="comment"># 转为 ParseResult[PageInfo]</span>
+<span class="seq-step">Step 9</span>  <span class="seq-actor">ParseResult</span>     →  Pipeline._clean() / _chunk() / ... →  <span class="seq-actor">downstream</span>     <span class="comment"># 接入现有流程，无感知变化</span>
+        </div>
+
+        <h3>2.3 content_list.json → ParseResult 映射规则</h3>
+        <table class="data-table">
+            <tr><th>MinerU content type</th><th>取值字段</th><th>填入 PageInfo.text 方式</th><th>是否保留</th></tr>
+            <tr><td class="mono">text</td><td><code>text</code></td><td>直接拼接</td><td>✅</td></tr>
+            <tr><td class="mono">list</td><td><code>list_items[]</code></td><td>换行符拼接</td><td>✅</td></tr>
+            <tr><td class="mono">code</td><td><code>code_body</code></td><td>带反引号代码块格式</td><td>✅</td></tr>
+            <tr><td class="mono">equation</td><td><code>text</code></td><td>带 $$ 包裹的 LaTeX 文本</td><td>✅</td></tr>
+            <tr><td class="mono">table</td><td><code>table_body</code> (HTML) + <code>table_caption</code></td><td>HTML 原文（现有 Cleaner 会处理）</td><td>✅</td></tr>
+            <tr><td class="mono">image</td><td><code>image_caption[]</code></td><td>图片说明文字（无图字节）</td><td>✅（仅文字）</td></tr>
+            <tr><td class="mono">discarded</td><td>-</td><td>跳过</td><td>❌</td></tr>
+        </table>
+
+        <!-- ===== 三、改造清单 ===== -->
+        <h2 id="changes"><span class="section-num">三</span>代码改造清单</h2>
+
+        <h3>3.1 涉及文件一览</h3>
+        <div class="file-tree">
+kb-doc-processor/<br>
+├── src/<br>
+│   ├── parser/<br>
+│   │   ├── __init__.py            <span class="old-file"># 不变（BaseParser / ParseResult / PageInfo）</span><br>
+│   │   ├── tika_parser.py         <span class="old-file"># 不变</span><br>
+│   │   ├── <span class="new-file">mineru_parser.py    # ✅ 新增 — MinerU HTTP 客户端解析器</span><br>
+│   │   └── <span class="new-file">parser_factory.py   # ✅ 新增 — 根据配置选择 Parser 实例</span><br>
+│   ├── config.py                  <span class="mod-file"># 🔧 改动 — 新增 MinerUConfig、ParserConfig</span><br>
+│   ├── pipeline.py                <span class="mod-file"># 🔧 改动 — __init__ 中使用 ParserFactory</span><br>
+│   └── (其余文件不变)</span><br>
+├── config/<br>
+│   └── settings.yaml              <span class="mod-file"># 🔧 改动 — 新增 mineru / parser 配置节</span><br>
+└── pyproject.toml                 <span class="mod-file"># 🔧 改动 — 新增 requests 依赖</span>
+        </div>
+
+        <h3>3.2 改动范围汇总</h3>
+        <table class="data-table">
+            <tr><th>文件</th><th>改动类型</th><th>说明</th></tr>
+            <tr><td class="mono">src/parser/mineru_parser.py</td><td><span class="tag-new">新增</span></td><td>完整的 MinerU HTTP 客户端，实现 BaseParser 接口</td></tr>
+            <tr><td class="mono">src/parser/parser_factory.py</td><td><span class="tag-new">新增</span></td><td>解析器工厂，根据配置返回 TikaParser 或 MinerUParser</td></tr>
+            <tr><td class="mono">src/config.py</td><td><span class="tag-mod">修改</span></td><td>新增 MinerUConfig、ParserConfig 两个 Pydantic 模型；AppConfig 加入 parser 字段</td></tr>
+            <tr><td class="mono">src/pipeline.py</td><td><span class="tag-mod">修改</span></td><td>__init__ 改用 ParserFactory；_parse 方法记录 parseMethod</td></tr>
+            <tr><td class="mono">config/settings.yaml</td><td><span class="tag-mod">修改</span></td><td>新增 mineru、parser 两个配置节</td></tr>
+            <tr><td class="mono">pyproject.toml</td><td><span class="tag-mod">修改</span></td><td>新增 requests 依赖</td></tr>
+            <tr><td class="mono">src/parser/tika_parser.py</td><td><span class="tag-keep">不变</span></td><td>完整保留，作为降级选项</td></tr>
+            <tr><td class="mono">src/chunker/*</td><td><span class="tag-keep">不变</span></td><td>分块逻辑完全不受影响</td></tr>
+            <tr><td class="mono">src/embedding_client.py</td><td><span class="tag-keep">不变</span></td><td>不受影响</td></tr>
+        </table>
+
+        <!-- ===== 四、核心代码 ===== -->
+        <h2 id="code"><span class="section-num">四</span>核心代码实现</h2>
+
+        <h3>4.1 MinerUParser — HTTP 客户端解析器</h3>
+        <p>新建文件 <code>src/parser/mineru_parser.py</code>：</p>
+
+        <div class="code-block">
+            <span class="code-label">mineru_parser.py</span>
+<span class="comment">"""
+MinerU HTTP 客户端解析器
+将 PDF bytes 发送给 MinerU FastAPI 服务，解析返回的 ZIP 包，
+转换为 ParseResult + PageInfo 接口，无缝接入现有 Pipeline。
+"""</span>
+<span class="keyword">import</span> io
+<span class="keyword">import</span> json
+<span class="keyword">import</span> logging
+<span class="keyword">import</span> os
+<span class="keyword">import</span> tempfile
+<span class="keyword">import</span> zipfile
+<span class="keyword">from</span> enum <span class="keyword">import</span> StrEnum
+<span class="keyword">from</span> pathlib <span class="keyword">import</span> Path
+<span class="keyword">from</span> typing <span class="keyword">import</span> Optional
+
+<span class="keyword">import</span> requests
+
+<span class="keyword">from</span> src.config <span class="keyword">import</span> MinerUConfig, MvpLimits
+<span class="keyword">from</span> src.parser <span class="keyword">import</span> BaseParser, PageInfo, ParseResult
+
+logger = logging.getLogger(__name__)
+
+
+<span class="cls">class</span> <span class="function">MinerUContentType</span>(StrEnum):
+    <span class="string">"""MinerU content_list.json 中 type 字段枚举值"""</span>
+    TEXT     = <span class="string">"text"</span>
+    TABLE    = <span class="string">"table"</span>
+    IMAGE    = <span class="string">"image"</span>
+    EQUATION = <span class="string">"equation"</span>
+    CODE     = <span class="string">"code"</span>
+    LIST     = <span class="string">"list"</span>
+    DISCARDED = <span class="string">"discarded"</span>
+
+
+<span class="cls">class</span> <span class="function">MinerUParser</span>(BaseParser):
+    <span class="string">"""
+    通过 HTTP 调用 MinerU FastAPI 服务解析 PDF。
+    与 TikaParser 实现相同的 BaseParser 接口，可互换使用。
+    """</span>
+
+    <span class="keyword">def</span> <span class="function">__init__</span>(self, config: MinerUConfig, mvp_limits: MvpLimits):
+        self._api_url = config.api_server.rstrip(<span class="string">"/"</span>)
+        self._backend = config.backend
+        self._server_url = config.server_url   <span class="comment"># vLLM 后端地址（vlm-http-client 模式使用）</span>
+        self._timeout = config.timeout_seconds
+        self._formula_enable = config.formula_enable
+        self._table_enable = config.table_enable
+        self._parse_method = config.parse_method
+        self._max_file_size_mb = mvp_limits.max_file_size_mb
+        self._max_pages = mvp_limits.max_file_pages
+
+    <span class="comment"># ------------------------------------------------------------------ #
+    #  公开接口：与 TikaParser 一致                                       #
+    # ------------------------------------------------------------------ #</span>
+
+    <span class="keyword">def</span> <span class="function">parse</span>(self, file_bytes: bytes, lang_hints: Optional[list[str]] = None) -> ParseResult:
+        <span class="string">"""
+        上传 PDF bytes，调用 MinerU /file_parse，返回 ParseResult。
+        """</span>
+        max_bytes = self._max_file_size_mb * 1024 * 1024
+        <span class="keyword">if</span> len(file_bytes) > max_bytes:
+            <span class="keyword">raise</span> ValueError(
+                <span class="string">f"File size ({len(file_bytes)} bytes) exceeds limit ({self._max_file_size_mb}MB)"</span>
+            )
+
+        <span class="comment"># 语言列表：lang_hints 优先，否则默认中文</span>
+        lang_list = <span class="string">","</span>.join(lang_hints) <span class="keyword">if</span> lang_hints <span class="keyword">else</span> <span class="string">"ch"</span>
+
+        logger.info(
+            <span class="string">f"[MinerU] Sending PDF to {self._api_url}/file_parse, "</span>
+            <span class="string">f"size={len(file_bytes)/1024:.1f}KB, backend={self._backend}"</span>
+        )
+
+        <span class="keyword">with</span> tempfile.TemporaryDirectory(prefix=<span class="string">"mineru_"</span>) <span class="keyword">as</span> tmpdir:
+            zip_path = self._call_api(file_bytes, lang_list, Path(tmpdir))
+            out_dir = Path(tmpdir) / <span class="string">"extracted"</span>
+            out_dir.mkdir()
+            self._extract_zip(zip_path, out_dir)
+            content_list = self._read_content_list(out_dir)
+            result = self._to_parse_result(content_list)
+
+        logger.info(
+            <span class="string">f"[MinerU] Parsed successfully: {result.page_count} pages, "</span>
+            <span class="string">f"{sum(len(p.text) for p in result.pages)} chars total"</span>
+        )
+        <span class="keyword">return</span> result
+
+    <span class="keyword">def</span> <span class="function">check_health</span>(self) -> bool:
+        <span class="string">"""探测 MinerU 服务是否可用（/health 端点）"""</span>
+        <span class="keyword">try</span>:
+            resp = requests.get(
+                <span class="string">f"{self._api_url}/health"</span>,
+                timeout=<span class="number">5</span>
+            )
+            <span class="keyword">return</span> resp.status_code == <span class="number">200</span>
+        <span class="keyword">except</span> Exception:
+            <span class="keyword">return</span> <span class="keyword">False</span>
+
+    <span class="comment"># ------------------------------------------------------------------ #
+    #  私有方法                                                           #
+    # ------------------------------------------------------------------ #</span>
+
+    <span class="keyword">def</span> <span class="function">_call_api</span>(self, file_bytes: bytes, lang_list: str, tmpdir: Path) -> Path:
+        <span class="string">"""向 MinerU /file_parse 发送 PDF，将返回的 ZIP 写入 tmpdir，返回路径。"""</span>
+        files = {
+            <span class="string">"files"</span>: (<span class="string">"document.pdf"</span>, io.BytesIO(file_bytes), <span class="string">"application/pdf"</span>)
+        }
+        data = {
+            <span class="string">"output_dir"</span>:          <span class="string">"./output"</span>,
+            <span class="string">"lang_list"</span>:           lang_list,
+            <span class="string">"backend"</span>:             self._backend,
+            <span class="string">"parse_method"</span>:        self._parse_method,
+            <span class="string">"formula_enable"</span>:      <span class="string">"true"</span> <span class="keyword">if</span> self._formula_enable <span class="keyword">else</span> <span class="string">"false"</span>,
+            <span class="string">"table_enable"</span>:        <span class="string">"true"</span> <span class="keyword">if</span> self._table_enable <span class="keyword">else</span> <span class="string">"false"</span>,
+            <span class="string">"return_md"</span>:           <span class="string">"true"</span>,
+            <span class="string">"return_middle_json"</span>:  <span class="string">"false"</span>,
+            <span class="string">"return_content_list"</span>: <span class="string">"true"</span>,   <span class="comment"># 必须为 true，我们依赖此字段</span>
+            <span class="string">"return_images"</span>:       <span class="string">"false"</span>,  <span class="comment"># 一期不索引图片二进制</span>
+            <span class="string">"response_format_zip"</span>: <span class="string">"true"</span>,   <span class="comment"># 必须返回 ZIP</span>
+            <span class="string">"start_page_id"</span>:       <span class="string">"0"</span>,
+            <span class="string">"end_page_id"</span>:         <span class="string">"99999"</span>,
+        }
+        <span class="comment"># vlm-http-client 后端需要传 server_url</span>
+        <span class="keyword">if</span> self._server_url:
+            data[<span class="string">"server_url"</span>] = self._server_url
+
+        resp = requests.post(
+            url=<span class="string">f"{self._api_url}/file_parse"</span>,
+            files=files,
+            data=data,
+            timeout=self._timeout,
+            stream=<span class="keyword">True</span>,
+        )
+
+        <span class="keyword">if</span> resp.status_code != <span class="number">200</span>:
+            <span class="keyword">raise</span> RuntimeError(
+                <span class="string">f"[MinerU] /file_parse returned HTTP {resp.status_code}: {resp.text[:500]}"</span>
+            )
+
+        content_type = resp.headers.get(<span class="string">"Content-Type"</span>, <span class="string">""</span>)
+        <span class="keyword">if not</span> content_type.startswith(<span class="string">"application/zip"</span>):
+            <span class="keyword">raise</span> RuntimeError(
+                <span class="string">f"[MinerU] Expected application/zip but got: {content_type}"</span>
+            )
+
+        zip_path = tmpdir / <span class="string">"result.zip"</span>
+        <span class="keyword">with</span> open(zip_path, <span class="string">"wb"</span>) <span class="keyword">as</span> f:
+            <span class="keyword">for</span> chunk <span class="keyword">in</span> resp.iter_content(chunk_size=<span class="number">8192</span>):
+                f.write(chunk)
+
+        logger.debug(<span class="string">f"[MinerU] ZIP saved to {zip_path}, size={zip_path.stat().st_size} bytes"</span>)
+        <span class="keyword">return</span> zip_path
+
+    <span class="keyword">def</span> <span class="function">_extract_zip</span>(self, zip_path: Path, out_dir: Path) -> None:
+        <span class="string">"""解压 ZIP，去除顶层目录前缀（MinerU 会加一层 output/ 目录）。"""</span>
+        <span class="keyword">with</span> zipfile.ZipFile(zip_path, <span class="string">"r"</span>) <span class="keyword">as</span> zf:
+            <span class="keyword">for</span> member <span class="keyword">in</span> zf.infolist():
+                <span class="comment"># 去掉顶层 output/ 前缀，将文件提取到 out_dir 下</span>
+                parts = Path(member.filename).parts
+                relative = Path(*parts[<span class="number">1</span>:]) <span class="keyword">if</span> len(parts) > <span class="number">1</span> <span class="keyword">else</span> Path(member.filename)
+                target = out_dir / relative
+                <span class="keyword">if</span> member.is_dir():
+                    target.mkdir(parents=<span class="keyword">True</span>, exist_ok=<span class="keyword">True</span>)
+                <span class="keyword">else</span>:
+                    target.parent.mkdir(parents=<span class="keyword">True</span>, exist_ok=<span class="keyword">True</span>)
+                    <span class="keyword">with</span> zf.open(member) <span class="keyword">as</span> src, open(target, <span class="string">"wb"</span>) <span class="keyword">as</span> dst:
+                        dst.write(src.read())
+
+    <span class="keyword">def</span> <span class="function">_read_content_list</span>(self, out_dir: Path) -> list[dict]:
+        <span class="string">"""在解压目录中查找 *_content_list.json 并读取。"""</span>
+        candidates = list(out_dir.rglob(<span class="string">"*_content_list.json"</span>))
+        <span class="keyword">if not</span> candidates:
+            <span class="keyword">raise</span> FileNotFoundError(
+                <span class="string">f"[MinerU] content_list.json not found in extracted ZIP at {out_dir}"</span>
+            )
+        content_list_path = candidates[<span class="number">0</span>]
+        <span class="keyword">with</span> open(content_list_path, <span class="string">"r"</span>, encoding=<span class="string">"utf-8"</span>) <span class="keyword">as</span> f:
+            data = json.load(f)
+        logger.debug(
+            <span class="string">f"[MinerU] content_list loaded from {content_list_path}: {len(data)} items"</span>
+        )
+        <span class="keyword">return</span> data
+
+    <span class="keyword">def</span> <span class="function">_to_parse_result</span>(self, content_list: list[dict]) -> ParseResult:
+        <span class="string">"""
+        将 MinerU content_list 转换为 ParseResult + PageInfo 列表。
+        按 page_idx 分组，每页构建一个 PageInfo。
+        """</span>
+        <span class="comment"># 收集每页文本块</span>
+        page_texts: dict[int, list[str]] = {}
+
+        <span class="keyword">for</span> item <span class="keyword">in</span> content_list:
+            item_type = item.get(<span class="string">"type"</span>, <span class="string">""</span>)
+            page_idx = item.get(<span class="string">"page_idx"</span>, <span class="number">0</span>)
+            text = self._extract_text(item, item_type)
+            <span class="keyword">if</span> text:
+                page_texts.setdefault(page_idx, []).append(text)
+
+        <span class="keyword">if not</span> page_texts:
+            <span class="keyword">return</span> ParseResult(
+                pages=[PageInfo(page_num=<span class="number">1</span>, text=<span class="string">""</span>)],
+                metadata={},
+            )
+
+        <span class="comment"># 检查页数限制</span>
+        max_page_idx = max(page_texts.keys())
+        total_pages = max_page_idx + <span class="number">1</span>
+        <span class="keyword">if</span> total_pages > self._max_pages:
+            <span class="keyword">raise</span> ValueError(
+                <span class="string">f"[MinerU] Document has {total_pages} pages, exceeds limit ({self._max_pages})"</span>
+            )
+
+        <span class="comment"># 构建 PageInfo 列表（保持 0-based page_idx → 1-based page_num 映射）</span>
+        pages = []
+        <span class="keyword">for</span> page_idx <span class="keyword">in</span> sorted(page_texts.keys()):
+            page_text = <span class="string">"\n\n"</span>.join(page_texts[page_idx])
+            pages.append(PageInfo(
+                page_num=page_idx + <span class="number">1</span>,
+                text=page_text.strip(),
+            ))
+
+        <span class="keyword">return</span> ParseResult(
+            pages=pages,
+            metadata={
+                <span class="string">"parseMethod"</span>: <span class="string">"MINERU"</span>,
+                <span class="string">"mineruBackend"</span>: self._backend,
+                <span class="string">"pageCount"</span>: len(pages),
+            },
+        )
+
+    <span class="keyword">def</span> <span class="function">_extract_text</span>(self, item: dict, item_type: str) -> str:
+        <span class="string">"""根据内容类型提取文本，丢弃空白和 discarded 类型。"""</span>
+        <span class="keyword">match</span> item_type:
+            <span class="keyword">case</span> MinerUContentType.TEXT:
+                <span class="keyword">return</span> item.get(<span class="string">"text"</span>, <span class="string">""</span>).strip()
+
+            <span class="keyword">case</span> MinerUContentType.LIST:
+                items = item.get(<span class="string">"list_items"</span>, [])
+                <span class="keyword">return</span> <span class="string">"\n"</span>.join(str(i) <span class="keyword">for</span> i <span class="keyword">in</span> items).strip()
+
+            <span class="keyword">case</span> MinerUContentType.CODE:
+                code_body = item.get(<span class="string">"code_body"</span>, <span class="string">""</span>).strip()
+                <span class="keyword">return</span> <span class="string">f"```\n{code_body}\n```"</span> <span class="keyword">if</span> code_body <span class="keyword">else</span> <span class="string">""</span>
+
+            <span class="keyword">case</span> MinerUContentType.EQUATION:
+                eq = item.get(<span class="string">"text"</span>, <span class="string">""</span>).strip()
+                <span class="keyword">return</span> <span class="string">f"$$ {eq} $$"</span> <span class="keyword">if</span> eq <span class="keyword">else</span> <span class="string">""</span>
+
+            <span class="keyword">case</span> MinerUContentType.TABLE:
+                body = item.get(<span class="string">"table_body"</span>, <span class="string">""</span>).strip()
+                captions = item.get(<span class="string">"table_caption"</span>, [])
+                caption_text = <span class="string">" "</span>.join(captions).strip()
+                parts = []
+                <span class="keyword">if</span> caption_text:
+                    parts.append(caption_text)
+                <span class="keyword">if</span> body:
+                    parts.append(body)
+                <span class="keyword">return</span> <span class="string">"\n"</span>.join(parts)
+
+            <span class="keyword">case</span> MinerUContentType.IMAGE:
+                captions = item.get(<span class="string">"image_caption"</span>, [])
+                <span class="keyword">return</span> <span class="string">" "</span>.join(captions).strip()
+
+            <span class="keyword">case</span> MinerUContentType.DISCARDED | _:
+                <span class="keyword">return</span> <span class="string">""</span>
+        </div>
+
+        <h3>4.2 ParserFactory — 解析器工厂</h3>
+        <p>新建文件 <code>src/parser/parser_factory.py</code>：</p>
+
+        <div class="code-block">
+            <span class="code-label">parser_factory.py</span>
+<span class="comment">"""
+解析器工厂。
+根据 AppConfig 中的 parser 配置段决定使用 TikaParser 还是 MinerUParser。
+支持运行时切换，无需修改 Pipeline 代码。
+"""</span>
+<span class="keyword">import</span> logging
+
+<span class="keyword">from</span> src.config <span class="keyword">import</span> AppConfig
+<span class="keyword">from</span> src.parser <span class="keyword">import</span> BaseParser
+<span class="keyword">from</span> src.parser.tika_parser <span class="keyword">import</span> TikaParser
+<span class="keyword">from</span> src.parser.mineru_parser <span class="keyword">import</span> MinerUParser
+
+logger = logging.getLogger(__name__)
+
+<span class="comment">SUPPORTED_ENGINES = ("tika", "mineru")</span>
+
+
+<span class="keyword">def</span> <span class="function">create_parser</span>(config: AppConfig) -> BaseParser:
+    <span class="string">"""
+    根据 config.parser.engine 创建并返回相应的解析器实例。
+
+    engine = "tika"   → TikaParser（默认，现有行为）
+    engine = "mineru" → MinerUParser（新增，需配置 mineru.api_server）
+
+    当 engine = "mineru" 且服务不可达时，根据 parser.fallback_on_failure
+    决定是抛出异常还是降级到 TikaParser。
+    """</span>
+    engine = config.parser.engine.lower()
+
+    <span class="keyword">if</span> engine <span class="keyword">not in</span> SUPPORTED_ENGINES:
+        <span class="keyword">raise</span> ValueError(
+            <span class="string">f"Unsupported parser engine '{engine}', must be one of {SUPPORTED_ENGINES}"</span>
+        )
+
+    <span class="keyword">if</span> engine == <span class="string">"tika"</span>:
+        logger.info(<span class="string">"[ParserFactory] Using TikaParser"</span>)
+        <span class="keyword">return</span> TikaParser(config.tika, config.mvp_limits)
+
+    <span class="comment"># engine == "mineru"</span>
+    <span class="keyword">if not</span> config.mineru.api_server:
+        msg = <span class="string">"[ParserFactory] engine=mineru but mineru.api_server is not configured"</span>
+        <span class="keyword">if</span> config.parser.fallback_on_failure:
+            logger.warning(msg + <span class="string">", falling back to TikaParser"</span>)
+            <span class="keyword">return</span> TikaParser(config.tika, config.mvp_limits)
+        <span class="keyword">raise</span> ValueError(msg)
+
+    parser = MinerUParser(config.mineru, config.mvp_limits)
+
+    <span class="comment"># 启动时做一次健康检测</span>
+    <span class="keyword">if not</span> parser.check_health():
+        msg = (
+            <span class="string">f"[ParserFactory] MinerU service not reachable at {config.mineru.api_server}"</span>
+        )
+        <span class="keyword">if</span> config.parser.fallback_on_failure:
+            logger.warning(msg + <span class="string">", falling back to TikaParser"</span>)
+            <span class="keyword">return</span> TikaParser(config.tika, config.mvp_limits)
+        <span class="keyword">raise</span> RuntimeError(msg)
+
+    logger.info(
+        <span class="string">f"[ParserFactory] Using MinerUParser, api_server={config.mineru.api_server}, "</span>
+        <span class="string">f"backend={config.mineru.backend}"</span>
+    )
+    <span class="keyword">return</span> parser
+        </div>
+
+        <h3>4.3 config.py — 新增配置模型</h3>
+        <p>在 <code>src/config.py</code> 中追加以下内容，并更新 AppConfig：</p>
+
+        <div class="code-block">
+            <span class="code-label">config.py（追加片段）</span>
+<span class="comment"># ---- 新增：MinerU 配置 ----</span>
+<span class="cls">class</span> <span class="function">MinerUConfig</span>(BaseModel):
+    <span class="comment">"""MinerU FastAPI 服务配置"""</span>
+    api_server: str = <span class="string">""</span>                <span class="comment"># 如 http://192.168.10.100:8886（必填时由环境变量注入）</span>
+    backend: str = <span class="string">"pipeline"</span>           <span class="comment"># pipeline / vlm-http-client / vlm-transformers 等</span>
+    server_url: str = <span class="string">""</span>               <span class="comment"># 仅 vlm-http-client 后端需要（vLLM 服务地址）</span>
+    timeout_seconds: int = <span class="number">1800</span>         <span class="comment"># 30 分钟超时，大文件宽裕</span>
+    parse_method: str = <span class="string">"auto"</span>          <span class="comment"># auto / txt / ocr</span>
+    formula_enable: bool = <span class="keyword">True</span>
+    table_enable: bool = <span class="keyword">True</span>
+
+
+<span class="comment"># ---- 新增：Parser 路由配置 ----</span>
+<span class="cls">class</span> <span class="function">ParserConfig</span>(BaseModel):
+    <span class="comment">"""解析器选择与降级配置"""</span>
+    engine: str = <span class="string">"tika"</span>              <span class="comment"># "tika" 或 "mineru"</span>
+    fallback_on_failure: bool = <span class="keyword">True</span>  <span class="comment"># MinerU 不可达时自动降级至 Tika</span>
+
+
+<span class="comment"># ---- 修改 AppConfig：新增两个字段 ----</span>
+<span class="cls">class</span> <span class="function">AppConfig</span>(BaseModel):
+    tika: TikaConfig = TikaConfig()
+    minio: MinioConfig = MinioConfig()
+    kafka: KafkaConfig = KafkaConfig()
+    database: DatabaseConfig = DatabaseConfig()
+    mvp_limits: MvpLimits = MvpLimits()
+    chunk_defaults: ChunkDefaults = ChunkDefaults()
+    embedding: EmbeddingConfig = EmbeddingConfig()
+    retry: RetryConfig = RetryConfig()
+    intelligent_chunker: IntelligentChunkerConfig = IntelligentChunkerConfig()
+    metadata_extractor: MetadataExtractorConfig = MetadataExtractorConfig()
+    server: ServerConfig = ServerConfig()
+    cors: CorsConfig = CorsConfig()
+    <span class="comment"># ↓ 新增</span>
+    mineru: MinerUConfig = MinerUConfig()
+    parser: ParserConfig = ParserConfig()
+
+
+<span class="comment"># ---- 修改 load_config：读取新配置节 ----</span>
+<span class="comment"># 在 return AppConfig(...) 中新增两行：</span>
+<span class="comment">#   mineru=MinerUConfig(**processor_cfg.get("mineru", {})),</span>
+<span class="comment">#   parser=ParserConfig(**processor_cfg.get("parser", {})),</span>
+        </div>
+
+        <h3>4.4 pipeline.py — 改用 ParserFactory</h3>
+        <p>仅需改动 Pipeline 的 <code>__init__</code> 和 <code>_parse</code> 方法中的两处：</p>
+
+        <div class="diff-container">
+            <div class="diff-before">
+                <div class="diff-title">❌ 改动前</div>
+                <div class="diff-body">
+from src.parser.tika_parser import TikaParser
+
+class Pipeline:
+    def __init__(self, config, producer):
+        ...
+        self._parser = TikaParser(
+            config.tika,
+            config.mvp_limits
+        )
+
+    def _parse(self, file_bytes, msg):
+        result = self._parser.parse(file_bytes)
+        ...
+        result.metadata["parseMethod"] = "TIKA"
+        return result
+                </div>
+            </div>
+            <div class="diff-after">
+                <div class="diff-title">✅ 改动后</div>
+                <div class="diff-body">
+from src.parser.parser_factory import create_parser
+
+class Pipeline:
+    def __init__(self, config, producer):
+        ...
+        self._parser = create_parser(config)
+
+    def _parse(self, file_bytes, msg):
+        result = self._parser.parse(file_bytes)
+        ...
+        # parseMethod 已在各 Parser 内部设置
+        # MinerUParser 返回 "MINERU"，TikaParser 保留 "TIKA"
+        result.metadata.setdefault(
+            "parseMethod", "TIKA"
+        )
+        return result
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 五、配置说明 ===== -->
+        <h2 id="config"><span class="section-num">五</span>配置说明</h2>
+
+        <h3>5.1 settings.yaml 新增配置节</h3>
+        <div class="code-block">
+            <span class="code-label">settings.yaml（追加）</span>
+<span class="comment">  # ─── 解析器路由 ─────────────────────────────────────────────────</span>
+  parser:
+    <span class="comment"># 选择解析引擎: "tika"（默认）或 "mineru"</span>
+    engine: <span class="string">"${KB_PARSER_ENGINE:tika}"</span>
+    <span class="comment"># MinerU 不可达时是否自动降级至 Tika（生产建议 true）</span>
+    fallback_on_failure: <span class="number">${KB_PARSER_FALLBACK:true}</span>
+
+  <span class="comment"># ─── MinerU 服务配置 ─────────────────────────────────────────────</span>
+  mineru:
+    <span class="comment"># MinerU FastAPI 服务地址（engine=mineru 时必须配置）</span>
+    api_server: <span class="string">"${KB_MINERU_API_SERVER:}"</span>
+    <span class="comment"># 解析后端: pipeline（无GPU）/ vlm-http-client（有GPU）</span>
+    backend: <span class="string">"${KB_MINERU_BACKEND:pipeline}"</span>
+    <span class="comment"># 远程 vLLM 地址（仅 vlm-http-client 后端使用）</span>
+    server_url: <span class="string">"${KB_MINERU_SERVER_URL:}"</span>
+    <span class="comment"># 请求超时（秒），大文件宜设 1800</span>
+    timeout_seconds: <span class="number">${KB_MINERU_TIMEOUT_SECONDS:1800}</span>
+    <span class="comment"># 解析方法: auto / txt / ocr</span>
+    parse_method: <span class="string">"${KB_MINERU_PARSE_METHOD:auto}"</span>
+    <span class="comment"># 是否解析公式</span>
+    formula_enable: <span class="number">${KB_MINERU_FORMULA_ENABLE:true}</span>
+    <span class="comment"># 是否解析表格</span>
+    table_enable: <span class="number">${KB_MINERU_TABLE_ENABLE:true}</span>
+        </div>
+
+        <h3>5.2 环境变量速查表</h3>
+        <table class="data-table">
+            <tr><th>环境变量</th><th>默认值</th><th>说明</th></tr>
+            <tr><td class="mono">KB_PARSER_ENGINE</td><td>tika</td><td>解析引擎：tika 或 mineru</td></tr>
+            <tr><td class="mono">KB_PARSER_FALLBACK</td><td>true</td><td>MinerU 不可达时是否降级到 Tika</td></tr>
+            <tr><td class="mono">KB_MINERU_API_SERVER</td><td>（空）</td><td>MinerU 服务地址，如 http://192.168.10.100:8886</td></tr>
+            <tr><td class="mono">KB_MINERU_BACKEND</td><td>pipeline</td><td>后端类型，无 GPU 选 pipeline</td></tr>
+            <tr><td class="mono">KB_MINERU_SERVER_URL</td><td>（空）</td><td>vLLM 服务地址（vlm-http-client 模式才需要）</td></tr>
+            <tr><td class="mono">KB_MINERU_TIMEOUT_SECONDS</td><td>1800</td><td>请求超时（秒）</td></tr>
+            <tr><td class="mono">KB_MINERU_PARSE_METHOD</td><td>auto</td><td>auto / txt / ocr</td></tr>
+            <tr><td class="mono">KB_MINERU_FORMULA_ENABLE</td><td>true</td><td>是否解析数学公式</td></tr>
+            <tr><td class="mono">KB_MINERU_TABLE_ENABLE</td><td>true</td><td>是否解析表格</td></tr>
+        </table>
+
+        <h3>5.3 pyproject.toml 依赖追加</h3>
+        <div class="code-block">
+            <span class="code-label">pyproject.toml</span>
+dependencies = [
+    ...
+    <span class="string">"requests>=2.31.0"</span>,   <span class="comment"># ← 新增，用于 MinerU HTTP 调用</span>
+]
+        </div>
+
+        <!-- ===== 六、部署方案 ===== -->
+        <h2 id="deploy"><span class="section-num">六</span>部署方案选型</h2>
+
+        <div class="card-grid">
+            <div class="card">
+                <h4>方案 A — Pipeline 后端 <span class="badge badge-cpu">CPU 支持</span> <span class="badge badge-recommend">推荐内网试用</span></h4>
+                <p>无 GPU 要求，适合内网初期验证。解析精度好于 Tika，速度比 VLM 模式慢。</p>
+                <div class="code-block" style="font-size:11.5px;">
+<span class="comment"># 1. 内网服务器安装 MinerU</span>
+pip install mineru
+export MINERU_MODEL_SOURCE=modelscope
+
+<span class="comment"># 2. 启动 API 服务</span>
+mineru-api --host 0.0.0.0 --port 8886
+
+<span class="comment"># 3. 配置 kb-doc-processor</span>
+KB_PARSER_ENGINE=mineru
+KB_MINERU_API_SERVER=http://&lt;host&gt;:8886
+KB_MINERU_BACKEND=pipeline
+                </div>
+            </div>
+            <div class="card">
+                <h4>方案 B — vlm-http-client <span class="badge badge-gpu">需要 GPU 服务器</span></h4>
+                <p>连接已有 Qwen vLLM 实例（http://192.168.30.47:8000），MinerU API 本身轻量，视觉理解能力更强。</p>
+                <div class="code-block" style="font-size:11.5px;">
+<span class="comment"># 注意：需先在 GPU 服务器安装 MinerU vLLM 模型</span>
+<span class="comment"># 或另建专用 vLLM 实例</span>
+mineru-vllm-server --port 30000
+
+<span class="comment"># MinerU API（不需要 GPU）</span>
+mineru-api --host 0.0.0.0 --port 8886
+
+<span class="comment"># 配置</span>
+KB_PARSER_ENGINE=mineru
+KB_MINERU_API_SERVER=http://&lt;host&gt;:8886
+KB_MINERU_BACKEND=vlm-http-client
+KB_MINERU_SERVER_URL=http://192.168.30.47:30000
+                </div>
+            </div>
+            <div class="card">
+                <h4>方案 C — Docker Compose 一体化</h4>
+                <p>将 MinerU 作为 Compose 服务加入现有 kb-infra，随平台整体启停。</p>
+                <div class="code-block" style="font-size:11.5px;">
+<span class="comment"># kb-infra/docker-compose.yaml 新增</span>
+services:
+  mineru-api:
+    image: ghcr.io/opendatalab/mineru
+    ports: ["8886:8000"]
+    environment:
+      - MINERU_MODEL_SOURCE=modelscope
+    volumes:
+      - mineru_models:/root/.cache
+    command: >
+      mineru-api --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD","curl","-f",
+             "http://localhost:8000/health"]
+      interval: 30s
+                </div>
+            </div>
+        </div>
+
+        <h3>6.1 离线内网部署（推荐）</h3>
+        <div class="note-box warning">
+            <strong>⚠️ 内网无法访问 HuggingFace / ModelScope</strong>
+            需要在有网络的机器上预先下载模型，再迁移到内网服务器。
+        </div>
+
+        <div class="code-block">
+<span class="comment"># === 有网络环境：下载模型 ===</span>
+pip install mineru
+<span class="comment"># Pipeline 模型（~15GB）</span>
+export MINERU_MODEL_SOURCE=modelscope
+python -c "from mineru.model.download import auto_download_and_get_model_dir; auto_download_and_get_model_dir('pipeline')"
+<span class="comment"># 打包模型目录</span>
+tar -czf mineru_models.tar.gz ~/.cache/modelscope/hub/models/OpenDataLab/
+
+<span class="comment"># === 内网服务器：安装并配置 ===</span>
+pip install mineru  <span class="comment"># 离线 wheel 包，提前准备</span>
+<span class="comment"># 解压模型</span>
+tar -xzf mineru_models.tar.gz -C ~/.cache/
+
+<span class="comment"># 创建本地模型配置</span>
+cat > ~/mineru.json &lt;&lt; 'EOF'
+{
+  "models-dir": {
+    "pipeline": "/root/.cache/modelscope/hub/models/OpenDataLab/PDF-Extract-Kit-1___0",
+    "vlm": "/root/.cache/modelscope/hub/models/OpenDataLab/MinerU2___5-2509-1___2B"
+  }
+}
+EOF
+
+export MINERU_MODEL_SOURCE=local
+mineru-api --host 0.0.0.0 --port 8886
+        </div>
+
+        <!-- ===== 七、测试验证 ===== -->
+        <h2 id="test"><span class="section-num">七</span>测试验证方案</h2>
+
+        <h3>7.1 单元测试 — MinerUParser</h3>
+        <p>新建 <code>tests/test_mineru_parser.py</code>，使用 <code>unittest.mock</code> Mock HTTP 调用：</p>
+
+        <div class="code-block">
+            <span class="code-label">tests/test_mineru_parser.py</span>
+<span class="keyword">import</span> io, json, zipfile, tempfile
+<span class="keyword">from</span> unittest.mock <span class="keyword">import</span> patch, MagicMock
+<span class="keyword">from</span> src.parser.mineru_parser <span class="keyword">import</span> MinerUParser
+<span class="keyword">from</span> src.config <span class="keyword">import</span> MinerUConfig, MvpLimits
+
+
+<span class="keyword">def</span> <span class="function">_make_zip_bytes</span>(content_list: list) -> bytes:
+    <span class="string">"""构造一个包含 content_list.json 的 ZIP bytes，模拟 MinerU 返回值"""</span>
+    buf = io.BytesIO()
+    <span class="keyword">with</span> zipfile.ZipFile(buf, <span class="string">"w"</span>) <span class="keyword">as</span> zf:
+        zf.writestr(
+            <span class="string">"output/doc/doc_content_list.json"</span>,
+            json.dumps(content_list, ensure_ascii=<span class="keyword">False</span>)
+        )
+    <span class="keyword">return</span> buf.getvalue()
+
+
+<span class="keyword">def</span> <span class="function">test_parse_basic_text</span>():
+    <span class="string">"""验证 text 类型内容被正确映射到 ParseResult"""</span>
+    content_list = [
+        {<span class="string">"type"</span>: <span class="string">"text"</span>, <span class="string">"text"</span>: <span class="string">"第一章 概述"</span>, <span class="string">"page_idx"</span>: <span class="number">0</span>},
+        {<span class="string">"type"</span>: <span class="string">"text"</span>, <span class="string">"text"</span>: <span class="string">"本报告涉及审计结论。"</span>, <span class="string">"page_idx"</span>: <span class="number">0</span>},
+        {<span class="string">"type"</span>: <span class="string">"table"</span>, <span class="string">"table_body"</span>: <span class="string">"&lt;table&gt;&lt;/table&gt;"</span>,
+         <span class="string">"table_caption"</span>: [<span class="string">"表1"</span>], <span class="string">"page_idx"</span>: <span class="number">1</span>},
+        {<span class="string">"type"</span>: <span class="string">"discarded"</span>, <span class="string">"text"</span>: <span class="string">"页眉"</span>, <span class="string">"page_idx"</span>: <span class="number">1</span>},
+    ]
+    mock_resp = MagicMock()
+    mock_resp.status_code = <span class="number">200</span>
+    mock_resp.headers = {<span class="string">"Content-Type"</span>: <span class="string">"application/zip"</span>}
+    mock_resp.iter_content = <span class="keyword">lambda</span> chunk_size: [_make_zip_bytes(content_list)]
+
+    config = MinerUConfig(api_server=<span class="string">"http://mock:8886"</span>)
+    limits = MvpLimits(max_file_size_mb=<span class="number">100</span>, max_file_pages=<span class="number">50</span>)
+    parser = MinerUParser(config, limits)
+
+    <span class="keyword">with</span> patch(<span class="string">"requests.post"</span>, return_value=mock_resp):
+        result = parser.parse(b<span class="string">"fake_pdf_bytes"</span>)
+
+    assert result.page_count == <span class="number">2</span>
+    assert <span class="string">"第一章"</span> <span class="keyword">in</span> result.pages[<span class="number">0</span>].text
+    assert <span class="string">"表1"</span> <span class="keyword">in</span> result.pages[<span class="number">1</span>].text
+    assert result.metadata[<span class="string">"parseMethod"</span>] == <span class="string">"MINERU"</span>
+    <span class="comment"># discarded 类型不应出现在结果中</span>
+    assert <span class="string">"页眉"</span> <span class="keyword">not in</span> result.full_text
+
+
+<span class="keyword">def</span> <span class="function">test_fallback_to_tika</span>():
+    <span class="string">"""验证 MinerU 不可达时 ParserFactory 降级到 TikaParser"""</span>
+    <span class="keyword">from</span> src.parser.parser_factory <span class="keyword">import</span> create_parser
+    <span class="keyword">from</span> src.parser.tika_parser <span class="keyword">import</span> TikaParser
+    <span class="keyword">from</span> src.config <span class="keyword">import</span> AppConfig, ParserConfig
+
+    config = AppConfig()
+    config.parser = ParserConfig(engine=<span class="string">"mineru"</span>, fallback_on_failure=<span class="keyword">True</span>)
+    config.mineru = MinerUConfig(api_server=<span class="string">"http://unreachable:8886"</span>)
+
+    <span class="keyword">with</span> patch(<span class="string">"requests.get"</span>, side_effect=ConnectionError(<span class="string">"refused"</span>)):
+        parser = create_parser(config)
+
+    assert isinstance(parser, TikaParser)
+        </div>
+
+        <h3>7.2 集成验证步骤</h3>
+        <div class="flow-steps">
+            <div class="flow-step">
+                <div class="flow-step-num">1</div>
+                <div class="flow-step-content">
+                    <h4>验证 MinerU 服务可达性</h4>
+                    <div class="code-block">curl http://&lt;mineru-host&gt;:8886/health
+<span class="comment"># 期望返回: {"protocol_version": "1.0", ...}</span>
+
+curl -X POST "http://&lt;mineru-host&gt;:8886/file_parse" \
+  -F "files=@test.pdf" \
+  -F "return_content_list=true" \
+  -F "response_format_zip=true" \
+  -o result.zip
+unzip -p result.zip "*/content_list.json" | python3 -m json.tool | head -50</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="flow-step-num">2</div>
+                <div class="flow-step-content">
+                    <h4>配置并启动 kb-doc-processor</h4>
+                    <div class="code-block">export KB_PARSER_ENGINE=mineru
+export KB_MINERU_API_SERVER=http://&lt;mineru-host&gt;:8886
+export KB_PARSER_FALLBACK=true
+python -m src.main</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="flow-step-num">3</div>
+                <div class="flow-step-content">
+                    <h4>上传审计 PDF 文件，观察日志</h4>
+                    <div class="code-block"><span class="comment"># 期望看到如下日志序列：</span>
+[INFO] Pipeline start: docId=xxx
+[INFO] [ParserFactory] Using MinerUParser, api_server=..., backend=pipeline
+[INFO] [MinerU] Sending PDF to .../file_parse, size=1234.5KB, backend=pipeline
+[INFO] [MinerU] Parsed successfully: 12 pages, 18542 chars total
+[INFO] Pipeline done: docId=xxx, chunks=45, quality=0.92</div>
+                </div>
+            </div>
+            <div class="flow-step">
+                <div class="flow-step-num">4</div>
+                <div class="flow-step-content">
+                    <h4>对比 Tika 与 MinerU 解析质量</h4>
+                    <div class="code-block"><span class="comment"># 查看数据库中 parseMethod 字段</span>
+SELECT parse_method, count(*), avg(quality_score)
+FROM kb_knowledge.knowledge_clean
+GROUP BY parse_method;
+
+<span class="comment"># 查看 metadata_json 中的 parseMethod</span>
+SELECT meta_json->>'parseMethod', count(*)
+FROM kb_knowledge.embed_task
+GROUP BY 1;</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 八、降级策略 ===== -->
+        <h2 id="fallback"><span class="section-num">八</span>降级策略与监控</h2>
+
+        <h3>8.1 降级触发时机</h3>
+        <table class="data-table">
+            <tr><th>场景</th><th>行为</th><th>配置项</th></tr>
+            <tr><td>MinerU 服务未启动</td><td>启动时健康检测失败 → 降级到 Tika</td><td>KB_PARSER_FALLBACK=true</td></tr>
+            <tr><td>MinerU 请求超时</td><td>requests.Timeout 异常 → 整条消息进入失败重试</td><td>KB_MINERU_TIMEOUT_SECONDS</td></tr>
+            <tr><td>MinerU 返回非 ZIP</td><td>RuntimeError → 消息失败，Kafka 可重试</td><td>-</td></tr>
+            <tr><td>content_list.json 解析失败</td><td>FileNotFoundError / JSONDecodeError → 消息失败</td><td>-</td></tr>
+            <tr><td>api_server 未配置</td><td>启动时检测 → 降级到 Tika 或抛出</td><td>KB_PARSER_FALLBACK</td></tr>
+        </table>
+
+        <div class="note-box success">
+            <strong>✅ 推荐生产配置</strong>
+            生产环境设置 <code>KB_PARSER_FALLBACK=true</code>，当 MinerU 服务异常时自动回退到 Tika，保证文档处理链路不中断。可通过 Prometheus + Grafana 监控 <code>parseMethod</code> 分布，异常比例升高时告警。
+        </div>
+
+        <h3>8.2 监控指标建议</h3>
+        <table class="data-table">
+            <tr><th>指标</th><th>采集方式</th><th>告警阈值</th></tr>
+            <tr><td>MinerU 解析成功率</td><td>log grep / 数据库 parseMethod 统计</td><td>连续失败 &gt; 5 次</td></tr>
+            <tr><td>MinerU 平均解析时长</td><td>日志记录 start/end 时间戳</td><td>&gt; 300s 告警</td></tr>
+            <tr><td>Tika 降级率</td><td>parseMethod=TIKA 占比</td><td>&gt; 10% 告警（引擎设为 mineru 时）</td></tr>
+            <tr><td>MinerU /health 可用率</td><td>定时探测（5 分钟一次）</td><td>连续 3 次失败</td></tr>
+        </table>
+
+        <!-- ===== 九、实施路线 ===== -->
+        <h2 id="roadmap"><span class="section-num">九</span>实施路线</h2>
+
+        <ul class="checklist">
+            <li>
+                <div class="ck-icon ck-p0">P0</div>
+                <div><strong>内网部署 MinerU 服务（方案 A，CPU Pipeline 后端）</strong><br>
+                    在内网某台机器上完成 MinerU 安装、模型下载（或离线迁移），验证 /health 接口可达。预计 1-2 天。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p0">P0</div>
+                <div><strong>实现 mineru_parser.py 和 parser_factory.py</strong><br>
+                    按本方案第四节代码实现，并编写单元测试 test_mineru_parser.py 覆盖基本类型映射和降级逻辑。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p0">P0</div>
+                <div><strong>更新 config.py + settings.yaml + pipeline.py</strong><br>
+                    追加 MinerUConfig、ParserConfig 模型；Pipeline.__init__ 改为 ParserFactory。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p1">P1</div>
+                <div><strong>审计文档质量对比评估</strong><br>
+                    选取 10 份典型审计 PDF（含表格、复杂格式），对比 Tika vs MinerU 解析结果，评估结构化程度、召回率、chunk 质量。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p1">P1</div>
+                <div><strong>性能调优：Kafka max_poll_interval_ms</strong><br>
+                    MinerU 解析大文件可能超过 10 分钟，需评估 Kafka 消费超时设置（现为 600s），必要时增大或改用异步任务接口。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p2">P2</div>
+                <div><strong>升级为异步调用模式（MinerU /tasks 接口）</strong><br>
+                    当文档较大时，改用 POST /tasks 提交，轮询 GET /tasks/{id}/result 获取结果，避免同步超时。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p2">P2</div>
+                <div><strong>图片内容索引（二期）</strong><br>
+                    MinerU 可返回图片 base64，结合多模态模型对图表描述进行索引，提升审计报表检索覆盖率。</div>
+            </li>
+            <li>
+                <div class="ck-icon ck-p3">P3</div>
+                <div><strong>vlm-http-client 后端接入现有 Qwen vLLM 服务</strong><br>
+                    在 GPU 服务器上额外部署 MinerU 专用 VLM（非 Qwen，为 MinerU2-0B），实现更高精度解析。</div>
+            </li>
+        </ul>
+
+        <div class="note-box info">
+            <strong>💡 关于 Kafka 超时的注意事项</strong>
+            当前 <code>max_poll_interval_ms=600000</code>（10分钟），MinerU pipeline 模式解析 30 页 PDF 通常需要 2-5 分钟。如果文档页数较多，需评估是否需要调大或改用异步接口模式（POST /tasks）以避免 Kafka 认为消费者失效而触发 Rebalance。
+        </div>
+
+        <div class="note-box success">
+            <strong>🏁 快速启动检查清单</strong>
+            <ol style="margin-top:8px;padding-left:20px;line-height:2;">
+                <li>✅ MinerU 服务部署并验证：<code>curl http://&lt;host&gt;:8886/health</code></li>
+                <li>✅ 新建 <code>src/parser/mineru_parser.py</code>（见 4.1）</li>
+                <li>✅ 新建 <code>src/parser/parser_factory.py</code>（见 4.2）</li>
+                <li>✅ 更新 <code>src/config.py</code> 添加 MinerUConfig + ParserConfig（见 4.3）</li>
+                <li>✅ 更新 <code>src/pipeline.py</code> 改用 create_parser（见 4.4）</li>
+                <li>✅ 更新 <code>config/settings.yaml</code> 添加 mineru + parser 节（见 5.1）</li>
+                <li>✅ 更新 <code>pyproject.toml</code> 新增 requests 依赖（见 5.3）</li>
+                <li>✅ 设置环境变量并启动服务，观察日志中 [MinerU] 输出</li>
+            </ol>
+        </div>
+
+    </div><!-- /content -->
+
+    <footer>
+        <div class="footer-meta">
+            <span>📦 kb-doc-processor @ kb-platform</span>
+            <span>🏗️ MinerU 集成落地方案</span>
+            <span>📅 生成于 2026-05-18</span>
+            <span>✍️ 适用 MinerU FastAPI 服务（mineru-api 0.7+）</span>
+        </div>
+    </footer>
+</div>
+</body>
+</html>

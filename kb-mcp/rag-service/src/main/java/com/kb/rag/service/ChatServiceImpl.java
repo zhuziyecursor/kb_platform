@@ -640,7 +640,8 @@ public class ChatServiceImpl implements ChatService {
         emitStage(onStage, trace, "bm25_search", Map.of("hits", bm25Results.size()));
 
         // Step 7: Dense Milvus search with fail-close
-        int searchTopK = Math.max(request.getTopK(), 50);
+        int searchTopK = calculateDynamicTopK(Math.max(request.getTopK(), 50),
+                devContext.getSecLevel(), getPermGroupIds());
         final var milvusHolder = new Object() {
             List<MilvusSearchResult> value = List.of();
             boolean failed = false;
@@ -744,12 +745,17 @@ public class ChatServiceImpl implements ChatService {
                 trace.setClauseMatched(true);
                 // Prepend clause-matched docs as synthetic MilvusSearchResults at rank-1
                 List<MilvusSearchResult> clauseResults = new ArrayList<>();
+                int clauseSeq = 0;
                 for (KeywordFallbackService.ClauseHit hit : clauseMatch.hits()) {
+                    // Use extracted clause text; fallback to title + sectionPath if empty
+                    String clauseText = hit.text() != null && !hit.text().isBlank()
+                            ? hit.text()
+                            : hit.title() + " " + hit.sectionPath();
                     MilvusSearchResult mr = MilvusSearchResult.builder()
                             .docId(hit.docId())
                             .version(hit.version())
-                            .chunkSeq(0)
-                            .text("")
+                            .chunkSeq(clauseSeq++)
+                            .text(clauseText)
                             .title(hit.title())
                             .sectionPath(hit.sectionPath())
                             .secLevel(hit.secLevel())
@@ -804,16 +810,20 @@ public class ChatServiceImpl implements ChatService {
 
         boolean milvusHadResults = !fusedSource.isEmpty();
 
-        // Step 8: Rerank -> Top5
+        // Step 8: Rerank -> Top5 (limit input to top-20 to reduce CrossEncoder latency)
         List<MilvusSearchResult> rerankSource = fusedSource;
-        List<String> chunkTexts = rerankSource.stream()
+        final int rerankInputLimit = 20;
+        List<MilvusSearchResult> rerankInput = rerankSource.size() > rerankInputLimit
+                ? new ArrayList<>(rerankSource.subList(0, rerankInputLimit))
+                : rerankSource;
+        List<String> chunkTexts = rerankInput.stream()
                 .map(r -> r.getText() != null && !r.getText().isEmpty() ? r.getText() : " ")
                 .collect(Collectors.toList());
         List<MilvusSearchResult> reranked = trace.stage("rerank", () -> {
             try {
                 List<RerankResponse.Result> rerankResults = rerankClient.rerank(rewrittenQuery, chunkTexts);
-                log.info("Rerank returned {} results", rerankResults.size());
-                return rerankResultSelector.select(rerankSource, rerankResults);
+                log.info("Rerank returned {} results (input={})", rerankResults.size(), chunkTexts.size());
+                return rerankResultSelector.select(rerankInput, rerankResults);
             } catch (Exception e) {
                 log.warn("Rerank unavailable, preserving fusion scores: {}", e.getMessage());
                 trace.setRerankFallback(true);
@@ -822,8 +832,9 @@ public class ChatServiceImpl implements ChatService {
                                 .description("Rerank fallback count")
                                 .register(registry)
                                 .increment());
-                rerankSource.sort((a, b) -> Double.compare(b.getVectorScore(), a.getVectorScore()));
-                return new ArrayList<>(rerankSource.subList(0, Math.min(5, rerankSource.size())));
+                List<MilvusSearchResult> fallback = new ArrayList<>(rerankSource);
+                fallback.sort((a, b) -> Double.compare(b.getVectorScore(), a.getVectorScore()));
+                return new ArrayList<>(fallback.subList(0, Math.min(5, fallback.size())));
             }
         });
         emitStage(onStage, trace, "rerank", Map.of(
@@ -1069,7 +1080,8 @@ public class ChatServiceImpl implements ChatService {
         // Step 6-8: Run ALL retrieval channels (DENSE + SPARSE + STRUCTURED + FAQ)
         // concurrently on the channel pool. RetrievalContext carries the per-request
         // query vector and ACL data into channels that need them.
-        int searchTopK = Math.max(request.getTopK(), 50);
+        int searchTopK = calculateDynamicTopK(Math.max(request.getTopK(), 50),
+                devContext.getSecLevel(), getPermGroupIds());
         RetrievalContext retrievalContext = new RetrievalContext(
                 plan, queryVector, userSecLevel, permGroupIds);
 
@@ -1156,16 +1168,20 @@ public class ChatServiceImpl implements ChatService {
 
         boolean milvusHadResults = !aclFiltered.isEmpty();
 
-        // Step 12: Rerank → top-10 for MMR pool
+        // Step 12: Rerank → top-10 for MMR pool (limit input to top-20)
         List<MilvusSearchResult> rerankSource = aclFiltered;
-        List<String> chunkTexts = rerankSource.stream()
+        final int rerankInputLimit = 20;
+        List<MilvusSearchResult> rerankInput = rerankSource.size() > rerankInputLimit
+                ? new ArrayList<>(rerankSource.subList(0, rerankInputLimit))
+                : rerankSource;
+        List<String> chunkTexts = rerankInput.stream()
                 .map(r -> r.getText() != null && !r.getText().isEmpty() ? r.getText() : " ")
                 .collect(Collectors.toList());
         List<MilvusSearchResult> reranked = trace.stage("rerank", () -> {
             try {
                 List<RerankResponse.Result> rerankResults = rerankClient.rerank(rewrittenQuery, chunkTexts);
-                log.info("Hybrid rerank returned {} results", rerankResults.size());
-                return rerankResultSelector.select(rerankSource, rerankResults);
+                log.info("Hybrid rerank returned {} results (input={})", rerankResults.size(), chunkTexts.size());
+                return rerankResultSelector.select(rerankInput, rerankResults);
             } catch (Exception e) {
                 log.warn("Hybrid rerank unavailable: {}", e.getMessage());
                 trace.setRerankFallback(true);
@@ -1174,8 +1190,9 @@ public class ChatServiceImpl implements ChatService {
                                 .description("Rerank fallback count")
                                 .register(registry)
                                 .increment());
-                rerankSource.sort((a, b) -> Double.compare(b.getVectorScore(), a.getVectorScore()));
-                return new ArrayList<>(rerankSource.subList(0, Math.min(10, rerankSource.size())));
+                List<MilvusSearchResult> fallback = new ArrayList<>(rerankSource);
+                fallback.sort((a, b) -> Double.compare(b.getVectorScore(), a.getVectorScore()));
+                return new ArrayList<>(fallback.subList(0, Math.min(10, fallback.size())));
             }
         });
         emitStage(onStage, trace, "rerank", Map.of(
@@ -1244,6 +1261,23 @@ public class ChatServiceImpl implements ChatService {
                 milvusHadResults, llmRequest, request.getSessionId(), sessionContext.session(),
                 null, null, plan.queryType().name(), "HYBRID",
                 channelStats, channelResult);
+    }
+
+    /**
+     * Dynamically adjust Milvus TopK based on ACL restrictiveness.
+     * Stricter ACL (fewer perm groups / lower sec level) needs more candidates
+     * to compensate for post-filter drop-off.
+     */
+    private int calculateDynamicTopK(int baseTopK, int userSecLevel, List<Long> permGroupIds) {
+        double multiplier = 1.0;
+        if (permGroupIds == null || permGroupIds.size() <= 2) {
+            multiplier += 0.5; // strict permission scope
+        }
+        if (userSecLevel <= 2) {
+            multiplier += 0.3; // low security clearance
+        }
+        int adjusted = (int) (baseTopK * multiplier);
+        return Math.min(adjusted, 200); // hard cap to avoid overwhelming Milvus
     }
 
     private MilvusSearchResult fusedHitToMilvus(FusedHit fh) {

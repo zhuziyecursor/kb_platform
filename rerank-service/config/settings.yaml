@@ -3,7 +3,7 @@ kb_rerank_service:
   reranker:
     model_name: "${KB_RERANK_MODEL_NAME:BAAI/bge-reranker-v2-m3}"
     max_length: ${KB_RERANK_MAX_LENGTH:512}
-    batch_size: ${KB_RERANK_BATCH_SIZE:20}
+    batch_size: ${KB_RERANK_BATCH_SIZE:32}
     # 本地模型路径（跳过 HuggingFace 下载）
     local_model_path: "${KB_RERANK_MODEL_PATH:/Users/apple/project/kb-platform/rerank-service/models/bge-reranker-v2-m3}"
 

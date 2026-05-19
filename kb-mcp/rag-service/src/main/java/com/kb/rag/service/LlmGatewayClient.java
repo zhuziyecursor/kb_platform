@@ -31,6 +31,10 @@ import java.util.function.Consumer;
 public class LlmGatewayClient {
 
     private final RestTemplate restTemplate;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     @Value("${app.llm.url}")
     private String llmUrl;
@@ -98,11 +102,7 @@ public class LlmGatewayClient {
                 .timeout(Duration.ofSeconds(90))
                 .build();
 
-        HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-        HttpResponse<InputStream> response = client.send(httpReq, HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<InputStream> response = httpClient.send(httpReq, HttpResponse.BodyHandlers.ofInputStream());
         log.info("LLM stream response status={}", response.statusCode());
 
         if (response.statusCode() != 200) {

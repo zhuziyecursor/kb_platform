@@ -53,7 +53,7 @@ kb_document_processor:
 
   # Embedding 服务配置
   embedding:
-    url: "${KB_EMBEDDING_SERVICE_URL:http://192.168.30.47:31296/embeddings}"
+    url: "${KB_EMBEDDING_SERVICE_URL:http://192.168.30.47:31296/v1/embeddings}"
     timeout_seconds: ${KB_EMBEDDING_TIMEOUT_SECONDS:120}
     max_retries: ${KB_EMBEDDING_MAX_RETRIES:3}
     model_name: "${KB_EMBEDDING_MODEL_NAME:BGE-zh-v1.5}"

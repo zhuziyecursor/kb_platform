@@ -39,6 +39,7 @@ public class KeywordFallbackService {
             int version,
             String sectionPath,
             String title,
+            String text,
             int secLevel,
             long permGroupId,
             String effectiveTo,
@@ -119,11 +120,14 @@ public class KeywordFallbackService {
                     int version = row[1] instanceof Number ? ((Number) row[1]).intValue() : 0;
                     String jsonBody = (String) row[2];
                     String title = extractTitleFromJson(jsonBody);
+                    String text = extractTextFromJson(jsonBody);
                     int secLevel = row.length > 3 && row[3] instanceof Number ? ((Number) row[3]).intValue() : 1;
-                    long permGroupId = row.length > 5 ? 0L : 0L; // perm_group_id not in structured view
+                    long permGroupId = row.length > 6 && row[6] instanceof Number
+                            ? ((Number) row[6]).longValue()
+                            : 0L;
                     String effectiveTo = row.length > 5 ? (String) row[5] : "";
                     String regionCode = row.length > 4 ? (String) row[4] : "CN-NATIONAL";
-                    hits.add(new ClauseHit(docId, version, clauseRef, title,
+                    hits.add(new ClauseHit(docId, version, clauseRef, title, text,
                             secLevel, permGroupId, effectiveTo, regionCode));
                 }
             } catch (Exception e) {
@@ -161,5 +165,36 @@ public class KeywordFallbackService {
             // Ignore parse errors for title extraction
         }
         return "";
+    }
+
+    /**
+     * Extract the main text/content from a structured JSON body.
+     * Tries common keys: content, text, body, description.
+     */
+    private String extractTextFromJson(String jsonBody) {
+        if (jsonBody == null) return "";
+        try {
+            for (String key : new String[]{"content", "text", "body", "description"}) {
+                String val = extractStringValue(jsonBody, key);
+                if (!val.isEmpty()) {
+                    return val;
+                }
+            }
+        } catch (Exception e) {
+            // Ignore parse errors
+        }
+        return "";
+    }
+
+    private String extractStringValue(String jsonBody, String key) {
+        int keyIdx = jsonBody.indexOf("\"" + key + "\"");
+        if (keyIdx < 0) return "";
+        int colonIdx = jsonBody.indexOf(":", keyIdx);
+        if (colonIdx < 0) return "";
+        int startQuote = jsonBody.indexOf("\"", colonIdx + 1);
+        if (startQuote < 0) return "";
+        int endQuote = jsonBody.indexOf("\"", startQuote + 1);
+        if (endQuote < 0) return "";
+        return jsonBody.substring(startQuote + 1, endQuote);
     }
 }

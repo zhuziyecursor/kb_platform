@@ -63,7 +63,7 @@ services:
         -c log_line_prefix='%t [%p] %q%u@%d '
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db:/docker-entrypoint-initdb.d:ro
+      - ../init-db:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kb_admin}"]
       interval: 10s

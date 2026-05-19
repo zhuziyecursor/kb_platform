@@ -16,7 +16,7 @@ public interface SearchIndexRepository extends JpaRepository<KnowledgeSearchIdx,
     @Query(value = """
             SELECT k.doc_id, k.version, k.chunk_seq, k.title, k.text_snippet,
                    ts_rank_cd(k.tokens, plainto_tsquery('simple', :query))
-                     / (1 + ln(GREATEST(COALESCE(k.doc_length, 1), 1) / 500.0)) AS score,
+                     / (1 + ln(GREATEST(LENGTH(k.text_snippet), 1) / 500.0)) AS score,
                    k.sec_level, k.perm_group_id, k.effective_to, k.region_code
             FROM kb_knowledge.knowledge_search_idx k
             WHERE k.tenant_id = :tenantId

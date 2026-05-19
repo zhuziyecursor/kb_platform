@@ -52,7 +52,9 @@ public class MinimaxProviderService {
         TraceLogHelper.setSpan("llm_upstream");
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + apiKey);
+        if (apiKey != null && !apiKey.isBlank()) {
+            headers.set("Authorization", "Bearer " + apiKey);
+        }
 
         HttpEntity<MinimaxRequest> entity = new HttpEntity<>(request, headers);
 
@@ -66,15 +68,18 @@ public class MinimaxProviderService {
 
             MinimaxResponse body = response.getBody();
             if (body == null) {
-                throw new RuntimeException("MiniMax returned empty response");
+                throw new RuntimeException("LLM returned empty response");
             }
             if (!body.isSuccess()) {
-                throw new RuntimeException("MiniMax API error [" + body.getBaseResp().getStatusCode() + "]: " + body.errorMessage());
+                String errCode = body.getBaseResp() != null
+                        ? String.valueOf(body.getBaseResp().getStatusCode())
+                        : "UNKNOWN";
+                throw new RuntimeException("LLM API error [" + errCode + "]: " + body.errorMessage());
             }
             return body;
         } catch (RestClientException e) {
-            log.error("MiniMax API call failed: {}", e.getMessage());
-            throw new RuntimeException("MiniMax API error: " + e.getMessage(), e);
+            log.error("LLM API call failed: {}", e.getMessage());
+            throw new RuntimeException("LLM API error: " + e.getMessage(), e);
         }
     }
 
@@ -90,13 +95,15 @@ public class MinimaxProviderService {
                 .build();
         ObjectMapper mapper = new ObjectMapper();
 
-        HttpRequest httpReq = HttpRequest.newBuilder()
+        HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(apiBase))
-                .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(request)))
-                .timeout(Duration.ofSeconds(timeoutSeconds))
-                .build();
+                .timeout(Duration.ofSeconds(timeoutSeconds));
+        if (apiKey != null && !apiKey.isBlank()) {
+            reqBuilder.header("Authorization", "Bearer " + apiKey);
+        }
+        HttpRequest httpReq = reqBuilder.build();
 
         HttpResponse<InputStream> response = client.send(httpReq, HttpResponse.BodyHandlers.ofInputStream());
 

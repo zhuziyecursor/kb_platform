@@ -14,7 +14,8 @@ public class SearchIndexWriter {
     private final KnowledgeSearchIdxRepository repository;
 
     public void write(EmbedTaskMessage msg) {
-        String tsvectorInput = (msg.getKeywords() != null && !msg.getKeywords().isBlank()
+        // Merge keywords + text so that ON CONFLICT updates also include keywords in tokens.
+        String mergedText = (msg.getKeywords() != null && !msg.getKeywords().isBlank()
                 ? msg.getKeywords() + " " : "")
                 + (msg.getText() != null ? msg.getText() : "");
 
@@ -24,8 +25,8 @@ public class SearchIndexWriter {
                 msg.getVersion(),
                 msg.getChunkSeq(),
                 msg.getTitle(),
-                msg.getText(),
-                tsvectorInput,
+                mergedText,   // text_snippet now contains keywords for correct ON CONFLICT token refresh
+                mergedText,   // tsvectorInput
                 msg.getSecLevel() != null ? msg.getSecLevel() : 1,
                 msg.getPermGroupId() != null ? msg.getPermGroupId() : 0L,
                 msg.getEffectiveTo(),
